@@ -13,10 +13,11 @@ whole point of it — follow them before doing anything else.
 
 | Source | Authority |
 |---|---|
-| `data/turing/**/*.h5` | **Highest.** The data itself. When anything disagrees with an observed field, the files win. |
+| `docs/SIH26055_PROBLEM_STATEMENT.md` | **The requirement.** The official DRDO problem statement — what we are being asked to build. Settles scope disputes. |
+| `data/turing/**/*.h5` | **Highest for facts about the data.** When anything disagrees with an observed field, the files win. |
 | `docs/PROJECT_ARCHITECTURE.md` | The working architecture, written by the human team. Default direction; not immutable. |
 | `docs/CLAUDE_CODE_RESEARCH_PROTOCOL.md` | How the reference documents may and may not be used. |
-| The six PDFs in `docs/` | Reference material. Classify before use, per the protocol. |
+| The six PDFs in `docs/` | Reference material. Classify before use, per the protocol. See `docs/RESEARCH_MAP.md`. |
 
 Read `docs/PROJECT_ARCHITECTURE.md` and `docs/CLAUDE_CODE_RESEARCH_PROTOCOL.md` before
 designing anything.
@@ -62,8 +63,10 @@ These are not style preferences. They are why this repository was recreated.
 
 ## Data
 
-`data/` is gitignored — 94 HDF5 files, 1.1 GB, already present locally. The dataset is the
+`data/` is gitignored — 184 HDF5 files, 2.2 GB, already present locally. The dataset is the
 Turing Synthetic Radar Dataset (gated on Hugging Face). Do not re-download it; it is here.
 
-The 47 `scan`/`stare` pairs are all from the **train** split. There is no held-out test data
-in this repository yet.
+- **47 `scan`/`stare` pairs from the train split** — the development set.
+- **45 `scan`/`stare` pairs from the test split** — held out, fetched 2026-08-28 by a rule fixed
+  in advance (see `docs/RESEARCH_MAP.md`). **Do not touch these during development.** They exist
+  so the final evaluation means something; every use must be recorded.
