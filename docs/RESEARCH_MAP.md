@@ -1,7 +1,9 @@
 # Research Map
 
 > Built from the documents actually present in `docs/` (and the dataset card in `data/turing/`)
-> on 2026-08-28. Every PDF below was opened and read with `pypdf` in that session; none was
+> on 2026-08-28. **Updated the same day** when the official problem statement was added as
+> `docs/SIH26055_PROBLEM_STATEMENT.md`; it outranks everything else here and settles several
+> questions this map had listed as open. Every PDF below was opened and read with `pypdf` in that session; none was
 > classified from its filename. Where a document's filename and its contents disagree, the
 > contents decide.
 
@@ -15,6 +17,9 @@ that primary is not in this repository.
 ---
 
 ## Stage index
+
+### The requirement itself
+- `docs/SIH26055_PROBLEM_STATEMENT.md` — **Authority A, NOW, read before anything else.** The official DRDO problem statement. Defines the environment, the observation model, the training signal and the metric set. Every other document in this folder is a means to satisfying it.
 
 ### Turing / dataset understanding
 - `data/turing/README.md` — the Hugging Face dataset card. **Partly contradicted by the files.** Use the HDF5 files, not this card.
@@ -70,6 +75,47 @@ directly rather than taken on trust.
 ---
 
 ## Document records
+
+## SIH26055 — Smart Scan Strategy for Electronic Warfare (official problem statement)
+
+**Path:** `docs/SIH26055_PROBLEM_STATEMENT.md`
+
+**Role:** ENVIRONMENT / EVALUATION / RL — it is the requirement, so it touches every role
+
+**Stage:** NOW, and permanently
+
+**Authority:** **A** — this is the specification. It outranks `PROJECT_ARCHITECTURE.md`, which is our reading of it, and every PDF here.
+
+### What it contributes
+- The environment definition: *"a simulated RF environment which has truth information on status of emitters in each band and at each time slot."*
+- The observation model: *"the status of environment for each frequency band at each time step can be recorded as a transmission or a non-transmission."*
+- The training signal: *"the model should then be trained based on hits and misses."*
+- The metric set, named explicitly: Pd, Pfa, sensitivity, average intercept rate, average reward/cost, percentage of correct predictions, average intercept time error, plus intercept time and interception ratio.
+- The objective: minimise intercept time, maximise interception rate.
+- The required emitter behaviours: spatially scanning **and** frequency agile.
+- It names the Turing dataset as the data source, so our grounding is expected rather than chosen.
+
+### What it does NOT establish
+- Time-slot duration, band count, band width, or whether bands overlap.
+- How a band-slot's transmission status is computed from emitter geometry and power.
+- Which ML method. "Machine learning based" is as specific as it gets; RL is our reading of "trained based on hits and misses", not the PS's word.
+- What generates false alarms, despite requiring Pfa as a metric.
+
+### Assumptions
+- That a binary transmission/non-transmission status per band-slot is an adequate abstraction of the RF world. The PS asserts this; the Turing PDW data is far richer, so we are deliberately discarding detail to meet the spec.
+
+### Relevant project component
+- All of them. Use it to settle scope disputes.
+
+### Conflicts/questions
+- **`docs/TECHNICAL DIFFERENTIATION STRATEGY.pdf` §1** says treat classification as a supporting component and build a scheduler. The PS agrees. Where that document adds clustering, drift detection and explainability, the PS does not ask for them — they remain OPTIONAL.
+- **The Turing data is PDW-level, the PS is band-occupancy-level.** Converting one to the other is the central modelling step, and the PS does not specify it. See the open questions in the team brief.
+- *"Approaches to intercept a periodic scan receiver optimally"* is ambiguous and flagged UNRESOLVED in the PS file itself.
+
+### Decision
+- Treat as the specification. When this map and the PS disagree, the PS wins; when the PS is silent, `PROJECT_ARCHITECTURE.md` fills the gap; when both are silent, it is a team decision to be recorded.
+
+---
 
 ## Scanning Strategy Learning For Electronic Support Receivers by Robust Principal Component Analysis
 
@@ -362,6 +408,29 @@ in stratum 0, so stratum 0 holds four of our files rather than the one its share
 
 Ranking on *scan* size instead scatters the same 47 irregularly (gaps of 1 to 422 ranks), which
 is why the pattern is invisible from the `scan/train_scan` sizes alone.
+
+### The held-out test subset — fetched 2026-08-28
+
+45 test pairs (90 files, 1.1 GB) downloaded into `data/turing/scan/test_scan/` and
+`data/turing/stare/test_stare/`. Verified on arrival: 45 ids in each, id sets identical,
+all files open, `collection_time_s = 30.0`, 36 dwell bins on scan and 0 on stare — same
+structure as train.
+
+**Selection rule, stated rather than reverse-engineered so it is reproducible:** rank all 250
+`stare/test_stare` files by size; cut into 40 equal-count strata and take the **middle** file of
+each; add the 3 smallest and 3 largest in the split. That yields 46 slots, of which one collides
+(stratum 0's middle is also a bottom-3 extreme), giving **45**. Train used an arbitrary ~66%
+within-stratum offset; the middle is the canonical choice and gives the same coverage.
+
+**Chosen config ids:** 5, 7, 16, 17, 20, 21, 22, 37, 40, 42, 46, 49, 53, 63, 64, 71, 78, 86, 87,
+88, 89, 97, 102, 105, 117, 119, 124, 131, 142, 145, 146, 155, 161, 172, 178, 188, 195, 197, 209,
+210, 222, 235, 240, 242, 245.
+
+These ids are **test-split ids and are unrelated to train ids of the same number** — e.g.
+`test/config_64` and `train/config_64` are different scenarios.
+
+**Discipline:** this subset was chosen by a rule fixed before any result was seen, and it must
+stay untouched until the system is frozen. Every use of it should be recorded.
 
 ---
 
