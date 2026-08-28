@@ -1,0 +1,381 @@
+# Research Map
+
+> Built from the documents actually present in `docs/` (and the dataset card in `data/turing/`)
+> on 2026-08-28. Every PDF below was opened and read with `pypdf` in that session; none was
+> classified from its filename. Where a document's filename and its contents disagree, the
+> contents decide.
+
+## How to read the Authority column
+
+Per `CLAUDE_CODE_RESEARCH_PROTOCOL.md`: **A** = direct project/dataset facts; **B** = reputable
+research/theory; **C** = proposed strategy; **D** = brainstorm/commentary. A document that
+summarises another source is never stronger than the source it summarises, and is **D** when
+that primary is not in this repository.
+
+---
+
+## Stage index
+
+### Turing / dataset understanding
+- `data/turing/README.md` — the Hugging Face dataset card. **Partly contradicted by the files.** Use the HDF5 files, not this card.
+- *(No PDF in `docs/` documents the Turing dataset. This is a real gap.)*
+
+### Environment construction
+- `docs/optimumsearch.pdf` — sweep period / dwell time / duty cycle definitions and the coincidence model. **NOW.**
+- `docs/118700Q.pdf` §4 — a concrete, minimal band-scheduling environment and its hit/miss observation rule. **NOW.**
+- `docs/TECHNICAL DIFFERENTIATION STRATEGY.pdf` §3, §4, §12 — a checklist of environment features. **LATER**, proposal only.
+
+### Environment validation
+- `docs/optimumsearch.pdf` ch. 2, 3, 6 — intercept-time and probability-of-intercept theory. This is the only document in the repository with derivable equations we could check an environment against. **NOW.**
+
+### Baselines
+- `docs/optimumsearch.pdf` — periodic/probabilistic search strategies; Clarkson's strategy as the reference point. **NOW.**
+- `docs/118700Q.pdf` §4 — "simple periodic search strategy" used as the bootstrap policy. **NOW.**
+- `docs/TECHNICAL DIFFERENTIATION STRATEGY.pdf` §2 — random / round-robin / fixed-priority / recency list. **LATER.**
+
+### RL / adaptive scheduler
+- `docs/118700Q.pdf` §2, §3 — PSR/TPSR + RPCA + multi-armed-bandit band selection. **LATER.**
+- `docs/TECHNICAL DIFFERENTIATION STRATEGY.pdf` §19 — RL framing, explicitly "only after strong baselines". **LATER.**
+
+### Final evaluation
+- `docs/TECHNICAL DIFFERENTIATION STRATEGY.pdf` §13, §14, §27 — metric list and the "numerical claims not marketing claims" rule. **FINAL EVALUATION.**
+- `docs/optimumsearch.pdf` ch. 6 — probability of intercept as a defined quantity. **FINAL EVALUATION.**
+
+### Background / future
+- `docs/Electronic warfare (extended).pdf` — plain-language explanation of EW and the problem statement.
+- `docs/GPT BACKDOOR PAPER KHARKIV CONFRENCE.pdf` — synthesis of a conference proceedings not in this repository.
+- `docs/Scanning Strategy Learning ... (3).pdf` — one-page summary of `docs/118700Q.pdf`.
+
+### Unresolved
+- **`sensitivity_dbm` semantics.** The receiver attr says `-110.0`, but 4.49% of scan pulses and 4.01% of stare pulses are recorded with `Amplitude` below it (verified across all 94 files). Histogramming `config_2` amplitudes in 5 dB bins shows **no cliff at −110, and none at −120 either** (`sensitivity_dbm − gain_db`) — the distribution peaks near −93 and rolls off smoothly to −171. So the field was not applied as a threshold on the recorded Amplitude column. Its actual role is undetermined from the data alone; the primary documentation is the `alan-turing-institute/turing-deinterleaving-challenge` GitHub repo, which is not in this repository.
+- **Scan and stare are not nested.** Neither mode's detected-emitter set is a superset of the other (209 scan-only vs 174 stare-only emitter instances across the 47 pairs). The dataset card calls stare an "Oracle receiver detecting all signals"; the files disagree. See "Conflicts" under the dataset card below.
+- **`scan_rate_rpm` is not revolutions per minute.** Folding each emitter's pulse times at `60/scan_rate_rpm` gives **two** peaks per cycle; folding at `30/scan_rate_rpm` gives exactly one. Verified on labels 3, 11, 12, 16 of `config_2` stare. The empirical rotation period is `30/scan_rate_rpm` seconds. Do not take the field name at face value.
+- **`beam_width_deg` is not the detectable window.** For the same emitters the main illumination peak is 40–50° wide against a nominal `beam_width_deg` of 1.8–2.5°, and pulses are recorded at 267–359° of the full revolution. Emitter beam pointing modulates how many pulses arrive; it does not gate them on and off.
+- **Emitters have on/off activity windows that are not in the metadata.** `config_2` label 3 transmits continuously from 4.14 s to 16.98 s and is silent outside it (no gap >100 ms within). Nothing under `metadata/transmitters/transmitters_3` encodes that window. This is the main obstacle to regenerating a scenario from configuration alone.
+
+---
+
+## Summary-of-a-sibling relationships (explicit, per instruction)
+
+| Summary document | Primary it summarises | Primary present here? |
+|---|---|---|
+| `Scanning Strategy Learning For Electronic Support Receivers by Robust Principal Component Analysis (3).pdf` | `118700Q.pdf` — the same paper, same title | **Yes.** Always cite `118700Q.pdf`. |
+| `GPT BACKDOOR PAPER KHARKIV CONFRENCE.pdf` | KhNUPS 2025 conference proceedings (888 pp) | **No.** Every claim it makes about that conference is unverified here. |
+| `data/turing/README.md` | The TSRD dataset + the Turing challenge GitHub repo | **The data is present.** The card is not. Prefer the files. |
+
+`118700Q.pdf` also cites `optimumsearch.pdf` as its reference [1] (Köksal 2010). Both primaries are
+in this repository, so the RPCA paper's account of periodic search can be checked against the thesis
+directly rather than taken on trust.
+
+---
+
+## Document records
+
+## Scanning Strategy Learning For Electronic Support Receivers by Robust Principal Component Analysis
+
+**Path:** `docs/118700Q.pdf`
+
+**Role:** RL / BASELINE / ENVIRONMENT
+
+**Stage:** NOW (for its §4 environment and baseline); LATER (for its RPCA/TPSR method)
+
+**Authority:** B
+
+### What it contributes
+- Full bibliographic identity: Ismail Gul (ITU / ASELSAN) and Isın Erer (ITU), *Artificial Intelligence and Machine Learning in Defense Applications III*, Proc. SPIE Vol. 11870, 118700Q, 2021, doi 10.1117/12.2601109. 7 pages.
+- A precise statement of our problem: a narrow-band ES receiver cannot cover the spectrum at once, so a frequency-scanning strategy must be planned; when emitter parameters are unknown, plan it by learning.
+- An explicit, minimal environment (§4) we could reproduce: emitters modelled as cyclic binary pulse trains, one emitter per band, receiver picks one of K bands per time step.
+- An explicit binary observation rule (§4): `o_t = 1` if the radar's pulse train is high at time `t` **and** the chosen band contains the radar's frequency; `0` otherwise — including when the signal is below receiver sensitivity or the transmit beam is not pointing at the receiver.
+- Its simulation constants (§4): detection bandwidth 1 GHz, smallest detection time 100 ms, coverage 2–12 GHz, K = 10 bands, PRI 40–80 time steps, pulse width 10–20 time steps, 5% jitter, 300-step bootstrap with a periodic search strategy, 30×10⁴ total time steps.
+- A bootstrap baseline: the receiver "begins with a simple periodic search strategy… the tuned frequency band changes incrementally from 1 to K after each time step".
+- Method chain: TPSR for state, RPCA (replacing SVT) for subspace identification, an exponentially-weighted multi-armed-bandit rule (eq. 12) for band selection.
+- Reported result (theirs, not ours): RPCA and SVT perform "quite equal"; per-band interception ratios in Table 1 range from 26.29% to 61.23% across ten 1 GHz bands.
+
+### What it does NOT establish
+- That RPCA beats SVT. The paper's own conclusion is that they are equivalent in interception performance; RPCA is offered as a substitute, and the stated future work is *computational speed*.
+- Any result on the Turing dataset, on PDW-level data, or on any real receiver. §5 says evaluation "using a real ES support system instead of a simulation environment" is future work.
+- That its 10-band, one-emitter-per-band world resembles Turing. It does not: Turing has up to 99 transmitters per scenario against 36 dwell positions, with many emitters sharing a band.
+- A reward function for RL. Its selection rule is a bandit weighting, not an RL reward.
+
+### Assumptions
+- **Each radar operates in a different frequency band** (§4, stated outright). Turing violates this heavily.
+- One emitter's activity per band, represented as a binary pulse train — no PDWs, no amplitude, no AoA.
+- The receiver's observation is a single bit per time step.
+- Time is discretised into uniform steps; the dwell is one step.
+- A single receiver / single learning agent.
+
+### Relevant project component
+- Scheduler and the hit/miss feedback loop. Its §4 observation rule is the cleanest published statement of the "HIT / MISS" arrow in `PROJECT_ARCHITECTURE.md` §1.
+- Its periodic bootstrap is a legitimate baseline for us.
+
+### Conflicts/questions
+- Its "one emitter per band" assumption conflicts with the Turing data (verified: config_2 has two `AN/APG-81` emitters, labels 17 and 19, both at 10000/12000 MHz). Any use of its environment must drop this assumption or say why it kept it.
+- Its binary observation conflicts with what Turing actually records, which is a 5-column PDW per pulse. Collapsing PDWs to a bit is a modelling decision, not a given.
+
+### Decision
+- Use as the reference statement of the problem and as the source for the hit/miss observation rule and the periodic baseline. **Do not** implement TPSR/RPCA now — it is the paper's method, not its problem statement, and `PROJECT_ARCHITECTURE.md` §13 explicitly says a research paper's proposed architecture need not be implemented.
+
+---
+
+## Periodic Search Strategies for Electronic Countermeasure Receivers with Desired Probability of Intercept for Each Frequency Band
+
+**Path:** `docs/optimumsearch.pdf`
+
+**Role:** VALIDATION / BASELINE / ENVIRONMENT
+
+**Stage:** NOW
+
+**Authority:** B
+
+### What it contributes
+- Bibliographic identity: Emin Köksal, MSc thesis, Department of Electrical and Electronics Engineering, Middle East Technical University, January 2010, supervisor Prof. Dr. Mustafa Kuzuoğlu; 110 PDF pages (95 numbered). This is reference [1] of `118700Q.pdf`, so the primary behind that paper's "previous deterministic approaches" is in this repository.
+- The vocabulary the whole field uses, defined in ch. 2.3: scan period, beamwidth, PRI, **sweep period**, **dwell time**, duty cycle. These map directly onto the Turing scan metadata.
+- The coincidence / pulse-train (window function) model of interception (ch. 2.1–2.2) — the mathematical object behind "did the receiver and the emitter beam overlap".
+- Intercept-time theory (ch. 3.2) via Diophantine approximation and Farey series, including maximum intercept time and a geometric construction.
+- Min-max intercept time optimisation over a fixed sweep period and over a range of sweep periods (ch. 3.3).
+- **Probability of intercept** as a defined, computable quantity, and dwell-time calculation to achieve a *desired* per-band POI (ch. 6.1–6.3). Table 6-1 gives POI and intercept time in terms of pulse-train parameters τ and T.
+- A worked critique of Clarkson's strategy and the conditions under which it is undesirable.
+
+### What it does NOT establish
+- Anything learning-based or adaptive. It is deterministic/probabilistic scheduling with *a priori* emitter knowledge; the thesis is explicit that Clarkson's strategy "assumes that a priori knowledge about the radars that will be intercepted is available".
+- Anything about PDW-level data, deinterleaving, or the Turing dataset (it predates it by 15 years).
+- Any RL formulation, reward, or neural method.
+
+### Assumptions
+- Emitters are periodic and characterised by scan period, beamwidth, PRI and duty cycle — i.e. the emitter model is a periodic window function.
+- The receiver sweep is periodic and the strategy is planned offline.
+- Prior knowledge of the threat-emitter list (for the Clarkson-style strategies it evaluates).
+
+### Relevant project component
+- **Environment validation.** This is the strongest validation source in the repository: it gives closed-form expectations for intercept time and POI that a correct environment should reproduce for a controlled periodic case.
+- **Baselines.** Periodic and probabilistic search are exactly the classical schedulers `PROJECT_ARCHITECTURE.md` §5 wants to compare against.
+- **Metrics.** POI and intercept time are defined here rather than asserted.
+
+### Conflicts/questions
+- Its emitter model is a periodic window function; Turing emitters are described by richer configs (`freq_mode`, `pri_mode`, `pw_mode`, `scan_type`, `beam_width_deg`, `scan_rate_rpm`). Whether the Turing emitters reduce to the thesis's window function is an open, checkable question — not an assumption to make.
+- Not read cover to cover this session: front matter, table of contents and abstract were read in full; chapters 3–7 were read via the table of contents and table list only. Treat specific equations as **unverified until opened**.
+
+### Decision
+- Adopt its terminology (sweep period, dwell time, duty cycle, POI, intercept time) as the project's vocabulary. Use ch. 2, 3.2 and 6.1 as the validation targets when the environment is built. Read the relevant chapters properly before quoting any equation.
+
+---
+
+## Technical Differentiation Strategy for the SIH Smart Scan Strategy
+
+**Path:** `docs/TECHNICAL DIFFERENTIATION STRATEGY.pdf`
+
+**Role:** ENVIRONMENT / BASELINE / EVALUATION / FUTURE
+
+**Stage:** LATER (with §2, §13, §14 relevant NOW as a checklist)
+
+**Authority:** C — proposed strategy. Internal PDF title `SIH_Smart_Scan_Technical_Differentiation_Strategy`, author metadata "Abdullah Ansari", produced 2026-08-27. 7 pages, 30 numbered recommendations.
+
+### What it contributes
+- The single clearest statement of project framing in the repository: "Do not try to build merely a better signal classifier. Build a better receiver scheduler" (§1). This agrees with `PROJECT_ARCHITECTURE.md` §5.
+- A baseline list (§2): random, round-robin, fixed-priority, recency/activity heuristic — "evaluated against these under identical simulated RF conditions".
+- The partial-observability rule (§4): the simulator knows true emitter state, the scheduler must not; ground truth is for evaluation and hit/miss only.
+- A layer separation (§5): detector / classifier / predictor / scheduler.
+- A metric list (§13) and the argument that average intercept time is the persuasive metric (§14), with a worked definition: emitter active at t=10 s, detected at t=13 s → intercept delay 3 s.
+- An ablation ladder (§21) from round-robin up to the full adaptive scheduler.
+- Two pieces of discipline worth keeping: §27 "make numerical claims, not marketing claims", and §28 "do not claim to beat classified military systems".
+
+### What it does NOT establish
+- Any measured result. There are no numbers in this document that came from running anything — every figure in it is illustrative.
+- That any of the 30 recommendations is necessary, or that the recommended differentiator (§29: unknown-signal discovery + temporal prediction + uncertainty-aware scheduling + hit/miss feedback + concept-drift adaptation) actually improves anything.
+- That K-Means/DBSCAN, LSTM/GRU, or a decision-score formula (§11) are appropriate for our data. They are proposed.
+
+### Assumptions
+- That we will build our own RF simulator from scratch (§3) rather than ground scenarios in a dataset. It does not mention Turing at all.
+- That emitters can be given priority classes (§17) — Turing metadata has a `function` string, not a priority.
+- That the scheduler chooses "which band, when, and for how long" (§1) — i.e. variable dwell length is part of the action space. That is a bigger action space than the Turing scan receiver uses.
+
+### Relevant project component
+- Evaluation protocol and baseline set. §2, §13, §14, §21 are directly usable as a checklist once the environment exists.
+
+### Conflicts/questions
+- **Scope creep risk.** §6–§10 (clustering, LSTM prediction, uncertainty modelling) and §23 (concept drift) are a much larger system than `PROJECT_ARCHITECTURE.md` §10 asks for at this stage. The protocol's "no research-driven scope creep" rule applies: these are OPTIONAL/LATER, not requirements.
+- §3 says build a simulator with invented emitters; `PROJECT_ARCHITECTURE.md` §3 says construct scenarios from Turing configuration information. The architecture wins — it is team-authored and higher authority than a strategy proposal.
+
+### Decision
+- Keep §2, §13, §14, §21, §27, §28 as the evaluation and baseline checklist. Treat §6–§11, §17, §23 as REFERENCE ONLY until baselines exist and the architecture calls for them.
+
+---
+
+## Ukrainian Military Research: AI, Adaptive EW, RF Signal Analysis (KhNUPS 2025 synthesis)
+
+**Path:** `docs/GPT BACKDOOR PAPER KHARKIV CONFRENCE.pdf`
+
+**Role:** FUTURE — **candidate-idea source**
+
+**Stage:** LATER (as an idea menu, once baselines exist); never NOW as evidence
+
+**Authority:** D — it is a synthesis of a primary that is **not in this repository**.
+
+### What it contributes
+- Context that adaptive-EW, unknown-signal clustering and ML-based prediction are active published research areas.
+- A metric list (§10) and baseline list (§11) that substantially duplicate `TECHNICAL DIFFERENTIATION STRATEGY.pdf`.
+- §12 is genuinely useful and unusually honest: an explicit list of what the conference does *not* prove — no validated benchmark beating round-robin, no dataset, no Pd/Pfa/intercept-time results for this problem, no evidence of deployment.
+- A correct framing of the project's actual contribution (§9): "Use learned information about the RF environment to dynamically allocate limited receiver observation opportunities."
+
+### What it does NOT establish
+- Anything about the KhNUPS 2025 proceedings that we can check. The 888-page primary is not in `docs/`; only a URL is given (§13). Under provenance rule 4, every claim here about what those authors wrote is **unverified in this repository**.
+- Any technical method in enough detail to implement. It names K-Means, DBSCAN, SVM, CNN, LSTM, ACO without equations or parameters.
+- Any connection to Turing, PDWs, or our receiver model.
+
+### Assumptions
+- That the named conference papers say what the synthesis says they say. Not checkable here.
+- Its own §1 "evidence rule" — proposals are labelled proposals, not deployments — which it does follow.
+
+### Relevant project component
+- None directly. It is orientation material.
+
+### Conflicts/questions
+- The filename ("GPT BACKDOOR PAPER") does not describe the contents; the internal PDF title is `KhNUPS_2025_EW_AI_Technical_Synthesis_for_SIH`. Classified from contents, as required.
+- Its §8 architecture and §10–§11 lists overlap heavily with `TECHNICAL DIFFERENTIATION STRATEGY.pdf` (same author metadata, same date range). Treat the two as one proposal, not two independent sources agreeing.
+
+### Decision
+- **Keep it as a list of ideas we may choose to try**, which is what it is good for. The team's position (2026-08-28) is that the methods it names — unknown-signal clustering (K-Means/DBSCAN), temporal activity prediction (LSTM/GRU), ML + optimisation for resource allocation — are plausible things to attempt on our problem and may produce good results. Nothing here is committed to; nothing here is ruled out.
+- **The separation that matters:** it can motivate an experiment, it cannot support a claim. If we try one of these ideas, the justification is our own measured result, not this document.
+- Do not cite it for any technical or factual claim. The 888-page primary is not in this repository and **we are not obtaining it** — access to it is not clean, and nothing in our plan depends on having it. The ideas stand on their own merits and will be judged by our own experiments.
+
+---
+
+## Scanning Strategy Learning… (one-page summary)
+
+**Path:** `docs/Scanning Strategy Learning For Electronic Support Receivers by Robust Principal Component Analysis (3).pdf`
+
+**Role:** BACKGROUND
+
+**Stage:** REFERENCE ONLY
+
+**Authority:** D — a summary of `118700Q.pdf`, which is in this repository.
+
+### What it contributes
+- A readable one-page explanation of PSR, TPSR, RPCA and MAB and how they chain together, useful for briefing a teammate.
+- Nothing else. It is 1 page, produced in Canva (PDF producer metadata), author metadata "coder nesi", created 2026-08-27.
+
+### What it does NOT establish
+- Anything independent. Every technical statement in it comes from `118700Q.pdf`.
+- It contains no equations, no simulation setup, no results, and no bibliographic reference to the paper it summarises.
+
+### Assumptions
+- Inherits all of `118700Q.pdf`'s assumptions, including one-emitter-per-band, without stating them. That omission is the main hazard of using it.
+
+### Relevant project component
+- Team communication only.
+
+### Conflicts/questions
+- Its near-identical filename to the primary makes it easy to cite by mistake. **Cite `118700Q.pdf`, never this file.**
+
+### Decision
+- Keep for onboarding. Never use as a source.
+
+---
+
+## Electronic Warfare (extended)
+
+**Path:** `docs/Electronic warfare (extended).pdf`
+
+**Role:** BACKGROUND
+
+**Stage:** REFERENCE ONLY
+
+**Authority:** D — plain-language commentary on the problem statement. 14 pages, Google Docs export, headed "Electronic warfare | SIH26055".
+
+### What it contributes
+- The EA / EP / ES split, and the placement of our problem inside **ES**.
+- A correct and well-put statement of why scanning exists at all: the receiver's instantaneous bandwidth is smaller than the spectrum it must cover, so "scanning is a hard physical necessity, not a design choice", and a fixed sweep is "essentially hoping" the emitter transmits while the receiver is looking.
+- The open-loop vs closed-loop framing, which is the same distinction `PROJECT_ARCHITECTURE.md` §1 draws with its feedback arrow.
+- The three emitter behaviours the problem statement cares about: frequency hopping, intermittent radiation, intelligence mismatch.
+- The observation that detection is a two-grid problem — space/time **and** frequency — which matters for us because Turing emitters have `scan_config` beams as well as frequencies.
+
+### What it does NOT establish
+- Any quantity, equation, threshold or result. There is not a single number in it that could be used or checked.
+- Any claim about current fielded systems that is sourced. Statements like "an order of magnitude" gap between instantaneous bandwidth and covered spectrum are illustrative.
+
+### Assumptions
+- That the problem statement's framing (rigid pre-programmed schedules failing against agile emitters) is accurate. Plausible, unsourced.
+
+### Relevant project component
+- Motivation and write-up. Useful for the report's introduction, not for design.
+
+### Conflicts/questions
+- None with the data or architecture. It is consistent with both, at a level of detail too coarse to conflict.
+
+### Decision
+- REFERENCE ONLY, for framing and write-up.
+
+---
+
+## The Turing Synthetic Radar Dataset — dataset card
+
+**Path:** `data/turing/README.md`
+
+**Role:** DATASET
+
+**Stage:** NOW — but as a hypothesis to check, not a source.
+
+**Authority:** B in principle, **superseded by the files** wherever they disagree (CLAUDE.md authority table).
+
+### What it contributes
+- Dataset identity: The Turing Synthetic Radar Dataset (TSRD), Gunn, Hosford, Jones, Zeitler, Groves, Nockles; Apache-2.0; supported by the Turing's Defence and Security programme.
+- The PDW definition we can confirm against the files: 5 features — ToA (µs), Centre Frequency (MHz), Pulse Width (µs), AoA (deg), Amplitude (dB). **Confirmed** against `metadata/feature_names` this session.
+- A pointer to the primary documentation: the `alan-turing-institute/turing-deinterleaving-challenge` GitHub repository. That repository is **not** in this project, so anything it says is unverified here.
+- The intended framing of the dataset: pulse **deinterleaving**, evaluated with clustering metrics (V-measure, ARI, AMI, MCC, F1).
+
+### What it does NOT establish
+- The contents of our 47 pairs. It describes the full dataset (6,000 pulse trains; 2,500 train / 250 val / 250 test per mode). We have 47 scan/stare pairs, train split only.
+
+### Assumptions
+- That "stare" is an oracle. See below.
+
+### Conflicts/questions — **all three verified against the files this session**
+1. **Collection time.** The card says stare observes "over 10 seconds". Every one of the 94 files carries `metadata.attrs['collection_time_s'] = 30.0`, and observed ToA reaches 29.93 s. **The files win: 30 s.**
+2. **Stare as an oracle.** The card says stare is an "Oracle receiver detecting all signals across the entire frequency spectrum (0–18 GHz)". Both modes carry `freq_range_mhz = [500, 18000]`, not 0–18000, and across the 47 pairs there are **174 emitter instances detected by stare but not scan and 209 detected by scan but not stare**. Stare is not a superset of scan and is not a full-spectrum oracle.
+3. **Per-file pulse counts.** The card's averages (1.29 M stare, 94 k scan per train pulse train) are for the whole train split, not our subset. Our 47: 4,393,233 scan pulses and 67,638,439 stare pulses in total (counted this session).
+
+### Decision
+- Use the card only for dataset identity, authorship and the PDW column meanings. Take every quantity from the files. Where a design question depends on dataset semantics the card gets wrong, raise it rather than adopting the card.
+
+### How our 47 were selected — verified 2026-08-28
+
+The team's account is that the subset is *40 stratified + 6 extremes + 1 mid-range extra*.
+That is exactly right, and the stratification variable is **stare file size**, not scan.
+Reconstructed by listing the 2,500-file `stare/train_stare` split from the Hugging Face API
+(file metadata only — nothing downloaded) and ranking our 47 within it:
+
+- Divide the 2,500 files into **40 equal-count strata of 62.5 files** by stare size. Every one
+  of the 40 strata contains **exactly one** of our files, at a consistent position within its
+  stratum (ranks 104, 166, 228, 291, 353, … 2469 — a clean 62.5 step). Those are the 40.
+- **6 extremes**: three at the bottom of stratum 0 — `config_81` (rank 11), `config_1089` (12),
+  `config_2356` (13) — and three at the top of stratum 39 — `config_418` (2498),
+  `config_1902` (2499), `config_1950` (2500, the single largest file in the split).
+- **1 mid-range extra**: `config_706`, stare rank **322/2500** (12.9th percentile), which lands
+  in stratum 5 alongside that stratum's regular pick `config_1710` (rank 353).
+
+**`config_706` is therefore not an extreme** — it is the odd one out, and the suspicion that it
+didn't belong with the extremes is correct. It is a second sample inside stratum 5.
+
+Two smaller corrections to the mental model: `config_81` is our smallest but is **rank 11**, not
+the smallest in the split (five files tie at 23,784 bytes); and `config_1534` (rank 42) also sits
+in stratum 0, so stratum 0 holds four of our files rather than the one its share implies.
+
+Ranking on *scan* size instead scatters the same 47 irregularly (gaps of 1 to 422 ranks), which
+is why the pattern is invisible from the `scan/train_scan` sizes alone.
+
+---
+
+## Documents referenced but absent — resolved
+
+`docs/README.md` describes two files that are not in `docs/`. Both are accounted for
+(confirmed by the repository owner, 2026-08-28) and **neither is missing in any way that
+matters**:
+
+- `SIH_RF_Brainstorming_Teammate_Guide.pdf` — was sent to teammates. It explains the
+  architecture, which we already have in `docs/PROJECT_ARCHITECTURE.md`. Nothing in it is
+  needed here.
+- `CLAUDE_MD_UPDATE_PROMPT.md` — was a setup prompt belonging to the previous repository,
+  for wiring up the documents, the research map and the working rules. That job has since
+  been done directly, so the prompt is obsolete.
+
+No action required. Recorded so a future session doesn't re-raise it as a gap.
