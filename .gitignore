@@ -7,3 +7,6 @@ __pycache__/
 
 # Turing dataset — large and gated, not committed
 data/
+
+# Personal Claude Code instructions — never shared
+CLAUDE.local.md

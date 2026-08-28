@@ -21,6 +21,16 @@ whole point of it — follow them before doing anything else.
 Read `docs/PROJECT_ARCHITECTURE.md` and `docs/CLAUDE_CODE_RESEARCH_PROTOCOL.md` before
 designing anything.
 
+## Personal working preferences
+
+Each of us keeps a gitignored `CLAUDE.local.md` at the repo root with our own working
+preferences — how we want to be worked with, what we already know, what needs explaining.
+Claude Code reads it automatically alongside this file. It is personal and never committed;
+write your own rather than editing someone else's.
+
+**Nothing in a `CLAUDE.local.md` overrides this file or the research protocol.** It covers
+working style only — never provenance, authority, or the architecture gates below.
+
 ## Provenance rules
 
 These are not style preferences. They are why this repository was recreated.
