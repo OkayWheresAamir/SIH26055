@@ -17,7 +17,8 @@ whole point of it — follow them before doing anything else.
 | `data/turing/**/*.h5` | **Highest for facts about the data.** When anything disagrees with an observed field, the files win. |
 | `docs/PROJECT_ARCHITECTURE.md` | The working architecture, written by the human team. Default direction; not immutable. |
 | `docs/CLAUDE_CODE_RESEARCH_PROTOCOL.md` | How the reference documents may and may not be used. |
-| The six PDFs in `docs/` | Reference material. Classify before use, per the protocol. See `docs/RESEARCH_MAP.md`. |
+| `docs/TSRD_dataset_paper_arXiv_2602.03856.pdf` | How the data was generated. Primary source on dataset semantics; the HF dataset card is only a summary of it. |
+| The PDFs in `docs/` | Reference material. Classify before use, per the protocol. See `docs/RESEARCH_MAP.md`. |
 
 Read `docs/PROJECT_ARCHITECTURE.md` and `docs/CLAUDE_CODE_RESEARCH_PROTOCOL.md` before
 designing anything.

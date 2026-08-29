@@ -52,8 +52,8 @@ that primary is not in this repository.
 - `docs/Scanning Strategy Learning ... (3).pdf` — one-page summary of `docs/118700Q.pdf`.
 
 ### Unresolved
-- **`sensitivity_dbm` semantics.** The receiver attr says `-110.0`, but 4.49% of scan pulses and 4.01% of stare pulses are recorded with `Amplitude` below it (verified across all 94 files). Histogramming `config_2` amplitudes in 5 dB bins shows **no cliff at −110, and none at −120 either** (`sensitivity_dbm − gain_db`) — the distribution peaks near −93 and rolls off smoothly to −171. So the field was not applied as a threshold on the recorded Amplitude column. Its actual role is undetermined from the data alone; the primary documentation is the `alan-turing-institute/turing-deinterleaving-challenge` GitHub repo, which is not in this repository.
-- **Scan and stare are not nested.** Neither mode's detected-emitter set is a superset of the other (209 scan-only vs 174 stare-only emitter instances across the 47 pairs). The dataset card calls stare an "Oracle receiver detecting all signals"; the files disagree. See "Conflicts" under the dataset card below.
+- **~~`sensitivity_dbm` semantics~~ — RESOLVED 2026-08-28.** The dataset paper (§II) states detection is probabilistic: ambient noise −100 dB, amplitude falling quadratically with distance, and *"the probability of pulse detection increases the more distinct the signal is from the noise floor."* There is no hard threshold, which is why we found no cliff at −110 or −120 and why 4% of pulses sit below the stated figure. `sensitivity_dbm` is a configuration value that does not gate the Amplitude column. Nothing further is needed from it.
+- **~~Scan and stare are not nested~~ — EXPLAINED 2026-08-28.** 209 scan-only vs 174 stare-only emitter instances across the 47 pairs. The dataset paper gives the mechanism: pulses are dropped when the Rx is not tuned to the band, when the Tx is too far, or when pulse width falls below 0.0069 µs, plus random drops — and these apply to *both* modes. Stare is an oracle in coverage, not in detection. Not a defect; a property to model.
 - **`scan_rate_rpm` is not revolutions per minute.** Folding each emitter's pulse times at `60/scan_rate_rpm` gives **two** peaks per cycle; folding at `30/scan_rate_rpm` gives exactly one. Verified on labels 3, 11, 12, 16 of `config_2` stare. The empirical rotation period is `30/scan_rate_rpm` seconds. Do not take the field name at face value.
 - **`beam_width_deg` is not the detectable window.** For the same emitters the main illumination peak is 40–50° wide against a nominal `beam_width_deg` of 1.8–2.5°, and pulses are recorded at 267–359° of the full revolution. Emitter beam pointing modulates how many pulses arrive; it does not gate them on and off.
 - **Emitters have on/off activity windows that are not in the metadata.** `config_2` label 3 transmits continuously from 4.14 s to 16.98 s and is silent outside it (no gap >100 ms within). Nothing under `metadata/transmitters/transmitters_3` encodes that window. This is the main obstacle to regenerating a scenario from configuration alone.
@@ -353,6 +353,44 @@ directly rather than taken on trust.
 
 ---
 
+## The Turing Synthetic Radar Dataset: A dataset for pulse deinterleaving (the paper)
+
+**Path:** `docs/TSRD_dataset_paper_arXiv_2602.03856.pdf`
+
+**Role:** DATASET — **the primary source for how our data was generated**
+
+**Stage:** NOW
+
+**Authority:** **B, and the highest available on dataset semantics.** Gunn, Hosford (Dstl), Jones, Zeitler, Groves, Nockles. arXiv:2602.03856v2, 7 Apr 2026, 6 pages. Retrieved and read in full 2026-08-28. This is the primary the dataset card summarises — the card is now demoted to a summary of this.
+
+### What it establishes (§II, quoted)
+- **Why pulses are missing — three explicit drop rules.** *"Pulses were dropped when the Rx was not tuned to the correct frequency band, when the Tx was too far for detection, or when the pulse width dropped below a threshold (0.0069µs). Consequently, not all emitters were visible to the Rx."* Verified against our files: minimum pulse width across 72,031,672 train pulses is **exactly 0.006900 µs with zero pulses below it**. That threshold is the `pw_res_us` receiver attribute.
+- **Detection is probabilistic, not a hard threshold.** *"The simulation has an ambient noise of -100 dB. The received amplitude decreases quadratically with emitter distance, and the probability of pulse detection increases the more distinct the signal is from the noise floor."* This resolves the `sensitivity_dbm` puzzle — there was never meant to be a cliff. Detection probability is a smooth function of SNR against a −100 dB noise floor.
+- **The scan receiver, exactly as we measured it.** *"the scan receiver model which sweeps the frequency spectrum at centre frequencies between 0.5 - 18 GHz in 500 MHz steps and 500 MHz bandwidth at deterministic but varying dwell times. Pulses sent on frequencies outside the tuned 500 MHz bandwidth were dropped."*
+- **Stare drops pulses too.** *"Stare mode can be understood as an oracle receiver that can observe the entire EME (except randomly dropped pulses)"* (repo README). The paper's drop rules apply to both modes — which is why stare is not a superset of scan.
+- **The data is emitted ground truth, not receiver output.** *"Data in the TSRD can be understood as the emitted ground truth in the environment rather than imitating receiver behaviour"*; *"To make the dataset mostly independent of Rx hardware characteristics, we focused on simulating realistic Tx properties and simplified signal detection."*
+- **Noise model, in detail.** Additive Gaussian white noise on ToA and pulse width at both emission and reception; frequency jittered with an Ornstein-Uhlenbeck process at emission and *not* adjusted at the receiver; amplitude and AoA blurred with OU to model atmospheric interference. Line-of-sight path loss, no multipath.
+- **68 transmitter types**, instances randomly sampled, initial positions uniform in a 250×250 km plane, straight-line constant-velocity motion.
+- **A published baseline to beat/cite:** HDBSCAN on raw PDWs gives V-measure 0.54 stare / 0.19 scan (Table IV).
+
+### What it does NOT establish
+- Nothing about scheduling, interception, or reward. It is a deinterleaving dataset paper.
+- No generator source code is released, and the paper gives no equation for the detection probability — only its qualitative form.
+- It does not document `scan_rate_rpm` units or emitter activity windows, so our measurements on those stand as the only evidence.
+
+### Conflicts resolved by this paper
+- **`sensitivity_dbm` is not a threshold.** Confirmed by construction: detection is probabilistic against a −100 dB ambient noise floor. Our measurement (no cliff at −110 or −120, 4% of pulses below) is exactly what that model predicts. **This question is now closed.**
+- **Stare is not an oracle in practice.** The paper calls it an oracle but also states pulses are randomly dropped and that emitters too far away are not detected. Both statements are in the same document; the drop rules explain our 209/174 asymmetry.
+- **Collection time is 30 s**, stated in §II, matching the files and contradicting the HF card's "10 seconds".
+
+### Where the paper is contradicted by the files
+- **Stated bandwidth.** The paper says the scan receiver sweeps *"in 500 MHz steps and 500 MHz bandwidth"*. The files disagree: pulses assigned to a dwell are spread evenly over ±500 MHz of its centre — 52.63% within ±250, 99.98% within ±500, with a hard edge at exactly 500 and roughly uniform density across all four 250 MHz quartiles (measured on `config_921`, n=189,308). A 500 MHz-total window would place ~100% within ±250. **The effective window is 1000 MHz wide on 500 MHz centres, so adjacent bands overlap by half.** The likeliest explanation is that `bandwith_mhz = 500` is applied as a half-width in the generator. Per the CLAUDE.md authority table, the files win; treat the paper's phrasing as loose.
+
+### Decision
+- **Promote to the primary source on dataset semantics.** The HF dataset card is a summary of this and should not be cited where the paper covers the same ground. Cite this paper for anything about how the data was generated.
+
+---
+
 ## The Turing Synthetic Radar Dataset — dataset card
 
 **Path:** `data/turing/README.md`
@@ -361,7 +399,7 @@ directly rather than taken on trust.
 
 **Stage:** NOW — but as a hypothesis to check, not a source.
 
-**Authority:** B in principle, **superseded by the files** wherever they disagree (CLAUDE.md authority table).
+**Authority:** **D — it is a summary of `docs/TSRD_dataset_paper_arXiv_2602.03856.pdf`, which is now in this repository.** Cite the paper, not the card. Superseded by the files wherever either disagrees with an observed field.
 
 ### What it contributes
 - Dataset identity: The Turing Synthetic Radar Dataset (TSRD), Gunn, Hosford, Jones, Zeitler, Groves, Nockles; Apache-2.0; supported by the Turing's Defence and Security programme.
@@ -431,6 +469,47 @@ These ids are **test-split ids and are unrelated to train ids of the same number
 
 **Discipline:** this subset was chosen by a rule fixed before any result was seen, and it must
 stay untouched until the system is frozen. Every use of it should be recorded.
+
+---
+
+## Prior art on the scheduling problem — searched 2026-08-28
+
+Searched because the team asked whether this is an established problem with existing approaches
+rather than something we invent. **It is established, but thinly, and nobody has solved our exact
+version.** Summary of what a literature search surfaced; none of these papers is in this
+repository, so **every claim here is unverified beyond its title and abstract** and should be
+read before being relied on.
+
+**The closest existing work is already in `docs/`.** `118700Q.pdf` (Gul & Erer 2021) and its
+reference chain — Claude et al. 2015 (PSR-based scanning strategy learning, MLSP), Clarkson 2006
+and 2018 (sensor scheduling via Markov chains; intercepting beam-agile radar), Winsor & Hughes
+2012 (receiver search strategy optimisation), and Köksal's thesis in `optimumsearch.pdf` — form
+the actual lineage of this problem. That lineage is small: roughly a handful of groups over
+twenty years. **This is the single most useful fact from the search.** Our reference list is
+already better than it looked.
+
+**Adjacent and much larger:** cognitive *radar* resource management. Substantial recent work
+formulates radar scan/track time allocation as a POMDP and solves it with deep RL — constrained
+DRL, multi-objective RL, belief-reward shaping. That literature is about a radar allocating its
+own beam, not an ES receiver hunting unknown emitters, so the *problem* differs, but the
+*formalism* transfers directly: partially observable state, discrete allocation action,
+belief maintained over unobserved targets.
+
+**A US patent exists** (US 10,523,342, "Autonomous reinforcement learning method of receiver scan
+schedule control") covering RL for receiver scan scheduling. Relevant as evidence the idea is
+established and as prior art to cite honestly; not an obstacle to research work.
+
+**Not found:** any public implementation, benchmark or dataset for RL-based ES receiver
+scheduling. No GitHub repository doing what we are doing. That gap is the project's opportunity
+and also why we must build our own environment.
+
+### What this means for us
+- Reading `optimumsearch.pdf` and `118700Q.pdf` properly is worth more than a broad literature
+  sweep. They *are* the field.
+- The restless multi-armed bandit / POMDP framing is the right formal home, and the cognitive
+  radar RRM literature is where to borrow method from.
+- Nobody has published our benchmark. A validated environment plus honest baselines is a real
+  contribution, independent of whether the RL agent wins.
 
 ---
 
