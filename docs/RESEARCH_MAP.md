@@ -26,6 +26,8 @@ that primary is not in this repository.
 - *(No PDF in `docs/` documents the Turing dataset. This is a real gap.)*
 
 ### Environment construction
+- `docs/paperSSPD (1).pdf` — the SNR-time-series illumination model, which is what our data actually matches (see D4). **NOW.**
+- `docs/me 2.0.pdf` §17–18 — the radar-state / physical-illumination / receiver-observation separation, and a module decomposition. **NOW**, for structure.
 - `docs/optimumsearch.pdf` — sweep period / dwell time / duty cycle definitions and the coincidence model. **NOW.**
 - `docs/118700Q.pdf` §4 — a concrete, minimal band-scheduling environment and its hit/miss observation rule. **NOW.**
 - `docs/TECHNICAL DIFFERENTIATION STRATEGY.pdf` §3, §4, §12 — a checklist of environment features. **LATER**, proposal only.
@@ -34,6 +36,7 @@ that primary is not in this repository.
 - `docs/optimumsearch.pdf` ch. 2, 3, 6 — intercept-time and probability-of-intercept theory. This is the only document in the repository with derivable equations we could check an environment against. **NOW.**
 
 ### Baselines
+- `docs/paperSSPD (1).pdf` — **Apfeld et al. 2016. The strong non-learning baseline.** Adaptive band selection with autocorrelation-based scan-period estimation. Reimplementable from §II. **NOW.**
 - `docs/optimumsearch.pdf` — periodic/probabilistic search strategies; Clarkson's strategy as the reference point. **NOW.**
 - `docs/118700Q.pdf` §4 — "simple periodic search strategy" used as the bootstrap policy. **NOW.**
 - `docs/TECHNICAL DIFFERENTIATION STRATEGY.pdf` §2 — random / round-robin / fixed-priority / recency list. **LATER.**
@@ -52,6 +55,22 @@ that primary is not in this repository.
 - `docs/Scanning Strategy Learning ... (3).pdf` — one-page summary of `docs/118700Q.pdf`.
 
 ### Unresolved
+
+> Most of what was here on 2026-08-28 has since closed. Decisions and their evidence now live in
+> `docs/DECISIONS.md`; this list holds only what genuinely remains.
+
+**Needs a human decision (not more research):**
+- **D4 in `docs/DECISIONS.md`** — accept the continuous-signal environment with a derived binary occupancy, and set the default detection threshold. Everything in D5/D6 depends on it.
+- **D5's sub-question** — do all hits score equally, or is first-interception of a new emitter worth more?
+
+**Needs domain review:**
+- *"Approaches to intercept a periodic scan receiver optimally should be outlined"* (PS). Most likely the scan-on-scan problem. A written deliverable, owed to the evaluators; Köksal ch. 3 is the source. Needs someone with the domain reading to write it.
+
+**Worth obtaining, not blocking:**
+- Teissier et al. (2026), *Interception Model of Random Scanning Strategies Against Frequency-Agile Radar in Electronic Support* — derives POI, intercept time and pulse interception ratio against exactly the emitter pair the PS names. Named in `Electronic Support Scan Scheduling (1).pdf`; not in this repository.
+- Clarkson (2005), *Optimal Periodic Sensor Scheduling in Electronic Support* — the dwell-time-allocation primary. Not in this repository.
+
+### Closed since 2026-08-28
 - **~~`sensitivity_dbm` semantics~~ — RESOLVED 2026-08-28.** The dataset paper (§II) states detection is probabilistic: ambient noise −100 dB, amplitude falling quadratically with distance, and *"the probability of pulse detection increases the more distinct the signal is from the noise floor."* There is no hard threshold, which is why we found no cliff at −110 or −120 and why 4% of pulses sit below the stated figure. `sensitivity_dbm` is a configuration value that does not gate the Amplitude column. Nothing further is needed from it.
 - **~~Scan and stare are not nested~~ — EXPLAINED 2026-08-28.** 209 scan-only vs 174 stare-only emitter instances across the 47 pairs. The dataset paper gives the mechanism: pulses are dropped when the Rx is not tuned to the band, when the Tx is too far, or when pulse width falls below 0.0069 µs, plus random drops — and these apply to *both* modes. Stare is an oracle in coverage, not in detection. Not a defect; a property to model.
 - **`scan_rate_rpm` is not revolutions per minute.** Folding each emitter's pulse times at `60/scan_rate_rpm` gives **two** peaks per cycle; folding at `30/scan_rate_rpm` gives exactly one. Verified on labels 3, 11, 12, 16 of `config_2` stare. The empirical rotation period is `30/scan_rate_rpm` seconds. Do not take the field name at face value.
@@ -67,6 +86,8 @@ that primary is not in this repository.
 | `Scanning Strategy Learning For Electronic Support Receivers by Robust Principal Component Analysis (3).pdf` | `118700Q.pdf` — the same paper, same title | **Yes.** Always cite `118700Q.pdf`. |
 | `GPT BACKDOOR PAPER KHARKIV CONFRENCE.pdf` | KhNUPS 2025 conference proceedings (888 pp) | **No.** Every claim it makes about that conference is unverified here. |
 | `data/turing/README.md` | The TSRD dataset + the Turing challenge GitHub repo | **The data is present.** The card is not. Prefer the files. |
+| `me 2.0.pdf` | `paperSSPD (1).pdf` — the Apfeld paper | **Yes.** Cite the paper. Its §17 and §18 are the author's own and may be cited as such. |
+| `Electronic Support Scan Scheduling (1).pdf` | Five papers; two are here (`118700Q.pdf`, `paperSSPD (1).pdf`), three are not | **Partly.** Clarkson 2005 and Teissier 2026 are unverified. |
 
 `118700Q.pdf` also cites `optimumsearch.pdf` as its reference [1] (Köksal 2010). Both primaries are
 in this repository, so the RPCA paper's account of periodic search can be checked against the thesis
@@ -472,6 +493,124 @@ stay untouched until the system is frozen. Every use of it should be recorded.
 
 ---
 
+## An Adaptive Receiver Search Strategy for Electronic Support
+
+**Path:** `docs/paperSSPD (1).pdf`
+
+**Role:** BASELINE / ENVIRONMENT / VALIDATION
+
+**Stage:** **NOW** — the strongest non-learning baseline available to us
+
+**Authority:** **B, and the most directly relevant paper in this repository.** Sabine Apfeld, Alexander Charlish, Wolfgang Koch — Fraunhofer FKIE, Dept. Sensor Data and Information Fusion. 5 pages, 2016. Added by a teammate 2026-08-29; read in full the same day.
+
+### What it contributes
+- **A direct critique of the model everything else in this folder uses.** *"The majority of today's literature regarding this topic models the intercept problem as that of the coincidence of two or more periodic window functions. Since this model is rather simplistic, in this paper the radars' illumination patterns are described by signal-to-noise ratio time series."* This puts Köksal and Clarkson in context: their window-function model is the classical approach, and this paper is the correction to it.
+- **Why the correction matters:** *"window functions usually only consider the main beam of the radar. In the presented approach, the radars can be intercepted and detected through the sidelobes as well."* **Our Turing measurements independently confirm this is the right model** — see D4 in `docs/DECISIONS.md`.
+- **A complete, reimplementable adaptive algorithm** (§II): random start; SNR over threshold `T_D` promotes a band to a "tentative" list; tentative bands visited more often via Algorithm 1 (scaling `y`, cap `z`); autocorrelation of the intercepted SNR series estimates the emitter scan period (Eq. 3); once the estimate is stable (std over last `j` below `T_std`) dwells are scheduled at predicted SNR maxima plus integer multiples of the period; misdetections widen the search, and after `s` misses the band returns to exploration.
+- **An SNR equation** (Eq. 1) with every term defined — peak power, pulse width, PRI, wavelength, transmit/receive gain, range, Boltzmann, noise temperature, bandwidth, losses.
+- **A baseline ladder we can reuse directly:** Adaptive / Adaptive-without-tracking / "Active RFs" / Random.
+- **Their metrics:** efficiency (percentage of dwells on bands with an active emitter that produced a detection), total detections, percentage of radars detected at least once.
+- **Their setup:** 250 MHz instantaneous bandwidth, 50 ms dwell, 2–18 GHz, 10 radars, 5 minutes simulated, 30 runs per configuration.
+- **A result that directly shapes our metric design:** Random scored **best** on percentage of radars detected at least once, and **worst** on efficiency — *"the random strategy only explores the environment without exploiting the information it obtains."* Coverage and efficiency trade against each other; reporting one alone is misleading.
+- **An honest negative result:** scheduling for tracking dwells *"doesn't seem to make a major difference in performance"*, and they recommend the simpler variant on computational-cost grounds.
+
+### What it does NOT establish
+- Nothing about RL. It is a hand-designed adaptive heuristic; there is no learned policy, no reward, no training.
+- No absolute performance claim — *"the results shown in the next section are to be seen as a comparison and not an absolute performance measure."*
+- Its scenario assumes **one radar per frequency at a time**, explicitly to avoid implementing deinterleaving. Turing violates this heavily.
+- No public code or data.
+
+### Assumptions
+- The receiver can distinguish search dwells from tracking dwells (justified by differing waveforms).
+- Emitters are phased-array multifunction radars whose periodicity is broken by interleaved tracking — a *different* emitter model from Turing's mechanically-rotating `Circular` scan (95.6% of our transmitters).
+- Fixed dwell time and fixed instantaneous bandwidth.
+
+### Relevant project component
+- **Baselines (Lane D)** — reimplement as the strong non-learning comparator.
+- **Environment (Lane B)** — its SNR formulation is the model our data actually matches.
+- **Metrics (Lane D)** — its efficiency/coverage split is a trap we would otherwise have walked into.
+
+### Conflicts/questions
+- **Against Köksal and Clarkson:** window function versus SNR time series. **Resolved in our favour by measurement** — Turing emitters show 53–62 dB of amplitude variation across a revolution with pulses in all 36 phase bins. The SNR model wins for our data. This does not make Köksal useless; his intercept-time theory remains the validation target.
+- **Against the PS:** the PS mandates binary transmission/non-transmission per band-slot. Reconciled by D4 — continuous underneath, thresholded for the interface.
+
+### Decision
+- Adopt its SNR-based illumination model (D4). Reimplement its scheduler as our strong baseline (D13). Do not adopt its one-emitter-per-band assumption.
+
+---
+
+## Electronic Support Scan Scheduling (comparison note)
+
+**Path:** `docs/Electronic Support Scan Scheduling (1).pdf`
+
+**Role:** BACKGROUND — a map of the field
+
+**Stage:** NOW, for orientation
+
+**Authority:** **D** — a teammate's comparison note (Canva, "coder nesi", 2026-08-28). Two of the five papers it describes are in this repository; three are not.
+
+### What it contributes
+- **The most useful framing we have: what each paper actually treats as the decision variable.** Clarkson optimises *dwell time per band plus sweep period*, with frequency order explicitly not the interesting variable. Glaude et al. and Gul & Erer optimise *which band next*. Apfeld optimises *which band and when to revisit it*. Teissier et al. optimise *dwell time* under a random scan.
+- A clear statement of the gap it argues we should occupy: a unified closed-loop scheduler allocating limited sensing across multiple uncertain emitters while optimising both interception probability and intercept time.
+
+### What it does NOT establish
+- Anything checkable about Clarkson (2005) or Teissier et al. (2026) — **neither is in this repository**, so those descriptions are unverified.
+- No equations, no results, no evaluation.
+
+### Conflicts/questions
+- It states Gul & Erer's novelty is only the model-learning method, not a new scheduler action. That matches our own reading of `118700Q.pdf`. Two independent readings agreeing is worth something, but both are readings of the same primary.
+
+### Decision
+- Use as a map, not a source. Its identification of the decision variable per paper is genuinely useful for positioning our contribution. **Teissier et al. (2026) is worth obtaining** — it derives probability of intercept, intercept time and pulse interception ratio against *frequency-agile and spatially scanning* radar, which is exactly the emitter pair the PS demands.
+
+---
+
+## Smart Spectrum Surveillance for Electronic Support (ES) — BASICS
+
+**Path:** `docs/Smart Spectrum Surveillance for Electronic Support (ES) [BASICS].pdf`
+
+**Role:** BACKGROUND / EVALUATION
+
+**Stage:** REFERENCE ONLY, except §6 which is NOW
+
+**Authority:** **D** — teammate brief (Abdullah Ansari, 2026-08-28). Vendor claims in §4 are explicitly flagged by its own author as *"design intent, not independently verified combat performance."*
+
+### What it contributes
+- A clean first-principles account of why scanning exists: instantaneous bandwidth, sensitivity, dwell/revisit time and dynamic range as four linked constraints, with `N = kTB` showing why wider coverage raises the noise floor.
+- A survey of fielded systems (R&S, HENSOLDT, Saab, BAE, US Army) — useful for a PPT slide on the operational landscape, not for design.
+- **§6 contains one genuinely important warning we have adopted:** *"a model predicting 'no transmission' can score high accuracy while being operationally poor."* Recorded in the evaluation plan of `docs/DECISIONS.md`.
+- Two other framings worth keeping: the "wideband paradox" (wider collection shifts the bottleneck to deciding what deserves analysis), and "periodicity is not universal".
+
+### What it does NOT establish
+- No equations beyond `N = kTB`, no measurements, no citations to primaries.
+
+### Decision
+- Keep §2 and §6 for the write-up and the metric design. Treat §4's system survey as unverified vendor positioning.
+
+---
+
+## An Adaptive Receiver Search Strategy — teammate explainer
+
+**Path:** `docs/me 2.0.pdf`
+
+**Role:** BACKGROUND
+
+**Stage:** REFERENCE ONLY — but genuinely useful for onboarding
+
+**Authority:** **D** — a summary of `docs/paperSSPD (1).pdf`, which is in this repository. Farheen Khan, 10 pages, 2026-08-29. Image-based PDF with no extractable text layer; read by rendering the pages.
+
+### What it contributes
+- A patient walk-through of the Apfeld paper for someone new to the domain — dwells, why frequency alone is insufficient, the autocorrelation step.
+- **Two things that go beyond the paper and are worth keeping.** §17 draws a three-way distinction we should build into the code: **radar state** (what the emitter is physically doing) vs **physical illumination** (the SNR that *would* be received if tuned there) vs **receiver observation** (the SNR actually obtained given the schedule) — with the critical case that a radar can be strongly illuminating while the receiver, tuned elsewhere, observes nothing. That is precisely the truth/observation separation our environment needs, and it is stated more clearly here than in the paper. §18 decomposes the paper into modules (emitter model, antenna/beam model, SNR generator, scheduler, detection, SNR history, period estimator, stability monitor, prediction) which is a reasonable starting shape for Lane B.
+
+### What it does NOT establish
+- Nothing independent — every technical claim traces to `paperSSPD (1).pdf`. The module breakdown and the truth/observation table are the author's own contribution and are interpretation, not source.
+
+### Decision
+- Use for onboarding teammates onto Apfeld. **Cite `paperSSPD (1).pdf`, not this.** Carry §17's three-way distinction into the environment design.
+
+---
+
 ## Prior art on the scheduling problem — searched 2026-08-28
 
 Searched because the team asked whether this is an established problem with existing approaches
@@ -481,7 +620,7 @@ repository, so **every claim here is unverified beyond its title and abstract** 
 read before being relied on.
 
 **The closest existing work is already in `docs/`.** `118700Q.pdf` (Gul & Erer 2021) and its
-reference chain — Claude et al. 2015 (PSR-based scanning strategy learning, MLSP), Clarkson 2006
+reference chain — Glaude et al. 2015 (PSR-based scanning strategy learning, MLSP), Clarkson 2006
 and 2018 (sensor scheduling via Markov chains; intercepting beam-agile radar), Winsor & Hughes
 2012 (receiver search strategy optimisation), and Köksal's thesis in `optimumsearch.pdf` — form
 the actual lineage of this problem. That lineage is small: roughly a handful of groups over

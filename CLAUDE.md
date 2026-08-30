@@ -23,6 +23,11 @@ whole point of it — follow them before doing anything else.
 Read `docs/PROJECT_ARCHITECTURE.md` and `docs/CLAUDE_CODE_RESEARCH_PROTOCOL.md` before
 designing anything.
 
+**`docs/DECISIONS.md` records every decision taken, with its evidence and status.** Read it
+before proposing anything — a question marked `SETTLED` or `CLOSED` there does not get reopened
+without new evidence, and one marked `PROPOSED` is waiting on a human, not on more research.
+Add to it whenever a decision is made; that file is where project knowledge survives a session.
+
 ## Personal working preferences
 
 Each of us keeps a gitignored `CLAUDE.local.md` at the repo root with our own working
