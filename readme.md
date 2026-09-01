@@ -10,11 +10,11 @@ provenance rules that govern how anything gets added from here.
 
 ## Status
 
-Stage: **understand the Turing data** (`docs/PROJECT_ARCHITECTURE.md` §10). Nothing downstream —
+Stage: **understand the Turing data** (`docs/project/PROJECT_ARCHITECTURE.md` §10). Nothing downstream —
 scenario construction, the environment, the scheduler, RL — has been built yet.
 
 Two things are open and blocking real modelling decisions; see "Unresolved" in
-`docs/RESEARCH_MAP.md`:
+`docs/project/RESEARCH_MAP.md`:
 - what `sensitivity_dbm` actually means, given that ~4% of recorded pulses fall below it
 - scan and stare are not nested in each other, despite the dataset card describing stare as an oracle
 
@@ -23,9 +23,9 @@ Two things are open and blocking real modelling decisions; see "Unresolved" in
 | Path | What it is |
 |---|---|
 | `data/turing/` | The Turing dataset (94 HDF5 files, gitignored, already present locally). 47 scan/stare pairs, train split only. |
-| `docs/PROJECT_ARCHITECTURE.md` | The working architecture — read this first. |
-| `docs/CLAUDE_CODE_RESEARCH_PROTOCOL.md` | Rules for how the reference PDFs may and may not be used. |
-| `docs/RESEARCH_MAP.md` | The actual inventory of every document in `docs/`, classified per the protocol, with what each one does and does not establish. |
+| `docs/project/PROJECT_ARCHITECTURE.md` | The working architecture — read this first. |
+| `docs/protocol/CLAUDE_CODE_RESEARCH_PROTOCOL.md` | Rules for how the reference PDFs may and may not be used. |
+| `docs/project/RESEARCH_MAP.md` | The actual inventory of every document in `docs/`, classified per the protocol, with what each one does and does not establish. |
 | `docs/` (six PDFs) | Reference material — research papers, a thesis, and strategy notes. Authority varies; see the research map before citing any of them. |
 | `CLAUDE.md` | Authoritative rules for this repository: source-of-truth table, provenance rules, working rules. |
 

@@ -1,0 +1,267 @@
+
+<h2 class="sr-only">RF environment waterfall visualization: frequency-time grid showing scan scheduling for electronic warfare, with emitter transmissions, receiver cursor, and hit/miss outcomes</h2>
+
+<style>
+#vis { padding: 0.5rem 0 }
+.mc { background: var(--surface-1); border-radius: 6px; padding: 7px 10px; margin-bottom: 6px }
+.ml { font-size: 10px; color: var(--text-secondary); margin: 0 0 1px }
+.mv { font-size: 17px; font-weight: 500; color: var(--text-primary); font-family: var(--font-mono); margin: 0 }
+.leg { display: flex; align-items: center; gap: 6px; margin-right: 12px; margin-bottom: 4px }
+.ld { width: 9px; height: 9px; border-radius: 2px; flex-shrink: 0 }
+.lt { font-size: 10px; color: var(--text-secondary) }
+.cr { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 10px }
+.cl { font-size: 11px; color: var(--text-secondary) }
+#ib { margin-top: 6px; font-size: 11px; color: var(--text-secondary); font-family: var(--font-mono) }
+</style>
+
+<div id="vis">
+  <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px">
+    <div>
+      <p style="font-size:13px;font-weight:500;color:var(--text-primary);margin:0 0 2px">RF environment — smart scan scheduling</p>
+      <p style="font-size:11px;color:var(--text-secondary);margin:0">Frequency (y) × time (x, scrolls left). Cursor = agent's scan band each step.</p>
+    </div>
+    <div style="font-size:10px;color:var(--text-muted);font-family:var(--font-mono)" id="sc">t = 0 / 300</div>
+  </div>
+
+  <div style="display:flex;gap:10px;align-items:flex-start">
+    <div id="fa" style="position:relative;width:44px;flex-shrink:0;height:252px"></div>
+    <div style="flex:1;min-width:0">
+      <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--text-muted);margin-bottom:2px;font-family:var(--font-mono)">
+        <span>← history</span><span style="color:var(--text-accent)">│ now │</span><span>forecast →</span>
+      </div>
+      <div style="border:0.5px solid var(--border);border-radius:6px;overflow:hidden;line-height:0">
+        <canvas id="wf" width="450" height="252"></canvas>
+      </div>
+    </div>
+    <div style="width:104px;flex-shrink:0">
+      <div class="mc"><p class="ml">Pd</p><p class="mv" id="m-pd">0.00</p></div>
+      <div class="mc"><p class="ml">intercept rate</p><p class="mv" id="m-ir">0.00</p></div>
+      <div class="mc"><p class="ml">hits</p><p class="mv" id="m-h">0</p></div>
+      <div class="mc"><p class="ml">misses</p><p class="mv" id="m-m">0</p></div>
+      <div class="mc"><p class="ml">reward</p><p class="mv" id="m-r">0.0</p></div>
+    </div>
+  </div>
+
+  <div style="display:flex;flex-wrap:wrap;margin-top:8px;row-gap:2px">
+    <div class="leg"><div class="ld" style="background:#22C55E"></div><span class="lt">hit — detected</span></div>
+    <div class="leg"><div class="ld" style="background:#D97706"></div><span class="lt">transmission (missed)</span></div>
+    <div class="leg"><div class="ld" style="background:#2563EB"></div><span class="lt">scanning — empty</span></div>
+    <div class="leg"><div class="ld" style="background:#991B1B"></div><span class="lt">confirmed miss</span></div>
+    <div class="leg"><div class="ld" style="background:#451A03"></div><span class="lt">forecast (hidden from agent)</span></div>
+  </div>
+
+  <div style="display:flex;gap:16px;margin-top:6px;font-size:11px;color:var(--text-secondary)">
+    <span><i class="ti ti-arrows-horizontal" aria-hidden="true" style="font-size:12px;color:var(--text-accent)"></i> 4 frequency-agile emitters</span>
+    <span><i class="ti ti-rotate-clockwise" aria-hidden="true" style="font-size:12px;color:var(--text-warning)"></i> 4 spatially-scanning emitters</span>
+  </div>
+
+  <div class="cr">
+    <button id="bpp"><i class="ti ti-player-play" aria-hidden="true"></i> Play</button>
+    <button id="bst"><i class="ti ti-chevron-right" aria-hidden="true"></i> Step</button>
+    <button id="brs"><i class="ti ti-refresh" aria-hidden="true"></i> Reset</button>
+    <span class="cl">speed</span>
+    <input type="range" id="spd" min="1" max="10" value="4" style="width:80px" step="1">
+    <select id="pol" style="font-size:12px;padding:4px 8px;background:var(--surface-2);border:0.5px solid var(--border);border-radius:var(--radius);color:var(--text-primary)">
+      <option value="rr">Round-robin (open-loop baseline)</option>
+      <option value="sm">Heuristic: hit-rate + staleness</option>
+    </select>
+  </div>
+  <div id="ib">press play to start</div>
+</div>
+
+<script>
+const NB = 36, TS = 300;
+const CW = 9, CH = 7;
+const HC = 42, FC = 8;
+const CANVAS_W = 450, CANVAS_H = 252;
+
+const C = {
+  bg:      '#0A0F1C',
+  empty:   '#111827',
+  hit:     '#15803D',
+  hitNow:  '#22C55E',
+  scan:    '#1E3A8A',
+  scanNow: '#2563EB',
+  txMiss:  '#92400E',
+  txNow:   '#D97706',
+  cfMiss:  '#7F1D1D',
+  futTx:   '#451A03',
+  nowLine: 'rgba(255,255,255,0.5)',
+};
+
+function makeFA(seq, dwell, off) {
+  return { kind:'fa', activeBand(t){ return seq[Math.floor((t+off)/dwell)%seq.length]; } };
+}
+function makeSS(band, period, win, phase) {
+  return { kind:'ss', activeBand(t){
+    const p=((t-phase)%period+period)%period; return p<win?band:-1;
+  }};
+}
+
+const EMITTERS = [
+  makeFA([2,8,14,20,26,31],4,0),
+  makeFA([5,10,17,22,28],3,2),
+  makeFA([1,15,29],7,5),
+  makeFA([3,9,16,23,33],5,1),
+  makeSS(12,10,2,3),
+  makeSS(25,15,1,7),
+  makeSS(7,20,3,0),
+  makeSS(32,8,2,4),
+];
+
+const E = Array.from({length:NB},()=>new Uint8Array(TS));
+for(const em of EMITTERS)
+  for(let t=0;t<TS;t++){const b=em.activeBand(t);if(b>=0&&b<NB)E[b][t]=1;}
+
+let scanLog, hitC, obsC, lastT, tCur, totH, totM, totR;
+function reset(){
+  scanLog=new Int16Array(TS).fill(-1);
+  hitC=new Float32Array(NB); obsC=new Float32Array(NB);
+  lastT=new Int32Array(NB).fill(-1);
+  tCur=0;totH=0;totM=0;totR=0;
+}
+
+function rrPolicy(t){return t%NB;}
+function smPolicy(t){
+  let best=0,bs=-Infinity;
+  for(let n=0;n<NB;n++){
+    const hr=obsC[n]>0?hitC[n]/obsC[n]:0.5;
+    const st=lastT[n]<0?1:Math.min((t-lastT[n])/20,1);
+    const s=hr*0.6+st*0.4; if(s>bs){bs=s;best=n;}
+  }return best;
+}
+function getPolicy(){return document.getElementById('pol').value==='sm'?smPolicy:rrPolicy;}
+
+function envStep(){
+  if(tCur>=TS)return false;
+  const a=getPolicy()(tCur);
+  scanLog[tCur]=a;
+  const hit=E[a][tCur];
+  obsC[a]++;hitC[a]+=hit;
+  let stepM=0;
+  for(let n=0;n<NB;n++)if(n!==a&&E[n][tCur])stepM++;
+  totH+=hit;totM+=stepM;
+  const prev=lastT[a];
+  totR+=hit?(1.0):(prev>=0&&tCur-prev<=1?-0.1:0);
+  lastT[a]=tCur;
+  tCur++;return true;
+}
+
+const canvas=document.getElementById('wf');
+const ctx=canvas.getContext('2d');
+
+function draw(){
+  ctx.fillStyle=C.bg;ctx.fillRect(0,0,CANVAS_W,CANVAS_H);
+  const startT=Math.max(0,tCur-HC);
+
+  for(let t=startT;t<tCur;t++){
+    const ci=t-startT;
+    const x=ci*CW;
+    const a=scanLog[t];
+    const isNow=(t===tCur-1);
+    for(let n=0;n<NB;n++){
+      const y=(NB-1-n)*CH;
+      const hasTx=E[n][t]===1;
+      const scanned=a===n;
+      let col;
+      if(isNow){
+        if(hasTx&&scanned) col=C.hitNow;
+        else if(scanned)   col=C.scanNow;
+        else if(hasTx)     col=C.txNow;
+        else               col=C.empty;
+      } else {
+        if(hasTx&&scanned) col=C.hit;
+        else if(scanned)   col=C.scan;
+        else if(hasTx)     col=C.cfMiss;
+        else               col=C.empty;
+      }
+      ctx.fillStyle=col;
+      ctx.fillRect(x,y,CW-1,CH-1);
+    }
+  }
+
+  const nowX=Math.min(tCur,HC)*CW;
+  ctx.strokeStyle=C.nowLine;ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(nowX,0);ctx.lineTo(nowX,CANVAS_H);ctx.stroke();
+
+  for(let fi=0;fi<FC;fi++){
+    const t=tCur+fi;if(t>=TS)break;
+    const x=(HC+fi)*CW;
+    for(let n=0;n<NB;n++){
+      const y=(NB-1-n)*CH;
+      ctx.fillStyle=E[n][t]?C.futTx:C.empty;
+      ctx.fillRect(x,y,CW-1,CH-1);
+    }
+  }
+
+  if(tCur>0){
+    const lastBand=scanLog[tCur-1];
+    const cursorY=(NB-1-lastBand)*CH;
+    ctx.strokeStyle='rgba(99,179,237,0.4)';ctx.lineWidth=2;
+    ctx.strokeRect(nowX-CW,cursorY,CW,CH);
+  }
+}
+
+function updateMetrics(){
+  const obs=obsC.reduce((a,b)=>a+b,0);
+  const pd=obs>0?totH/obs:0;
+  const ir=tCur>0?totH/tCur:0;
+  document.getElementById('m-pd').textContent=pd.toFixed(2);
+  document.getElementById('m-ir').textContent=ir.toFixed(2);
+  document.getElementById('m-h').textContent=totH;
+  document.getElementById('m-m').textContent=totM;
+  document.getElementById('m-r').textContent=totR.toFixed(1);
+  document.getElementById('sc').textContent=`t = ${tCur} / 300`;
+  if(tCur>0){
+    const b=scanLog[tCur-1];
+    const freq=(500+b*500);
+    const hit=E[b][tCur-1];
+    document.getElementById('ib').textContent=
+      `step ${tCur-1} → band ${b} (${freq} MHz) → ${hit?'HIT ✓':'miss ×'}`;
+  }
+}
+
+function buildFreqAxis(){
+  const fa=document.getElementById('fa');
+  fa.innerHTML='';
+  [0,5,10,15,20,25,30,35].forEach(n=>{
+    const freqG=((500+n*500)/1000).toFixed(1);
+    const yTop=(NB-1-n)*CH;
+    const d=document.createElement('div');
+    d.style.cssText=`position:absolute;top:${yTop+1}px;right:2px;font-size:9px;font-family:var(--font-mono);color:var(--text-muted);line-height:1`;
+    d.textContent=freqG+'G';
+    fa.appendChild(d);
+  });
+}
+
+const SPEEDS=[1000,600,380,240,150,95,60,38,24,15];
+let playing=false,rafId=null,lastTs=0;
+function getDelay(){return SPEEDS[parseInt(document.getElementById('spd').value)-1]||160;}
+
+function animate(ts){
+  if(!playing)return;
+  if(ts-lastTs>=getDelay()){
+    lastTs=ts;
+    if(tCur<TS){envStep();}
+    else{playing=false;document.getElementById('bpp').innerHTML='<i class="ti ti-player-play" aria-hidden="true"></i> Play';}
+  }
+  draw();updateMetrics();
+  rafId=requestAnimationFrame(animate);
+}
+function startPlay(){
+  playing=true;
+  document.getElementById('bpp').innerHTML='<i class="ti ti-player-pause" aria-hidden="true"></i> Pause';
+  lastTs=0;rafId=requestAnimationFrame(animate);
+}
+function pausePlay(){
+  playing=false;cancelAnimationFrame(rafId);
+  document.getElementById('bpp').innerHTML='<i class="ti ti-player-play" aria-hidden="true"></i> Play';
+}
+
+document.getElementById('bpp').addEventListener('click',()=>playing?pausePlay():startPlay());
+document.getElementById('bst').addEventListener('click',()=>{pausePlay();if(tCur<TS)envStep();draw();updateMetrics();});
+document.getElementById('brs').addEventListener('click',()=>{pausePlay();reset();draw();updateMetrics();document.getElementById('ib').textContent='reset — press play';});
+document.getElementById('pol').addEventListener('change',()=>{pausePlay();reset();draw();updateMetrics();document.getElementById('ib').textContent='policy changed — press play';});
+
+reset();buildFreqAxis();draw();updateMetrics();
+</script>

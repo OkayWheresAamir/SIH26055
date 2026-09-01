@@ -4,8 +4,8 @@
 
 When a task depends on research papers, teammate strategy documents, dataset documentation, or other material under `docs/`, first consult:
 
-- `docs/RESEARCH_MAP.md`
-- `docs/CLAUDE_CODE_RESEARCH_PROTOCOL.md`
+- `docs/project/RESEARCH_MAP.md`
+- `docs/protocol/CLAUDE_CODE_RESEARCH_PROTOCOL.md`
 
 Use the research map to identify which sources are relevant to the current project stage.
 

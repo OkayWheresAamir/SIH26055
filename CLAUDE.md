@@ -13,17 +13,23 @@ whole point of it — follow them before doing anything else.
 
 | Source | Authority |
 |---|---|
-| `docs/SIH26055_PROBLEM_STATEMENT.md` | **The requirement.** The official DRDO problem statement — what we are being asked to build. Settles scope disputes. |
+| `docs/project/SIH26055_PROBLEM_STATEMENT.md` | **The requirement.** The official DRDO problem statement — what we are being asked to build. Settles scope disputes. |
 | `data/turing/**/*.h5` | **Highest for facts about the data.** When anything disagrees with an observed field, the files win. |
-| `docs/PROJECT_ARCHITECTURE.md` | The working architecture, written by the human team. Default direction; not immutable. |
-| `docs/CLAUDE_CODE_RESEARCH_PROTOCOL.md` | How the reference documents may and may not be used. |
-| `docs/TSRD_dataset_paper_arXiv_2602.03856.pdf` | How the data was generated. Primary source on dataset semantics; the HF dataset card is only a summary of it. |
-| The PDFs in `docs/` | Reference material. Classify before use, per the protocol. See `docs/RESEARCH_MAP.md`. |
+| `docs/project/PROJECT_ARCHITECTURE.md` | The working architecture, written by the human team. Default direction; not immutable. |
+| `docs/protocol/CLAUDE_CODE_RESEARCH_PROTOCOL.md` | How the reference documents may and may not be used. |
+| `docs/project/ENVIRONMENT_SPEC.md` | The consolidated buildable spec for the RF environment. Follows from `DECISIONS.md`; read before building. |
+| `docs/project/EVALUATION.md` | The single authority on metrics, baselines, validation gates and protocol. Do not redefine a metric anywhere else. |
+| `docs/reference/dataset/TSRD_dataset_paper_arXiv_2602.03856.pdf` | How the data was generated. Primary source on dataset semantics; the HF dataset card is only a summary of it. |
+| Everything under `docs/reference/` | Reference material. Classify before use, per the protocol. See `docs/project/RESEARCH_MAP.md`. |
 
-Read `docs/PROJECT_ARCHITECTURE.md` and `docs/CLAUDE_CODE_RESEARCH_PROTOCOL.md` before
+`docs/` is organised by authority: `project/` is authored and governs the build, `protocol/` is
+how we work, `reference/` is external material, `teammate-work/` is cross-check only. See
+`docs/README.md`.
+
+Read `docs/project/PROJECT_ARCHITECTURE.md` and `docs/protocol/CLAUDE_CODE_RESEARCH_PROTOCOL.md` before
 designing anything.
 
-**`docs/DECISIONS.md` records every decision taken, with its evidence and status.** Read it
+**`docs/project/DECISIONS.md` records every decision taken, with its evidence and status.** Read it
 before proposing anything — a question marked `SETTLED` or `CLOSED` there does not get reopened
 without new evidence, and one marked `PROPOSED` is waiting on a human, not on more research.
 Add to it whenever a decision is made; that file is where project knowledge survives a session.
@@ -74,5 +80,5 @@ Turing Synthetic Radar Dataset (gated on Hugging Face). Do not re-download it; i
 
 - **47 `scan`/`stare` pairs from the train split** — the development set.
 - **45 `scan`/`stare` pairs from the test split** — held out, fetched 2026-08-28 by a rule fixed
-  in advance (see `docs/RESEARCH_MAP.md`). **Do not touch these during development.** They exist
+  in advance (see `docs/project/RESEARCH_MAP.md`). **Do not touch these during development.** They exist
   so the final evaluation means something; every use must be recorded.

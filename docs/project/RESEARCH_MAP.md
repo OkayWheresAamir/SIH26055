@@ -2,7 +2,7 @@
 
 > Built from the documents actually present in `docs/` (and the dataset card in `data/turing/`)
 > on 2026-08-28. **Updated the same day** when the official problem statement was added as
-> `docs/SIH26055_PROBLEM_STATEMENT.md`; it outranks everything else here and settles several
+> `docs/project/SIH26055_PROBLEM_STATEMENT.md`; it outranks everything else here and settles several
 > questions this map had listed as open. Every PDF below was opened and read with `pypdf` in that session; none was
 > classified from its filename. Where a document's filename and its contents disagree, the
 > contents decide.
@@ -19,48 +19,48 @@ that primary is not in this repository.
 ## Stage index
 
 ### The requirement itself
-- `docs/SIH26055_PROBLEM_STATEMENT.md` — **Authority A, NOW, read before anything else.** The official DRDO problem statement. Defines the environment, the observation model, the training signal and the metric set. Every other document in this folder is a means to satisfying it.
+- `docs/project/SIH26055_PROBLEM_STATEMENT.md` — **Authority A, NOW, read before anything else.** The official DRDO problem statement. Defines the environment, the observation model, the training signal and the metric set. Every other document in this folder is a means to satisfying it.
 
 ### Turing / dataset understanding
 - `data/turing/README.md` — the Hugging Face dataset card. **Partly contradicted by the files.** Use the HDF5 files, not this card.
 - *(No PDF in `docs/` documents the Turing dataset. This is a real gap.)*
 
 ### Environment construction
-- `docs/paperSSPD (1).pdf` — the SNR-time-series illumination model, which is what our data actually matches (see D4). **NOW.**
-- `docs/me 2.0.pdf` §17–18 — the radar-state / physical-illumination / receiver-observation separation, and a module decomposition. **NOW**, for structure.
-- `docs/optimumsearch.pdf` — sweep period / dwell time / duty cycle definitions and the coincidence model. **NOW.**
-- `docs/118700Q.pdf` §4 — a concrete, minimal band-scheduling environment and its hit/miss observation rule. **NOW.**
-- `docs/TECHNICAL DIFFERENTIATION STRATEGY.pdf` §3, §4, §12 — a checklist of environment features. **LATER**, proposal only.
+- `docs/reference/scheduling/paperSSPD (1).pdf` — the SNR-time-series illumination model, which is what our data actually matches (see D4). **NOW.**
+- `docs/reference/scheduling/me 2.0.pdf` §17–18 — the radar-state / physical-illumination / receiver-observation separation, and a module decomposition. **NOW**, for structure.
+- `docs/reference/scheduling/optimumsearch.pdf` — sweep period / dwell time / duty cycle definitions and the coincidence model. **NOW.**
+- `docs/reference/scheduling/118700Q.pdf` §4 — a concrete, minimal band-scheduling environment and its hit/miss observation rule. **NOW.**
+- `docs/reference/background/TECHNICAL DIFFERENTIATION STRATEGY.pdf` §3, §4, §12 — a checklist of environment features. **LATER**, proposal only.
 
 ### Environment validation
-- `docs/optimumsearch.pdf` ch. 2, 3, 6 — intercept-time and probability-of-intercept theory. This is the only document in the repository with derivable equations we could check an environment against. **NOW.**
+- `docs/reference/scheduling/optimumsearch.pdf` ch. 2, 3, 6 — intercept-time and probability-of-intercept theory. This is the only document in the repository with derivable equations we could check an environment against. **NOW.**
 
 ### Baselines
-- `docs/paperSSPD (1).pdf` — **Apfeld et al. 2016. The strong non-learning baseline.** Adaptive band selection with autocorrelation-based scan-period estimation. Reimplementable from §II. **NOW.**
-- `docs/optimumsearch.pdf` — periodic/probabilistic search strategies; Clarkson's strategy as the reference point. **NOW.**
-- `docs/118700Q.pdf` §4 — "simple periodic search strategy" used as the bootstrap policy. **NOW.**
-- `docs/TECHNICAL DIFFERENTIATION STRATEGY.pdf` §2 — random / round-robin / fixed-priority / recency list. **LATER.**
+- `docs/reference/scheduling/paperSSPD (1).pdf` — **Apfeld et al. 2016. The strong non-learning baseline.** Adaptive band selection with autocorrelation-based scan-period estimation. Reimplementable from §II. **NOW.**
+- `docs/reference/scheduling/optimumsearch.pdf` — periodic/probabilistic search strategies; Clarkson's strategy as the reference point. **NOW.**
+- `docs/reference/scheduling/118700Q.pdf` §4 — "simple periodic search strategy" used as the bootstrap policy. **NOW.**
+- `docs/reference/background/TECHNICAL DIFFERENTIATION STRATEGY.pdf` §2 — random / round-robin / fixed-priority / recency list. **LATER.**
 
 ### RL / adaptive scheduler
-- `docs/118700Q.pdf` §2, §3 — PSR/TPSR + RPCA + multi-armed-bandit band selection. **LATER.**
-- `docs/TECHNICAL DIFFERENTIATION STRATEGY.pdf` §19 — RL framing, explicitly "only after strong baselines". **LATER.**
+- `docs/reference/scheduling/118700Q.pdf` §2, §3 — PSR/TPSR + RPCA + multi-armed-bandit band selection. **LATER.**
+- `docs/reference/background/TECHNICAL DIFFERENTIATION STRATEGY.pdf` §19 — RL framing, explicitly "only after strong baselines". **LATER.**
 
 ### Final evaluation
-- `docs/TECHNICAL DIFFERENTIATION STRATEGY.pdf` §13, §14, §27 — metric list and the "numerical claims not marketing claims" rule. **FINAL EVALUATION.**
-- `docs/optimumsearch.pdf` ch. 6 — probability of intercept as a defined quantity. **FINAL EVALUATION.**
+- `docs/reference/background/TECHNICAL DIFFERENTIATION STRATEGY.pdf` §13, §14, §27 — metric list and the "numerical claims not marketing claims" rule. **FINAL EVALUATION.**
+- `docs/reference/scheduling/optimumsearch.pdf` ch. 6 — probability of intercept as a defined quantity. **FINAL EVALUATION.**
 
 ### Background / future
-- `docs/Electronic warfare (extended).pdf` — plain-language explanation of EW and the problem statement.
-- `docs/GPT BACKDOOR PAPER KHARKIV CONFRENCE.pdf` — synthesis of a conference proceedings not in this repository.
-- `docs/Scanning Strategy Learning ... (3).pdf` — one-page summary of `docs/118700Q.pdf`.
+- `docs/reference/background/Electronic warfare (extended).pdf` — plain-language explanation of EW and the problem statement.
+- `docs/reference/background/GPT BACKDOOR PAPER KHARKIV CONFRENCE.pdf` — synthesis of a conference proceedings not in this repository.
+- `docs/reference/scheduling/Scanning Strategy Learning For Electronic Support Receivers by Robust Principal Component Analysis (3).pdf` — one-page summary of `docs/reference/scheduling/118700Q.pdf`.
 
 ### Unresolved
 
 > Most of what was here on 2026-08-28 has since closed. Decisions and their evidence now live in
-> `docs/DECISIONS.md`; this list holds only what genuinely remains.
+> `docs/project/DECISIONS.md`; this list holds only what genuinely remains.
 
 **Needs a human decision (not more research):**
-- **D4 in `docs/DECISIONS.md`** — accept the continuous-signal environment with a derived binary occupancy, and set the default detection threshold. Everything in D5/D6 depends on it.
+- **D4 in `docs/project/DECISIONS.md`** — accept the continuous-signal environment with a derived binary occupancy, and set the default detection threshold. Everything in D5/D6 depends on it.
 - **D5's sub-question** — do all hits score equally, or is first-interception of a new emitter worth more?
 
 **Needs domain review:**
@@ -99,7 +99,7 @@ directly rather than taken on trust.
 
 ## SIH26055 — Smart Scan Strategy for Electronic Warfare (official problem statement)
 
-**Path:** `docs/SIH26055_PROBLEM_STATEMENT.md`
+**Path:** `docs/project/SIH26055_PROBLEM_STATEMENT.md`
 
 **Role:** ENVIRONMENT / EVALUATION / RL — it is the requirement, so it touches every role
 
@@ -129,7 +129,7 @@ directly rather than taken on trust.
 - All of them. Use it to settle scope disputes.
 
 ### Conflicts/questions
-- **`docs/TECHNICAL DIFFERENTIATION STRATEGY.pdf` §1** says treat classification as a supporting component and build a scheduler. The PS agrees. Where that document adds clustering, drift detection and explainability, the PS does not ask for them — they remain OPTIONAL.
+- **`docs/reference/background/TECHNICAL DIFFERENTIATION STRATEGY.pdf` §1** says treat classification as a supporting component and build a scheduler. The PS agrees. Where that document adds clustering, drift detection and explainability, the PS does not ask for them — they remain OPTIONAL.
 - **The Turing data is PDW-level, the PS is band-occupancy-level.** Converting one to the other is the central modelling step, and the PS does not specify it. See the open questions in the team brief.
 - *"Approaches to intercept a periodic scan receiver optimally"* is ambiguous and flagged UNRESOLVED in the PS file itself.
 
@@ -140,7 +140,7 @@ directly rather than taken on trust.
 
 ## Scanning Strategy Learning For Electronic Support Receivers by Robust Principal Component Analysis
 
-**Path:** `docs/118700Q.pdf`
+**Path:** `docs/reference/scheduling/118700Q.pdf`
 
 **Role:** RL / BASELINE / ENVIRONMENT
 
@@ -186,7 +186,7 @@ directly rather than taken on trust.
 
 ## Periodic Search Strategies for Electronic Countermeasure Receivers with Desired Probability of Intercept for Each Frequency Band
 
-**Path:** `docs/optimumsearch.pdf`
+**Path:** `docs/reference/scheduling/optimumsearch.pdf`
 
 **Role:** VALIDATION / BASELINE / ENVIRONMENT
 
@@ -229,7 +229,7 @@ directly rather than taken on trust.
 
 ## Technical Differentiation Strategy for the SIH Smart Scan Strategy
 
-**Path:** `docs/TECHNICAL DIFFERENTIATION STRATEGY.pdf`
+**Path:** `docs/reference/background/TECHNICAL DIFFERENTIATION STRATEGY.pdf`
 
 **Role:** ENVIRONMENT / BASELINE / EVALUATION / FUTURE
 
@@ -270,7 +270,7 @@ directly rather than taken on trust.
 
 ## Ukrainian Military Research: AI, Adaptive EW, RF Signal Analysis (KhNUPS 2025 synthesis)
 
-**Path:** `docs/GPT BACKDOOR PAPER KHARKIV CONFRENCE.pdf`
+**Path:** `docs/reference/background/GPT BACKDOOR PAPER KHARKIV CONFRENCE.pdf`
 
 **Role:** FUTURE — **candidate-idea source**
 
@@ -309,7 +309,7 @@ directly rather than taken on trust.
 
 ## Scanning Strategy Learning… (one-page summary)
 
-**Path:** `docs/Scanning Strategy Learning For Electronic Support Receivers by Robust Principal Component Analysis (3).pdf`
+**Path:** `docs/reference/scheduling/Scanning Strategy Learning For Electronic Support Receivers by Robust Principal Component Analysis (3).pdf`
 
 **Role:** BACKGROUND
 
@@ -341,7 +341,7 @@ directly rather than taken on trust.
 
 ## Electronic Warfare (extended)
 
-**Path:** `docs/Electronic warfare (extended).pdf`
+**Path:** `docs/reference/background/Electronic warfare (extended).pdf`
 
 **Role:** BACKGROUND
 
@@ -376,7 +376,7 @@ directly rather than taken on trust.
 
 ## The Turing Synthetic Radar Dataset: A dataset for pulse deinterleaving (the paper)
 
-**Path:** `docs/TSRD_dataset_paper_arXiv_2602.03856.pdf`
+**Path:** `docs/reference/dataset/TSRD_dataset_paper_arXiv_2602.03856.pdf`
 
 **Role:** DATASET — **the primary source for how our data was generated**
 
@@ -420,7 +420,7 @@ directly rather than taken on trust.
 
 **Stage:** NOW — but as a hypothesis to check, not a source.
 
-**Authority:** **D — it is a summary of `docs/TSRD_dataset_paper_arXiv_2602.03856.pdf`, which is now in this repository.** Cite the paper, not the card. Superseded by the files wherever either disagrees with an observed field.
+**Authority:** **D — it is a summary of `docs/reference/dataset/TSRD_dataset_paper_arXiv_2602.03856.pdf`, which is now in this repository.** Cite the paper, not the card. Superseded by the files wherever either disagrees with an observed field.
 
 ### What it contributes
 - Dataset identity: The Turing Synthetic Radar Dataset (TSRD), Gunn, Hosford, Jones, Zeitler, Groves, Nockles; Apache-2.0; supported by the Turing's Defence and Security programme.
@@ -495,7 +495,7 @@ stay untouched until the system is frozen. Every use of it should be recorded.
 
 ## An Adaptive Receiver Search Strategy for Electronic Support
 
-**Path:** `docs/paperSSPD (1).pdf`
+**Path:** `docs/reference/scheduling/paperSSPD (1).pdf`
 
 **Role:** BASELINE / ENVIRONMENT / VALIDATION
 
@@ -505,7 +505,7 @@ stay untouched until the system is frozen. Every use of it should be recorded.
 
 ### What it contributes
 - **A direct critique of the model everything else in this folder uses.** *"The majority of today's literature regarding this topic models the intercept problem as that of the coincidence of two or more periodic window functions. Since this model is rather simplistic, in this paper the radars' illumination patterns are described by signal-to-noise ratio time series."* This puts Köksal and Clarkson in context: their window-function model is the classical approach, and this paper is the correction to it.
-- **Why the correction matters:** *"window functions usually only consider the main beam of the radar. In the presented approach, the radars can be intercepted and detected through the sidelobes as well."* **Our Turing measurements independently confirm this is the right model** — see D4 in `docs/DECISIONS.md`.
+- **Why the correction matters:** *"window functions usually only consider the main beam of the radar. In the presented approach, the radars can be intercepted and detected through the sidelobes as well."* **Our Turing measurements independently confirm this is the right model** — see D4 in `docs/project/DECISIONS.md`.
 - **A complete, reimplementable adaptive algorithm** (§II): random start; SNR over threshold `T_D` promotes a band to a "tentative" list; tentative bands visited more often via Algorithm 1 (scaling `y`, cap `z`); autocorrelation of the intercepted SNR series estimates the emitter scan period (Eq. 3); once the estimate is stable (std over last `j` below `T_std`) dwells are scheduled at predicted SNR maxima plus integer multiples of the period; misdetections widen the search, and after `s` misses the band returns to exploration.
 - **An SNR equation** (Eq. 1) with every term defined — peak power, pulse width, PRI, wavelength, transmit/receive gain, range, Boltzmann, noise temperature, bandwidth, losses.
 - **A baseline ladder we can reuse directly:** Adaptive / Adaptive-without-tracking / "Active RFs" / Random.
@@ -541,7 +541,7 @@ stay untouched until the system is frozen. Every use of it should be recorded.
 
 ## Electronic Support Scan Scheduling (comparison note)
 
-**Path:** `docs/Electronic Support Scan Scheduling (1).pdf`
+**Path:** `docs/reference/scheduling/Electronic Support Scan Scheduling (1).pdf`
 
 **Role:** BACKGROUND — a map of the field
 
@@ -567,7 +567,7 @@ stay untouched until the system is frozen. Every use of it should be recorded.
 
 ## Smart Spectrum Surveillance for Electronic Support (ES) — BASICS
 
-**Path:** `docs/Smart Spectrum Surveillance for Electronic Support (ES) [BASICS].pdf`
+**Path:** `docs/reference/background/Smart Spectrum Surveillance for Electronic Support (ES) [BASICS].pdf`
 
 **Role:** BACKGROUND / EVALUATION
 
@@ -578,7 +578,7 @@ stay untouched until the system is frozen. Every use of it should be recorded.
 ### What it contributes
 - A clean first-principles account of why scanning exists: instantaneous bandwidth, sensitivity, dwell/revisit time and dynamic range as four linked constraints, with `N = kTB` showing why wider coverage raises the noise floor.
 - A survey of fielded systems (R&S, HENSOLDT, Saab, BAE, US Army) — useful for a PPT slide on the operational landscape, not for design.
-- **§6 contains one genuinely important warning we have adopted:** *"a model predicting 'no transmission' can score high accuracy while being operationally poor."* Recorded in the evaluation plan of `docs/DECISIONS.md`.
+- **§6 contains one genuinely important warning we have adopted:** *"a model predicting 'no transmission' can score high accuracy while being operationally poor."* Recorded in the evaluation plan of `docs/project/DECISIONS.md`.
 - Two other framings worth keeping: the "wideband paradox" (wider collection shifts the bottleneck to deciding what deserves analysis), and "periodicity is not universal".
 
 ### What it does NOT establish
@@ -591,13 +591,13 @@ stay untouched until the system is frozen. Every use of it should be recorded.
 
 ## An Adaptive Receiver Search Strategy — teammate explainer
 
-**Path:** `docs/me 2.0.pdf`
+**Path:** `docs/reference/scheduling/me 2.0.pdf`
 
 **Role:** BACKGROUND
 
 **Stage:** REFERENCE ONLY — but genuinely useful for onboarding
 
-**Authority:** **D** — a summary of `docs/paperSSPD (1).pdf`, which is in this repository. Farheen Khan, 10 pages, 2026-08-29. Image-based PDF with no extractable text layer; read by rendering the pages.
+**Authority:** **D** — a summary of `docs/reference/scheduling/paperSSPD (1).pdf`, which is in this repository. Farheen Khan, 10 pages, 2026-08-29. Image-based PDF with no extractable text layer; read by rendering the pages.
 
 ### What it contributes
 - A patient walk-through of the Apfeld paper for someone new to the domain — dwells, why frequency alone is insufficient, the autocorrelation step.
@@ -608,6 +608,67 @@ stay untouched until the system is frozen. Every use of it should be recorded.
 
 ### Decision
 - Use for onboarding teammates onto Apfeld. **Cite `paperSSPD (1).pdf`, not this.** Carry §17's three-way distinction into the environment design.
+
+---
+
+## Documents added 2026-09-01 — compact records
+
+These were classified by opening each one this session. Kept brief; none changes a decision,
+several confirm one.
+
+### `iDEX ADITI 4.0 (Go to Page 12).pdf` — Cognitive EW System (Indian Army)
+**Role:** BACKGROUND / intent. **Authority:** A for *context*, on the sibling problem. Page 12
+is the ADITI 4.0 "Cognitive Electronic Warfare System" challenge: an autonomous ES+EA system
+that senses, self-learns, and deploys countermeasures, explicitly replacing the historical
+"previously learned threats" database model. **Our SIH26055 is the ES scan-scheduling slice of
+this larger vision** — it grounds the D20 cold-start / active-warfare intent, but does **not**
+extend our scope to jamming, DF or fusion. See the 2026-09-01 consistency audit.
+
+### `ADITI 4.0 YT TRANSCRIPT.pdf` — official Q&A
+**Role:** BACKGROUND / intent. **Authority:** B (verbatim official transcript). Covers the CEW
+challenge among four. Substance for us: the Army frames CEW around AI that will *"sense, adapt
+and self-learn environment challenges,"* and when asked whether a threat library would be
+provided, would not commit — *"up to us to build a threat library."* Confirms D20: no assumed
+prior intelligence. No mention of the SIH dataset or scan mechanics (it is the broader system).
+
+### `SIH- Smart Scan Strategy.pdf` — teammate crash course
+**Role:** BACKGROUND / EVALUATION. **Authority:** D (teammate synthesis), but technically sound
+and independently confirmatory. Lays out truth Z vs declaration Y, the four detection outcomes,
+Pd/Pfa, ROC vs threshold γ, noise floor kTBF (≈ −109 dBm at 1 MHz, NF 5 dB), intercept time, and
+the bandit framing (UCB, Thompson). Matches D4/D6/D21 independently. Good PPT/onboarding source.
+
+### `RFenvironment(baseline).pdf` + `rf_env_grounded.py` — teammate env
+**Role:** ENVIRONMENT. **Authority:** C (a proposed design). A gymnasium env deriving action
+space Discrete(N), a POMDP framing, and a history-based observation (per-band hit rate, visit
+density, staleness + time) strictly from PS text. **We adopt its L3 interface and credit it;**
+its binary placeholder truth grid is replaced by our measured L0–L2 (see `ENVIRONMENT_SPEC.md`).
+
+### `Dynamic Scan Scheduling.pdf` — Dutertre, SRI, RTSS'02
+**Role:** BASELINE / BACKGROUND. **Authority:** B. Online cyclic scan-schedule construction over
+**disjoint** bands; NP-hard with an exploitable phase transition. Source of the D20 quote that
+fixed a-priori-table scheduling is the limitation. Its disjoint-band, full-schedule model
+differs from our overlapping-band, next-band action (D3) — reference, not template.
+
+### `Dwell_Time_Optimization_of_Alert-Confirm_Detection.pdf` — JEES 2019
+**Role:** VALIDATION / FUTURE. **Authority:** B. Alert–confirm (sequential-detection) dwell
+optimisation for AESA radar. Relevant as a *possible v2 receiver refinement* (two-threshold
+confirm-on-alert) and as support for treating detection threshold and dwell as a separate layer
+from scheduling (D21). Not needed for v1.
+
+### `Radar_Signal_Deinterleaving_in_Electronic_Warfare_.pdf` — Nuhoglu & Cirpan, IEEE Access 2023
+**Role:** REFERENCE (deinterleaving). **Authority:** B. PRI-transform combined deinterleaving,
+strong on staggered PRI. Out of scope per D12/D19; a reference only if an observation channel
+ever needs per-emitter attribution.
+
+### `PassiveRadar.pdf` — undergraduate survey
+**Role:** BACKGROUND. **Authority:** D. Passive **bistatic** radar (transmitters of opportunity)
+— a *different* meaning of "passive" than passive ES receiving. Filed to prevent conflation; no
+bearing on our design.
+
+### `samyukta_ew_system.md` — note on the Samyukta EW system
+**Role:** BACKGROUND / intent. **Authority:** D (teammate note, unsourced). Describes an Indian
+tactical ESM system (COMINT+ELINT passive sensors, 1.5 MHz–40 GHz). Colour for the operational
+picture and PPT; not a design input.
 
 ---
 
@@ -659,7 +720,7 @@ and also why we must build our own environment.
 matters**:
 
 - `SIH_RF_Brainstorming_Teammate_Guide.pdf` — was sent to teammates. It explains the
-  architecture, which we already have in `docs/PROJECT_ARCHITECTURE.md`. Nothing in it is
+  architecture, which we already have in `docs/project/PROJECT_ARCHITECTURE.md`. Nothing in it is
   needed here.
 - `CLAUDE_MD_UPDATE_PROMPT.md` — was a setup prompt belonging to the previous repository,
   for wiring up the documents, the research map and the working rules. That job has since

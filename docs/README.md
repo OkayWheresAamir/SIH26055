@@ -1,41 +1,66 @@
-# SIH Project Documentation Pack
+# docs/
 
-## Human understanding
+Everything the project knows, sorted by what it is. **Folder tells you how much authority a
+document has** — that is the whole point of the layout.
 
-`SIH_RF_Brainstorming_Teammate_Guide.pdf`
+## Read these first
 
-This is the teammate guide. It is deliberately based on the brainstorming discussion only.
+| Order | File | Why |
+|---|---|---|
+| 1 | `project/SIH26055_PROBLEM_STATEMENT.md` | The requirement. Outranks everything else here. |
+| 2 | `project/DECISIONS.md` | Every decision taken, with evidence and status. Settles what is already closed. |
+| 3 | `project/ENVIRONMENT_SPEC.md` | The buildable spec for the RF environment. |
+| 4 | `project/EVALUATION.md` | How anything gets measured. |
 
-## Claude Code research handling
+---
 
-`CLAUDE_CODE_RESEARCH_PROTOCOL.md`
+## `project/` — authored, living, governs the build
 
-Rules for using the existing research/strategy/reference documents.
+These are ours. They are kept current; if a chat changes a decision, it changes these.
 
-`RESEARCH_MAP_TEMPLATE.md`
+| File | What it is |
+|---|---|
+| `SIH26055_PROBLEM_STATEMENT.md` | The official DRDO problem statement, verbatim, plus what it settles and leaves open. |
+| `PROJECT_ARCHITECTURE.md` | The human team's working architecture. Direction, not immutable. |
+| `ENVIRONMENT_SPEC.md` | Consolidated three-layer spec: scenario pipeline → truth → receiver → agent interface, plus build order. |
+| `EVALUATION.md` | **Single authority on metrics, baselines, validation gates and protocol.** |
+| `DECISIONS.md` | D1–D22 with status, evidence and two consistency audits. Read before proposing anything. |
+| `RESEARCH_MAP.md` | Every document in `reference/` classified: what it establishes, what it does not, its authority level. |
 
-Template for the repository's actual research inventory.
+## `protocol/` — how we work
 
-`CLAUDE_MD_UPDATE_PROMPT.md`
+| File | What it is |
+|---|---|
+| `CLAUDE_CODE_RESEARCH_PROTOCOL.md` | Rules for using reference material. Reference informs; it does not silently become requirement. |
+| `RESEARCH_MAP_TEMPLATE.md` | Template the research map was built from. |
+| `CLAUDE_MD_SUGGESTED_SECTION.md` | Suggested wiring for an existing `CLAUDE.md`. |
 
-Prompt to give Claude Code to audit the existing docs and wire the research map/protocol into the existing Claude instructions.
+## `reference/` — external material
 
-`CLAUDE_MD_SUGGESTED_SECTION.md`
+**Not requirements.** Classify before use, per the protocol. `project/RESEARCH_MAP.md` records
+what each one does and does not establish.
 
-Suggested minimal section for an existing `CLAUDE.md`.
+| Folder | Contents |
+|---|---|
+| `dataset/` | The TSRD paper — how the Turing data was generated. Primary source on dataset semantics; the HF dataset card is only a summary of it and is wrong in two places. |
+| `scheduling/` | The core literature: Köksal (intercept theory), **Apfeld et al.** (adaptive SNR-based search — our strong baseline), Gul & Erer (RPCA/TPSR), Dutertre (dynamic scan scheduling), alert–confirm dwell optimisation, plus two teammate summaries. |
+| `deinterleaving/` | Pulse-separation literature. **Out of scope** (D12/D19); kept for reference only. |
+| `background/` | Domain grounding, EW landscape, strategy notes, a crash course. Useful for the write-up; low authority for design. |
+| `problem-context/` | The iDEX ADITI 4.0 Cognitive EW challenge (p.12) and its official Q&A transcript — the sibling Army problem that grounds our intent reading. |
 
-## Important separation
+## `teammate-work/`
 
-Do not merge the human brainstorming guide with the research knowledge base.
+A teammate's independently-derived Gymnasium environment (`rf_env_grounded.py` plus its write-up).
+Kept as a **cross-check, not a base** — it arrived at a near-identical interface from the same PS
+text, which is corroboration. Our environment is built fresh.
 
-The two serve different purposes:
+---
 
-```text
-Brainstorming guide
-    ↓
-helps humans understand the architecture
+## Conventions
 
-Research knowledge base
-    ↓
-helps Claude Code + team make informed implementation decisions
-```
+- **Cite the primary.** A summary of a source is not a second source. Where a summary and its
+  primary are both here, the research map says so explicitly.
+- **The files beat the documents.** For any fact about the data, `data/turing/**/*.h5` wins —
+  including against the dataset's own README.
+- **Paths are repo-root-relative** in all cross-references, e.g.
+  `docs/reference/scheduling/paperSSPD (1).pdf`.
