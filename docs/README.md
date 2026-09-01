@@ -26,6 +26,7 @@ These are ours. They are kept current; if a chat changes a decision, it changes 
 | `EVALUATION.md` | **Single authority on metrics, baselines, validation gates and protocol.** |
 | `DECISIONS.md` | D1–D27 with status, evidence and two consistency audits. Read before proposing anything. |
 | `RESEARCH_MAP.md` | Every document in `reference/` classified: what it establishes, what it does not, its authority level. |
+| `RL_LANE_HANDOFF.pdf` (+ `.html` source) | Onboarding handoff for the RL lane: role split for three people, what is frozen, what is theirs to decide, what to learn. **Derived from the four files above — where they disagree, they win.** |
 
 ## `protocol/` — how we work
 

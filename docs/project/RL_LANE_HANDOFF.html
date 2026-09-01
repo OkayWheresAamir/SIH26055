@@ -1,0 +1,812 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>SIH26055 — RL Lane Handoff</title>
+<style>
+  @page { size: A4; margin: 18mm 16mm 16mm 16mm; }
+  html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  body {
+    font-family: "Charter", "Georgia", serif;
+    font-size: 10.4pt; line-height: 1.5; color: #17181a; margin: 0;
+  }
+  h1, h2, h3, h4, th, .ui { font-family: "Helvetica Neue", Helvetica, Arial, sans-serif; }
+  h1 { font-size: 22pt; line-height: 1.15; margin: 0 0 2mm; letter-spacing: -0.4pt; }
+  h2 { font-size: 14pt; margin: 9mm 0 2.5mm; padding-bottom: 1.5mm;
+       border-bottom: 1.2pt solid #17181a; letter-spacing: -0.2pt; }
+  h3 { font-size: 11.4pt; margin: 5.5mm 0 1.5mm; }
+  h4 { font-size: 10.2pt; margin: 4mm 0 1mm; color: #3a3d42; }
+  p { margin: 0 0 2.6mm; }
+  ul, ol { margin: 0 0 2.8mm; padding-left: 5.5mm; }
+  li { margin-bottom: 1.2mm; }
+  code, .mono { font-family: "SF Mono", "Menlo", "Consolas", monospace; font-size: 8.9pt;
+                background: #f2f2f0; padding: 0.3mm 1mm; border-radius: 1.5px; }
+  pre { font-family: "SF Mono", "Menlo", monospace; font-size: 8.4pt; line-height: 1.4;
+        background: #f7f7f5; border: 0.5pt solid #dcdcd6; border-radius: 2px;
+        padding: 3mm 3.5mm; overflow: hidden; white-space: pre-wrap; margin: 0 0 3mm; }
+  pre code { background: none; padding: 0; font-size: 8.4pt; }
+  table { border-collapse: collapse; width: 100%; margin: 0 0 3.5mm; font-size: 9.3pt; }
+  th { text-align: left; font-size: 8.6pt; text-transform: uppercase; letter-spacing: 0.4pt;
+       color: #55585e; border-bottom: 1pt solid #17181a; padding: 1.6mm 2mm 1.2mm; vertical-align: bottom; }
+  td { padding: 1.7mm 2mm; border-bottom: 0.5pt solid #e0e0dc; vertical-align: top; }
+  tr { break-inside: avoid; }
+  .lede { font-size: 11pt; color: #3a3d42; margin-bottom: 4mm; }
+  .meta { font-size: 8.6pt; color: #6a6d73; font-family: "Helvetica Neue", Arial, sans-serif;
+          border-top: 0.5pt solid #d5d5cf; padding-top: 2mm; margin-top: 3mm; }
+  .box { border-left: 2.5pt solid #17181a; background: #f7f7f5; padding: 3mm 4mm; margin: 0 0 4mm;
+         break-inside: avoid; }
+  .box.warn { border-left-color: #a8341f; background: #fbf4f2; }
+  .box.open { border-left-color: #1f5aa8; background: #f2f5fb; }
+  .box p:last-child, .box ul:last-child { margin-bottom: 0; }
+  .box .lbl { font-family: "Helvetica Neue", Arial, sans-serif; font-size: 8.4pt; font-weight: 700;
+              text-transform: uppercase; letter-spacing: 0.6pt; color: #55585e; display: block; margin-bottom: 1.5mm; }
+  .box.warn .lbl { color: #a8341f; }
+  .box.open .lbl { color: #1f5aa8; }
+  .role { border: 0.7pt solid #cfcfc9; border-radius: 2px; padding: 3.5mm 4mm; margin: 0 0 4mm;
+          break-inside: avoid; }
+  .role h3 { margin-top: 0; }
+  .tag { display: inline-block; font-family: "Helvetica Neue", Arial, sans-serif; font-size: 7.8pt;
+         font-weight: 700; letter-spacing: 0.5pt; text-transform: uppercase; padding: 0.6mm 1.8mm;
+         border-radius: 2px; background: #17181a; color: #fff; vertical-align: 2px; margin-left: 2mm; }
+  .tag.sup { background: #55585e; }
+  .src { font-size: 8.6pt; color: #6a6d73; font-style: italic; }
+  .pb { break-before: page; }
+  .avoid { break-inside: avoid; }
+  hr { border: none; border-top: 0.5pt solid #d5d5cf; margin: 5mm 0; }
+  .toc { font-family: "Helvetica Neue", Arial, sans-serif; font-size: 9.4pt; column-count: 2;
+         column-gap: 8mm; margin-bottom: 4mm; }
+  .toc div { margin-bottom: 1.2mm; break-inside: avoid; }
+  .toc span { color: #6a6d73; margin-right: 2mm; }
+</style>
+</head>
+<body>
+
+<h1>Smart Scan Strategy — RL Lane Handoff</h1>
+<p class="lede">What the reinforcement-learning half of SIH26055 has to build, what is already
+decided for you, and what three people need to learn to get through it without getting stuck.</p>
+
+<div class="meta">
+Project: SIH26055 (DRDO) — <em>Smart Scan Strategy for Electronic Warfare</em>. Written 2026-09-01.<br>
+Read alongside, and outranked by: <span class="mono">docs/project/SIH26055_PROBLEM_STATEMENT.md</span>,
+<span class="mono">ENVIRONMENT_SPEC.md</span>, <span class="mono">EVALUATION.md</span>, <span class="mono">DECISIONS.md</span>.<br>
+<strong>Provenance note.</strong> Every number in this document is <em>quoted</em> from those files, where it
+was measured against the Turing HDF5 data and recorded with its evidence on the date given. Nothing here was
+re-measured for this handoff, except the test count in §2, which was re-run while writing it. If a number
+matters to a decision you are making, re-run the measurement rather than trusting this page.
+</div>
+
+<div class="toc">
+  <div><span>1</span> The problem, in one page</div>
+  <div><span>2</span> Where the project is right now</div>
+  <div><span>3</span> Splitting the work across three people</div>
+  <div><span>4</span> The line you must not cross</div>
+  <div><span>5</span> What you actually control</div>
+  <div><span>6</span> The environment you will be training against</div>
+  <div><span>7</span> RL concepts you need, in the order you need them</div>
+  <div><span>8</span> Mapping this problem onto RL</div>
+  <div><span>9</span> Reward design — the real work</div>
+  <div><span>10</span> Algorithm choice</div>
+  <div><span>11</span> Training protocol</div>
+  <div><span>12</span> Evaluation and the two traps</div>
+  <div><span>13</span> Reading list, ordered</div>
+  <div><span>14</span> Milestones and definition of done</div>
+  <div><span>15</span> Working rules</div>
+  <div><span>16</span> Glossary</div>
+</div>
+
+<h2>1. The problem, in one page</h2>
+
+<p>A military radar receiver has to watch 18 GHz of spectrum. It cannot watch all of it at once — its
+instantaneous bandwidth is about one-eighteenth of the total. So it <em>sweeps</em>: it tunes to one
+1 GHz-wide band, listens for a short <strong>dwell</strong> (50 or 100 ms), then moves to the next band.
+Meanwhile, hostile emitters out there are transmitting — but not continuously. A radar with a rotating
+antenna only points at you for a fraction of each rotation. A frequency-agile radar hops between
+frequencies. So an emitter is only <em>interceptable</em> in certain (band, time) cells.</p>
+
+<p>You catch an emitter only if your receiver happens to be tuned to the right band at the moment that
+emitter happens to be illuminating you. Miss the overlap, and you never knew it was there. This is why the
+problem statement calls it a <strong>two-dimensional search problem</strong>: frequency and time.</p>
+
+<p>Today's systems sweep in a fixed order computed in advance from a library of known emitter types. That is
+<strong>open-loop</strong>. It has a specific failure: it spends the same time on an empty band as on a
+band full of new threats, because it is not listening to its own results. The problem statement asks for a
+scheduler that learns, from its own hits and misses, where to point next.</p>
+
+<div class="box">
+<span class="lbl">The RL lane's job in one sentence</span>
+<p>Learn a policy that picks the next band to tune to, using only the history of what this receiver has
+itself seen this episode, so that emitters are found <em>fast</em> and <em>a lot of their transmissions get
+captured</em> — beating both a round-robin sweep and a published adaptive algorithm on both counts at once.</p>
+</div>
+
+<h3>Why this is genuinely hard (and it is not obvious until you measure it)</h3>
+
+<p>There are two objectives and they pull in opposite directions. The team measured this on all 47 training
+scenarios (recorded in <span class="mono">DECISIONS.md</span> D14, amended 2026-08-30):</p>
+
+<table>
+<thead><tr><th>Scheduler</th><th>Interception ratio<br>(pulses captured)</th><th>Emitter coverage</th><th>Censored mean<br>time-to-first-intercept</th></tr></thead>
+<tbody>
+<tr><td><strong>Camp on the busiest band, never move</strong></td><td>57.4%</td><td>30.4%</td><td>23.78 s</td></tr>
+<tr><td><strong>Round-robin sweep</strong></td><td>5.5%</td><td>95.7%</td><td>9.72 s</td></tr>
+<tr><td>Pulse-capture oracle (ceiling, not a baseline)</td><td>66.8%</td><td>75.1%</td><td>15.04 s</td></tr>
+</tbody>
+</table>
+
+<p>Camping on one band captures ten times more signal than sweeping — and finds less than a third of the
+emitters, taking two and a half times as long to find the ones it does find. Sweeping finds nearly
+everything and captures almost nothing. <strong>No trivial strategy is good at both.</strong> That gap is
+the whole problem, and it is where your agent has to live.</p>
+
+<p>This is not a quirk of our dataset. Apfeld et al. found the same thing on different data: their random
+baseline had the <em>best</em> "radars detected at least once" score and the <em>worst</em> efficiency
+(<span class="mono">docs/reference/scheduling/paperSSPD (1).pdf</span>).</p>
+
+<div class="box warn">
+<span class="lbl">The single most important consequence</span>
+<p>If you optimise one number, you will get a degenerate agent that looks excellent and is operationally
+useless. <strong>Never report interception ratio without censored intercept time and coverage beside it.</strong>
+This rule is not a style preference — it is the reason the problem is interesting, and it is written into
+<span class="mono">EVALUATION.md</span> §4.</p>
+</div>
+
+<h2 class="pb">2. Where the project is right now</h2>
+
+<p>The environment is being built in four layers. Two exist; two do not yet.</p>
+
+<table>
+<thead><tr><th>Layer</th><th>File</th><th>What it does</th><th>Status</th></tr></thead>
+<tbody>
+<tr><td>L0 — scenario</td><td><span class="mono">rfenv/scenario.py</span></td><td>Turns Turing recordings into per-emitter contributions; builds scenarios by replay or by sampling</td><td><strong>Built</strong></td></tr>
+<tr><td>L1 — truth</td><td><span class="mono">rfenv/truth.py</span></td><td>The <span class="mono">Z</span> / <span class="mono">S</span> / <span class="mono">C</span> grid: what is really out there, per band per 50 ms slot</td><td><strong>Built</strong></td></tr>
+<tr><td>L2 — receiver</td><td><span class="mono">rfenv/receiver.py</span></td><td>A dwell: adds noise, compares to threshold, declares hit or miss</td><td>Not yet</td></tr>
+<tr><td>L3 — agent interface</td><td><span class="mono">rfenv/env.py</span></td><td>The Gymnasium environment you will call <span class="mono">reset()</span> and <span class="mono">step()</span> on</td><td>Not yet</td></tr>
+</tbody>
+</table>
+
+<p class="src">Verified while writing this document: <span class="mono">.venv/bin/python -m pytest -q</span> → 23 passed.
+<span class="mono">ls rfenv/</span> shows <span class="mono">constants.py</span>, <span class="mono">scenario.py</span>,
+<span class="mono">truth.py</span> and no <span class="mono">receiver.py</span> or <span class="mono">env.py</span>.</p>
+
+<div class="box">
+<span class="lbl">So what can you do before env.py exists?</span>
+<p>Most of your first two weeks, actually. In rough order:</p>
+<ul>
+<li><strong>Learn.</strong> §7 and §13. This is not filler — an RL team that starts coding before it
+understands advantage estimation will spend three weeks debugging a working algorithm.</li>
+<li><strong>Build the baselines</strong> (§12). They do not need a learned policy — they need only
+<span class="mono">env.step()</span>'s <em>signature</em>, which §6 gives you. Write them against a small
+fake env now, swap in the real one later. This is the best possible ramp-up: you learn the interface, the
+metrics, and the problem's shape by implementing the things you have to beat.</li>
+<li><strong>Build the training harness</strong> — config files, seeding, logging, run directories. Boring,
+and it is what separates a team that can answer "which run produced this number?" from one that cannot.</li>
+<li><strong>Write the reward candidates</strong> as standalone functions with a fixed signature, so they can
+be swapped without touching the agent (§9).</li>
+</ul>
+</div>
+
+<h2>3. Splitting the work across three people</h2>
+
+<p>Three roles. They are not three equal piles of RL code — one of them is barely RL at all, and it is the
+one that decides whether the project has a defensible result. Names are placeholders; assign them yourselves
+and write the assignment down.</p>
+
+<div class="role">
+<h3>R1 — Agent and training <span class="tag">implementer</span></h3>
+<p><strong>Owns:</strong> the policy. Algorithm choice, network, hyperparameters, the training loop,
+checkpoints, and the answer to "why did this run not learn?"</p>
+<p><strong>Deliverables:</strong> a trainable agent that beats round-robin on both primary metrics; a
+trained checkpoint that can be re-loaded and evaluated deterministically; a short record of what was tried
+and what failed.</p>
+<p><strong>Must understand deeply:</strong> MDPs and POMDPs; policy gradients; what an advantage estimate is
+and why variance matters; on-policy vs off-policy; entropy and exploration; the standard failure modes
+(policy collapse, reward hacking, silent environment bugs that look like slow learning).</p>
+<p><strong>Depends on:</strong> R2 for the environment wrapper and reward modules; R3 for honest evaluation.</p>
+<p><strong>Rough time to competence:</strong> Sutton &amp; Barto ch. 1, 3, 6, 13 + Spinning Up + the PPO
+paper ≈ one focused week, in parallel with building the harness.</p>
+</div>
+
+<div class="role">
+<h3>R2 — Environment integration and experiment harness <span class="tag">implementer</span></h3>
+<p><strong>Owns:</strong> everything between <span class="mono">rfenv</span> and the learner. The observation
+vector (including any extension you propose), the reward modules, vectorised/parallel environments, seeding
+and reproducibility, run configuration, and the logging that produces the artefacts
+<span class="mono">EVALUATION.md</span> §8 requires.</p>
+<p><strong>Deliverables:</strong> a wrapper the agent can train against at speed; a config system where a run
+is fully described by one file plus a seed; episode logs and <span class="mono">metrics.json</span> written
+automatically for every run.</p>
+<p><strong>Must understand deeply:</strong> the Gymnasium API contract (what <span class="mono">reset</span>,
+<span class="mono">step</span>, <span class="mono">terminated</span> vs <span class="mono">truncated</span>,
+<span class="mono">info</span> actually mean); observation normalisation; vectorised envs and how seeding
+works across them; enough of the RF model (§6) to know when the environment is lying to the agent.</p>
+<p><strong>Depends on:</strong> the environment lane for <span class="mono">receiver.py</span> and
+<span class="mono">env.py</span>. <strong>This is the person who talks to that lane</strong> — one interface
+owner, not three.</p>
+<p><strong>Rough time to competence:</strong> Gymnasium + Stable-Baselines3 docs, especially the "RL Tips and
+Tricks" page ≈ two to three days.</p>
+</div>
+
+<div class="role">
+<h3>R3 — Baselines, evaluation and evidence <span class="tag sup">support / analysis</span></h3>
+<p><strong>Owns:</strong> everything that decides whether the RL result is <em>believed</em>. The non-learning
+baselines, the metric implementations, the comparison tables and plots, the waterfall renders, and the
+written record of what was tried.</p>
+<p><strong>Deliverables:</strong> baselines 1–6 from the ladder in §12; one script that takes any scheduler
+(learned or not) and produces the full metric table on a fixed scenario set; the final comparison; the
+<span class="mono">DECISIONS.md</span> entries for every choice the RL lane made; the figures that go in the
+SIH presentation.</p>
+<p><strong>Must understand:</strong> the metric definitions in <span class="mono">EVALUATION.md</span> §4
+exactly — including <em>why</em> per-dwell hit rate and uncensored intercept time are wrong; the two traps in
+§12; enough RL vocabulary to read training curves and call out a suspicious result.</p>
+<p><strong>Does not need:</strong> to implement a policy gradient. This role is deliberately lighter on RL
+theory and heavier on rigour.</p>
+<p><strong>Why this role matters more than it looks:</strong> a scheduler that "wins" on a metric nobody
+checked is worth nothing at a defence review. R3 is the person who catches the camper masquerading as a
+learned policy, and who can say — with a number — what the agent actually bought us. Also the natural owner
+of the pitch narrative: what we tried, what the data showed, what changed our mind.</p>
+</div>
+
+<div class="box open">
+<span class="lbl">Open ownership question — settle this in week 1</span>
+<p>The baseline ladder is defined in <span class="mono">EVALUATION.md</span> §5 but has no owner recorded.
+This document proposes R3 owns baselines 1–6. Confirm with Aamir / the environment lane that they have not
+already claimed it, then write the answer into <span class="mono">DECISIONS.md</span>. Two people building
+round-robin twice is the cheapest possible waste.</p>
+</div>
+
+<h4>Where the three of you must actually be in the same room</h4>
+<ol>
+<li><strong>Observation vector.</strong> R2 proposes, R1 says whether it is learnable, R3 checks it contains
+no truth-side leakage. One meeting, one decision, logged.</li>
+<li><strong>Reward candidates.</strong> All three — R1 knows what is trainable, R3 knows what the metrics
+will punish. (§9.)</li>
+<li><strong>Final comparison run.</strong> Everyone agrees the protocol <em>before</em> the numbers exist,
+because agreeing after is how a result stops being credible.</li>
+</ol>
+
+<h2 class="pb">4. The line you must not cross</h2>
+
+<p>The environment is <strong>frozen</strong> once its four validation gates pass. Frozen means: these
+values live in <span class="mono">rfenv/constants.py</span> and no RL result may move them.</p>
+
+<table>
+<thead><tr><th>Frozen</th><th>Value</th><th>Why you cannot touch it</th></tr></thead>
+<tbody>
+<tr><td>Band geometry</td><td>36 bands, centres 250 MHz to 17 750 MHz on 500 MHz spacing, each ±500 MHz wide (so adjacent bands overlap by half)</td><td>Read from the Turing receiver metadata; changing it makes our numbers incomparable to the dataset</td></tr>
+<tr><td>Slot clock</td><td>50 ms slots, 600 slots = one 30 s episode</td><td>Turing's minimum dwell</td></tr>
+<tr><td>Dwell lengths</td><td>Seven bands dwell 100 ms, the other 29 dwell 50 ms; a full sweep is 2.15 s</td><td>Turing's own schedule</td></tr>
+<tr><td>Noise floor <span class="mono">N₀</span></td><td>−120 dB</td><td>Anchored to the receiver's own fields</td></tr>
+<tr><td>Noise sigma <span class="mono">σ</span></td><td>3 dB</td><td>Our receiver's design parameter</td></tr>
+<tr><td>Detection threshold <span class="mono">γ</span></td><td>−111 dB (= N₀ + 3σ)</td><td>See the box below — this is the important one</td></tr>
+<tr><td>Metric definitions</td><td><span class="mono">EVALUATION.md</span> §4</td><td>A metric redefined mid-project is a metric that proves nothing</td></tr>
+<tr><td>Scenario sampling distribution</td><td>N drawn from the empirical detectable-emitter count, 1 to 82</td><td>Keeps training difficulty matched to the data</td></tr>
+</tbody>
+</table>
+
+<div class="box warn">
+<span class="lbl">Why γ is frozen, and why P<sub>d</sub> is not yours to improve</span>
+<p>γ is the level at which the receiver declares "I heard something". Lower it and you hear more real
+signals — and more noise. That trade-off is the receiver's ROC curve, and it is a property of the
+<em>detector</em>, not of the schedule.</p>
+<p>If γ were trainable alongside your agent, the optimiser would simply lower it to manufacture hits:
+apparent interception improves, false alarms explode, and the comparison becomes meaningless. So:</p>
+<ul>
+<li><strong>P<sub>d</sub> and P<sub>fa</sub> are identical for every scheduler</strong>, yours included.
+At γ = −111 dB, measured over the 47 train configs: P<sub>d</sub> = 0.822, P<sub>fa</sub> = 1.35×10⁻³,
+sensitivity −107.2 dB (recorded in D23/D26, 2026-09-01).</li>
+<li><strong>Your agent cannot improve detection. It can only aim the detector at more of the right cells.</strong>
+That is what the scheduler-level metrics measure, and it is the only thing you are being judged on.</li>
+</ul>
+<p>If you ever find yourself wanting to change a frozen constant to make training work, that is a signal
+about your reward or your observation, not about the environment. Raise it; do not edit it. (D15, D21, D25.)</p>
+</div>
+
+<h2>5. What you actually control</h2>
+
+<p>Short list, and it is deliberately short. Everything here is <em>open</em> and is the RL lane's call —
+but each choice gets written into <span class="mono">DECISIONS.md</span> with its reasoning, because a
+decision nobody recorded is a decision the next person re-litigates.</p>
+
+<table>
+<thead><tr><th>Yours to decide</th><th>Notes</th></tr></thead>
+<tbody>
+<tr><td><strong>The RL algorithm</strong></td><td>Not fixed anywhere. See §10 for a recommendation.</td></tr>
+<tr><td><strong>Network architecture</strong></td><td>Including whether the policy is recurrent (see §8 — this matters more than usual here).</td></tr>
+<tr><td><strong>The reward function</strong></td><td>Explicitly a hyperparameter: define candidates, train under each, pick the winner on the PS's own metrics (D7). §9.</td></tr>
+<tr><td><strong>Observation extensions</strong></td><td>The baseline observation is defined (§6). You may extend it, subject to the cold-start rule in §6.</td></tr>
+<tr><td><strong>Exploration strategy</strong></td><td>Entropy bonus, epsilon schedules, curriculum over scenario difficulty.</td></tr>
+<tr><td><strong>Training schedule</strong></td><td>How many scenarios, how sampled, how many steps, when to stop.</td></tr>
+</tbody>
+</table>
+
+<h2>6. The environment you will be training against</h2>
+
+<p>Read <span class="mono">ENVIRONMENT_SPEC.md</span> for the full thing. This is the part you need in order
+to write code against it.</p>
+
+<h3>What is really out there: the truth grid</h3>
+
+<p>For one 30-second scenario the environment holds three arrays, each 36 bands × 600 slots:</p>
+
+<table>
+<thead><tr><th>Array</th><th>Meaning</th><th>Who sees it</th></tr></thead>
+<tbody>
+<tr><td><span class="mono">Z[b,t]</span></td><td><strong>Occupancy.</strong> Is any emitter transmitting into this band at this slot? Boolean, threshold-free. This is the problem statement's own "transmission or non-transmission".</td><td>Evaluator only</td></tr>
+<tr><td><span class="mono">S[b,t]</span></td><td><strong>Level.</strong> The peak received signal in dB, or the noise floor (−120 dB) where nothing is transmitting.</td><td>Environment internals</td></tr>
+<tr><td><span class="mono">C[b,t]</span></td><td><strong>Pulse count.</strong> How many pulses are in this cell — the numerator of interception ratio.</td><td>Evaluator only</td></tr>
+</tbody>
+</table>
+
+<p>These come from real Turing recordings, not from a physics model. An emitter's "contribution" is the set
+of cells it lit up in an actual 30 s recording; a scenario is a set of such contributions and the world is
+their element-wise maximum. There is a pool of 3,443 contributions over 1,913 distinct emitters, and a new
+scenario is a draw from that pool (D25).</p>
+
+<h3>What the agent sees: the detection channel</h3>
+
+<p>When the receiver dwells on band <span class="mono">b</span> at slot <span class="mono">t</span>, it does
+<em>not</em> get <span class="mono">Z</span>. It measures a noisy version of the level and thresholds it:</p>
+
+<pre><code>Y = 1  iff  S[b, t] + n ≥ γ ,    n ~ Normal(0, σ = 3 dB),    γ = −111 dB</code></pre>
+
+<p>So a real transmission can be missed (P<sub>d</sub> = 0.822, not 1) and an empty cell can produce a false
+alarm (P<sub>fa</sub> = 1.35×10⁻³). <strong>Your agent learns from <span class="mono">Y</span>, which is
+sometimes wrong.</strong> That is the point — a real ESM receiver's feedback is also sometimes wrong, and an
+agent that cannot tolerate it would not survive deployment.</p>
+
+<h3>The Gymnasium interface</h3>
+
+<pre><code>action_space      = Discrete(36)          # which band to tune to next
+observation_space = Box(shape=(109,))     # 36 x 3 + 1
+
+  [  0: 36]  per-band empirical hit rate     — how often looking there paid off
+  [ 36: 72]  per-band visit density          — how much of my time went there
+  [ 72:108]  per-band staleness              — how long since I last looked
+  [108]      normalised episode time         — how much of the 30 s is gone
+
+reward            = pluggable (see §9)
+info              = truth-side quantities: per-emitter first-intercept slots,
+                    cell occupancy. FOR THE EVALUATOR ONLY. Never feed to the agent.
+reset(seed, options={scenario})
+                  = deterministic replay (validation) or a sampled draw (training)</code></pre>
+
+<p>Those three per-band quantities are not arbitrary — they are the three things a scheduler needs in order
+to estimate the three figures of merit the problem statement asks for: detection probability, intercept rate,
+and staleness/intercept time respectively.</p>
+
+<div class="box warn">
+<span class="lbl">Cold start — the rule that shapes everything</span>
+<p>Every episode begins with <strong>zero</strong> emitter knowledge. No threat library, no map of who
+transmits where, no carry-over from the previous scenario. The observation is built <em>only</em> from the
+agent's own scan history this episode.</p>
+<p>This is not a simplification, it is the requirement: the problem statement's title condition is "in the
+absence of prior reliable intelligence of emitters and their operating characteristics" (D20). It is also
+what makes the explore/exploit tension real — with a prior library, camping would be defensible; without
+one, you must keep discovering.</p>
+<p><strong>Practical consequence:</strong> any observation extension you propose must be computable from the
+agent's own history. If it needs <span class="mono">Z</span>, <span class="mono">S</span>,
+<span class="mono">C</span>, emitter identities, or anything from <span class="mono">info</span>, it is
+leakage and the result is invalid. R3 should check every extension against this.</p>
+</div>
+
+<h3>Two subtleties that will bite you if nobody flags them</h3>
+
+<div class="box open">
+<span class="lbl">Subtlety 1 — an episode does not have a fixed number of steps</span>
+<p>An action selects a band; the dwell then runs that <em>band's</em> native length — 100 ms (2 slots) for
+seven of the 36 bands, 50 ms (1 slot) for the other 29. So an episode of 600 slots is somewhere between 300
+and 600 agent decisions depending on which bands were chosen.</p>
+<p>This is a direct reading of <span class="mono">ENVIRONMENT_SPEC.md</span> §L2 and D3/D16, not an
+independent claim. It means: variable-length episodes; a bootstrapping/discounting decision (does a 100 ms
+dwell discount twice?); and a subtle incentive — the wide-dwell bands cost double, so the agent is implicitly
+choosing how to spend time, not just where to look. Decide how you handle it and write it down.</p>
+</div>
+
+<div class="box open">
+<span class="lbl">Subtlety 2 — reward on <span class="mono">Y</span> or reward on <span class="mono">Z</span>?</span>
+<p><span class="mono">ENVIRONMENT_SPEC.md</span> names "+1 per true hit" as the first reward candidate.
+"True hit" implies <span class="mono">Z</span> — truth-side. But the agent only <em>observes</em>
+<span class="mono">Y</span>. Both are defensible and they are genuinely different designs:</p>
+<ul>
+<li><strong>Reward on <span class="mono">Z</span>:</strong> lower-variance training signal, no false-alarm
+noise in the gradient. Legitimate — the reward is a training-time construct and a simulator is allowed to be
+privileged. But it trains an agent against a cleaner world than it will observe.</li>
+<li><strong>Reward on <span class="mono">Y</span>:</strong> matches deployment exactly (a real system is only
+ever rewarded by what it declares), and is the honest reading of the PS's "trained based on hits and misses".
+Noisier.</li>
+</ul>
+<p><strong>This is not settled anywhere.</strong> It is the RL lane's first real decision. Settle it early —
+it changes what your reward functions can even reference — and record it in
+<span class="mono">DECISIONS.md</span>.</p>
+</div>
+
+<h2 class="pb">7. RL concepts you need, in the order you need them</h2>
+
+<p>This is the list of things where, if you do not understand them, you will lose days. Everything else can
+be looked up when you hit it. R1 needs all of it; R2 needs 1–4 and 8; R3 needs 1, 2 and 9.</p>
+
+<h4>1. MDP: state, action, reward, transition, discount</h4>
+<p>The vocabulary everything else is written in. A policy π maps state to a distribution over actions; the
+return is the discounted sum of future rewards; the agent maximises expected return. Know what γ (the
+discount, unrelated to our detection threshold γ — sorry) does to an agent's horizon. In our problem an
+episode is 30 s and a discount that is too aggressive will produce an agent that cannot justify exploring.</p>
+
+<h4>2. POMDP: why our agent cannot see the state</h4>
+<p>The true state is the 36×600 grid of who is transmitting. The agent sees a 109-number summary of its own
+history. It is <em>partially observed</em>, and the observation is a hand-built belief summary. Two direct
+consequences: (a) the optimal policy may need memory beyond what those 109 numbers carry, which is the
+argument for a recurrent policy; (b) improving the observation can beat improving the algorithm, so
+R2's work is not plumbing.</p>
+
+<h4>3. Exploration vs exploitation — and why our version is unusually literal</h4>
+<p>In most RL problems this is a metaphor about the learning process. Here it is the actual task: the agent
+must physically choose between re-visiting a band it knows is productive and probing one it has not seen.
+The measured tension in §1 <em>is</em> explore/exploit. Read Sutton &amp; Barto ch. 2 (bandits) even though
+we are not doing bandits — it is the cleanest statement of the trade-off you will ever read.</p>
+
+<h4>4. Restless multi-armed bandits — the framing worth knowing by name</h4>
+<p>Our problem is close to a textbook <em>restless bandit</em>: 36 arms, you pull one per step, and the arms
+keep changing whether you look at them or not (an emitter's beam rotates whether or not you are tuned to it).
+Knowing this gives you two things: intuition (staleness matters because unobserved arms drift), and pitch
+value (we can say what class of problem this is). We are not required to implement a Whittle index.</p>
+
+<h4>5. Value functions, advantage, and why variance is the enemy</h4>
+<p>V(s) is expected return from a state; A(s,a) is how much better action a is than the policy's average.
+Policy-gradient methods work by pushing up the probability of actions with positive advantage. Because our
+reward is sparse and noisy — a dwell either catches something or does not, and sometimes lies —
+<strong>advantage estimation quality is the difference between learning and not learning</strong>. Understand
+GAE and what its λ knob does.</p>
+
+<h4>6. On-policy vs off-policy</h4>
+<p>On-policy (PPO, A2C) learns from data the current policy just generated — stable, sample-hungry. Off-policy
+(DQN, SAC) reuses a replay buffer — sample-efficient, more fragile. Our environment is fast and simulated, so
+sample efficiency is cheap and stability is worth more. That is the argument for PPO in §10, and you should
+be able to reconstruct it yourself.</p>
+
+<h4>7. PPO specifically</h4>
+<p>The clipped surrogate objective, why clipping exists (stop a single update from destroying the policy),
+and the handful of hyperparameters that actually matter: learning rate, number of steps per update, number of
+epochs, entropy coefficient, GAE λ. Do not tune all of them at once.</p>
+
+<h4>8. Vectorised environments, seeding and reproducibility</h4>
+<p>You will run many environments in parallel. Know how seeds propagate, why a seeded run must reproduce
+exactly, and why "it worked yesterday" is not a result. R2 owns this and it is worth doing properly on day
+one rather than retrofitting it after the first surprising number.</p>
+
+<h4>9. Reading a training curve, and the standard failure modes</h4>
+<p>Reward going up is not success — reward going up is your agent finding whatever your reward actually said,
+which is often not what you meant. Learn to recognise: <em>policy collapse</em> (entropy → 0, agent picks one
+action forever — in our case, that is literally the camper); <em>reward hacking</em>; and the flat curve that
+means the environment is broken rather than the agent being slow. When a run looks too good, check whether
+the agent is camping. It usually is.</p>
+
+<h2>8. Mapping this problem onto RL</h2>
+
+<table>
+<thead><tr><th>RL term</th><th>Here</th></tr></thead>
+<tbody>
+<tr><td>Episode</td><td>One 30 s scenario, 600 slots, one draw of emitters</td></tr>
+<tr><td>Step</td><td>One dwell — 1 or 2 slots depending on the band chosen</td></tr>
+<tr><td>Action</td><td>Which of the 36 bands to tune to next (<span class="mono">Discrete(36)</span>)</td></tr>
+<tr><td>Observation</td><td>109 numbers summarising this episode's own scan history</td></tr>
+<tr><td>Hidden state</td><td>The 36×600 truth grid — never observed</td></tr>
+<tr><td>Reward</td><td>Derived from hits/misses; the exact form is yours to choose (§9)</td></tr>
+<tr><td>Transition</td><td>Deterministic in time (the world advances regardless); stochastic in what you hear (the noise draw)</td></tr>
+<tr><td>Termination</td><td>Fixed horizon: episode ends at 30 s. Nothing terminates early</td></tr>
+</tbody>
+</table>
+
+<p><strong>The one structural thing to notice:</strong> the world evolves whether you look at it or not. A
+band you ignored for 10 s has been busy or quiet without telling you. This is what makes staleness a
+meaningful feature and what makes the problem restless rather than a plain bandit.</p>
+
+<h2 class="pb">9. Reward design — the real work</h2>
+
+<p>The reward is explicitly a hyperparameter here (D7). You define candidates, train under each, and pick the
+winner using metrics the reward cannot influence — interception ratio and censored intercept time — because
+scoring a reward by numbers it generated itself is circular.</p>
+
+<p>Build reward functions as swappable modules with a single fixed signature from day one. R2 owns the
+plumbing; all three of you own the candidate list.</p>
+
+<h4>Candidate A — dense hit reward (the stated default)</h4>
+<p><span class="mono">+1</span> per hit in the dwell. Simple, dense, easy to learn. <strong>Expected failure
+mode: it produces the camper.</strong> Camping maximises hits per dwell and the measured tables in §1 show it
+scores 57.4% interception ratio doing so. Train it anyway — it is your reference point, and the fact that it
+degenerates is itself a result worth showing in the pitch.</p>
+
+<h4>Candidate B — discovery-weighted</h4>
+<p>Large bonus for the first intercept of a previously unseen emitter, small reward for repeat hits. Directly
+targets intercept time. Two problems to solve: the agent cannot identify emitters (deinterleaving is
+explicitly out of scope, D19), so "previously unseen" has to be defined from the environment's truth side at
+training time — which is legitimate but must be declared; and it may over-explore and lose interception ratio.</p>
+
+<h4>Candidate C — staleness / information-gain shaped</h4>
+<p>Reward hits, plus a term that grows with how long a band has gone unvisited. Cheap, computable purely from
+the agent's own history (so no truth-side dependence), and directly encodes the restless-bandit intuition.
+The risk is that it degenerates into round-robin if the staleness term dominates. The weighting is the
+experiment.</p>
+
+<div class="box">
+<span class="lbl">How to judge them — decide this before you train anything</span>
+<p>Every candidate is scored on the same fixed scenario set with the same seeds, and reported as the full
+scheduler-level table (§12), never as reward-per-episode. <strong>Reward values are not comparable across
+reward families</strong> — an agent that scores 400 under Candidate A and 90 under Candidate C has told you
+nothing. Only the PS metrics can rank them (D7).</p>
+</div>
+
+<h2>10. Algorithm choice</h2>
+
+<p>Not fixed by any project document — <span class="mono">PROJECT_ARCHITECTURE.md</span> §6 deliberately
+leaves it open. What follows is a <strong>recommendation with reasoning</strong>, not a decision. Make the
+decision yourselves, then record it.</p>
+
+<p><strong>Recommended default: PPO, with a recurrent variant as the first upgrade.</strong> The reasoning:</p>
+<ul>
+<li>Discrete action space of 36 — the easiest case for policy gradients.</li>
+<li>The simulator is fast, so PPO's sample hunger costs wall-clock, not feasibility.</li>
+<li>PPO is stable and forgiving. You will be changing the reward repeatedly (§9), which means retraining
+often; an algorithm that needs per-reward hyperparameter surgery will eat the schedule.</li>
+<li>It is well-documented and widely implemented, so a bug is more likely to be yours than the library's —
+which is what you want when debugging.</li>
+</ul>
+
+<p><strong>Why recurrent (LSTM/GRU) is the natural second step:</strong> the problem is a POMDP (§7.2), and
+the 109-number observation is a hand-designed summary of history. A recurrent policy can learn its own
+summary. Try feed-forward first — if it plateaus below the heuristic baselines, recurrence is the first thing
+to reach for, ahead of more hyperparameter tuning.</p>
+
+<p><strong>Use a maintained implementation</strong> (Stable-Baselines3, or SB3-contrib for RecurrentPPO)
+rather than writing PPO from scratch. Writing it yourself is an excellent way to <em>learn</em> it and a poor
+way to ship it; if R1 wants to implement it once as a learning exercise, do that in a scratch directory, not
+in the project.</p>
+
+<p><strong>What to reject and why (so you do not re-litigate it):</strong> DQN is plausible on a discrete
+action space but is more fragile under sparse noisy rewards and needs a replay buffer whose contents go stale
+as the policy changes. Contextual-bandit approaches throw away the temporal structure that makes staleness
+matter. Neither is wrong — they are just not where a small team's first month should go.</p>
+
+<h2>11. Training protocol</h2>
+
+<h4>Which scenarios you train on</h4>
+<table>
+<thead><tr><th>Purpose</th><th>Scenarios</th></tr></thead>
+<tbody>
+<tr><td>Environment validation (gates 1–4)</td><td>The 47 deterministic train replays — <em>not yours</em>, the environment lane owns this</td></tr>
+<tr><td><strong>RL training</strong></td><td>Sampled draws from the emitter pool, train configs only. No episode should repeat</td></tr>
+<tr><td><strong>Scheduler comparison</strong></td><td>One fixed seeded set of sampled scenarios, plus the 47 replays — identical for every scheduler including yours</td></tr>
+<tr><td>Final claim</td><td>The 45 held-out test pairs, <strong>once</strong>, after the whole system is frozen</td></tr>
+</tbody>
+</table>
+
+<div class="box warn">
+<span class="lbl">The held-out data</span>
+<p>45 scan/stare pairs under <span class="mono">data/turing/*/test_*/</span> are held out. Selection rule was
+fixed in advance, before any result was seen (D8). <strong>They are touched exactly once, at the very end.</strong>
+<span class="mono">scenario.py</span> refuses these paths unless an explicit
+<span class="mono">allow_heldout=True</span> is passed, and logs every such call — so touching them by accident
+is hard, and touching them on purpose leaves a trace. Do not tune against them, do not "just check", do not
+use them for early stopping. Every use gets recorded.</p>
+</div>
+
+<h4>Why sampled scenarios rather than the 47 replays</h4>
+<p>47 scenarios × 600 slots is roughly 28,000 decision steps per pass. An agent trained on 47 fixed worlds
+will memorise them, and memorisation is indistinguishable from strategy right up until the held-out
+evaluation says otherwise. The scenario sampler exists precisely to prevent this: it draws N emitter
+contributions from the pool, N taken from the empirical distribution of detectable emitters per config
+(1 to 82), so difficulty stays realistic while episodes never repeat (D25).</p>
+
+<h4>What every run must produce</h4>
+<p>Non-negotiable, because <span class="mono">EVALUATION.md</span> §8 defines evaluation in terms of these
+artefacts:</p>
+<ol>
+<li><strong>Episode log</strong> — per slot: time, band chosen, dwell length, declared hit Y, true occupancy,
+pulse count, peak level.</li>
+<li><strong>Emitter table</strong> — per emitter: detectable activity interval, first/last intercept slot,
+intercept count, bands seen in.</li>
+<li><strong>Waterfall render</strong> — the 36×600 grid as a frequency-vs-time heatmap with the scheduler's
+path drawn over it and hits marked. <em>Look at these.</em> It is the fastest way to see that your agent is
+camping, oscillating, or ignoring half the spectrum — a training curve will not tell you that, and this is
+also the standard ESM operator view, so it doubles as a presentation asset.</li>
+<li><strong><span class="mono">metrics.json</span></strong> — one per run.</li>
+</ol>
+
+<h4>Reproducibility</h4>
+<p>A run is described by one config file plus a seed, and re-running that pair reproduces the numbers.
+Report multiple seeds with spread, never a single run. Report per-scenario distributions, not just a grand
+mean — scenario difficulty spans 2 to 99 emitters and a mean over that range hides almost everything.</p>
+
+<h2 class="pb">12. Evaluation and the two traps</h2>
+
+<p>Metric definitions live in <span class="mono">EVALUATION.md</span> §4 and are frozen. Do not redefine one
+in your training code — call the shared implementation, so that the number in your TensorBoard and the number
+in the final table are the same number.</p>
+
+<h4>The table you must always report</h4>
+<table>
+<thead><tr><th>Metric</th><th>Definition</th><th>Direction</th></tr></thead>
+<tbody>
+<tr><td><strong>Interception ratio</strong></td><td>Intercepted illuminations ÷ total illuminations — a pulse counts as intercepted iff your tuned band window contained it at its time of arrival. <strong>Per illumination, not per dwell.</strong></td><td>higher</td></tr>
+<tr><td><strong>Censored mean intercept time</strong></td><td>Mean over detectable emitters of (first intercept − activity start), with an emitter never intercepted counted at the full 30 s</td><td>lower</td></tr>
+<tr><td>Emitter coverage</td><td>Fraction of detectable emitters found at least once — supporting diagnostic, always printed beside the two above</td><td>higher</td></tr>
+<tr><td>Average intercept rate</td><td>Distinct emitter-intercepts per second</td><td>higher</td></tr>
+<tr><td>Average reward / cost</td><td>Your accumulated reward. Comparable only within one reward family; never used to rank across rewards</td><td>—</td></tr>
+</tbody>
+</table>
+
+<div class="box warn">
+<span class="lbl">Trap 1 — per-dwell hit rate is misleading</span>
+<p>A camper scores 85–90% per-dwell and looks near-optimal while capturing 30% of the emitters. The
+per-illumination definition above is the honest one and is what the literature uses. If you see a per-dwell
+hit rate in a plot, it is a debugging aid, not a result.</p>
+</div>
+
+<div class="box warn">
+<span class="lbl">Trap 2 — uncensored intercept time rewards not looking</span>
+<p>Averaged over only the emitters it <em>found</em>, the camper appears <em>faster</em> (6.5 s) than
+round-robin — because it only ever finds the loudest, easiest emitters and the ones it missed silently drop
+out of the average. Censoring at episode end reverses it correctly: 23.8 s vs 9.7 s. <strong>An average over
+successes only is a measure of how little you attempted.</strong></p>
+</div>
+
+<h4>The ladder you have to climb</h4>
+<table>
+<thead><tr><th>#</th><th>Baseline</th><th>What it tells you</th></tr></thead>
+<tbody>
+<tr><td>1</td><td>Random</td><td>Lower bound; the coverage-heavy extreme</td></tr>
+<tr><td>2</td><td>Round-robin</td><td>The open-loop strategy the PS targets. <strong>The floor to beat</strong></td></tr>
+<tr><td>3</td><td>Turing reference sweep</td><td>The dataset's own schedule — makes our numbers comparable to the recordings</td></tr>
+<tr><td>4</td><td>Greedy static (camper)</td><td>The degenerate exploit, included precisely to show a single metric can be gamed</td></tr>
+<tr><td>5</td><td>Recency / activity heuristic</td><td>Simple adaptive benchmark</td></tr>
+<tr><td>6</td><td>Apfeld adaptive</td><td>Published non-learning adaptive strategy (<span class="mono">docs/reference/scheduling/paperSSPD (1).pdf</span> §II). <strong>The serious bar</strong></td></tr>
+<tr><td>7</td><td>RL scheduler</td><td>Yours</td></tr>
+<tr><td>—</td><td>Pulse-capture oracle</td><td>Ceiling. A reference line, not a competitor</td></tr>
+</tbody>
+</table>
+
+<p><strong>Beating round-robin is the minimum. Beating Apfeld is the claim worth making.</strong> Implementing
+Apfeld's algorithm is R3's most demanding task and should start early — it is a published algorithm being
+re-implemented from a paper, which always takes longer than expected.</p>
+
+<div class="box">
+<span class="lbl">The target, quantified</span>
+<p>The camper wins interception ratio (57.4%) and loses intercept time (23.78 s). Round-robin wins intercept
+time (9.72 s) and loses ratio (5.5%). <strong>Your agent's job is to Pareto-dominate that pair</strong> —
+approach round-robin's intercept time while multiplying its interception ratio. That is the success
+condition, stated as a number, and it was fixed before you started training, which is what makes it honest.</p>
+</div>
+
+<h2>13. Reading list, ordered</h2>
+
+<p>Read in this order. Stop when you can explain the concept to the person next to you; do not read the whole
+book.</p>
+
+<h4>Core RL — everyone, in week 1</h4>
+<ul>
+<li><strong>OpenAI Spinning Up, "Introduction to RL", parts 1–3.</strong> The fastest correct grounding that
+exists. Two hours. Start here, not with the textbook.</li>
+<li><strong>Sutton &amp; Barto, <em>Reinforcement Learning: An Introduction</em> (2nd ed.).</strong> Ch. 1
+(the problem), ch. 2 (bandits — read it for the explore/exploit statement), ch. 3 (MDPs). R1 additionally:
+ch. 6 (temporal-difference learning) and ch. 13 (policy gradients).</li>
+<li><strong>Spinning Up, "Kinds of RL Algorithms" and the PPO page.</strong> Then Schulman et al.,
+<em>Proximal Policy Optimization</em> (arXiv:1707.06347) — the paper is short and readable.</li>
+</ul>
+
+<h4>Practical — R1 and R2</h4>
+<ul>
+<li><strong>Gymnasium documentation</strong> — the API contract, spaces, wrappers, vector envs. R2 should
+read this properly rather than skimming.</li>
+<li><strong>Stable-Baselines3 documentation</strong> — PPO, VecEnv, callbacks, evaluation helpers. And in
+particular the <strong>"RL Tips and Tricks"</strong> page, which is the single highest-value page on this
+list for a team shipping under a deadline.</li>
+<li><strong>SB3-contrib RecurrentPPO</strong> — when you get to §10's second step.</li>
+<li>Optional, R1: Schulman et al., <em>Generalized Advantage Estimation</em> (arXiv:1506.02438).</li>
+</ul>
+
+<h4>Domain — in this repository, and worth more than more RL reading</h4>
+<ul>
+<li><span class="mono">docs/project/SIH26055_PROBLEM_STATEMENT.md</span> — the actual requirement. Everyone,
+first. It is short.</li>
+<li><span class="mono">docs/project/ENVIRONMENT_SPEC.md</span> and <span class="mono">EVALUATION.md</span> —
+everyone. These are the contract you are building against.</li>
+<li><span class="mono">docs/project/DECISIONS.md</span> — skim all of it once so you know what has already
+been settled; read D5, D7, D14, D15, D19, D20, D21, D25 closely.</li>
+<li><span class="mono">docs/reference/scheduling/paperSSPD (1).pdf</span> (Apfeld et al.) — the adaptive
+strategy you must beat. R3 reads §II in detail.</li>
+<li><span class="mono">docs/reference/scheduling/optimumsearch.pdf</span> (Köksal) — closed-form intercept
+time and probability of intercept for the periodic case. Useful for sanity-checking that a learned policy is
+not doing something impossible.</li>
+<li><span class="mono">docs/reference/scheduling/Dynamic Scan Scheduling.pdf</span> (Dutertre) — states the
+open-loop limitation this project exists to remove; good pitch material.</li>
+<li><span class="mono">docs/reference/background/SIH- Smart Scan Strategy.pdf</span> §3–5 — receiver
+sensitivity, P<sub>d</sub> and P<sub>fa</sub> as they are used in the EW literature, which is where the
+framing in §4 comes from.</li>
+</ul>
+
+<div class="box open">
+<span class="lbl">If a concept does not land</span>
+<p>Most of the RF/EW vocabulary here is new to most of the team. If probability of intercept, or what a
+policy gradient <em>is</em>, is not clicking from the reading — that is a conceptual question, and it is
+faster to take it to a chat assistant and have it explained from scratch than to keep re-reading. Split
+concept-learning from implementation deliberately; do not try to learn RL by debugging RL.</p>
+</div>
+
+<h2 class="pb">14. Milestones and definition of done</h2>
+
+<table>
+<thead><tr><th>#</th><th>Milestone</th><th>Owner</th><th>Done means</th></tr></thead>
+<tbody>
+<tr><td>M0</td><td>Everyone has read §1–6 and the problem statement</td><td>all</td><td>Each person can state the two objectives and why they conflict, without looking</td></tr>
+<tr><td>M1</td><td>Baselines 1–5 implemented against the interface in §6</td><td>R3</td><td>They run on a stub env and produce the full metric table</td></tr>
+<tr><td>M2</td><td>Training harness: config + seed + logging + the four artefacts</td><td>R2</td><td>A run is reproducible from its config file alone</td></tr>
+<tr><td>M3</td><td>Reward modules A, B, C written and swappable</td><td>R2 + all</td><td>Swapping a reward changes one line of config</td></tr>
+<tr><td>M4</td><td>Reward-on-Y vs reward-on-Z settled (§6, subtlety 2)</td><td>all → DECISIONS.md</td><td>Written down with reasoning</td></tr>
+<tr><td>M5</td><td><span class="mono">env.py</span> lands; wrapper integrated; a random policy trains without crashing</td><td>R2</td><td>End-to-end run completes and logs</td></tr>
+<tr><td>M6</td><td>First learned agent beats <strong>round-robin</strong> on both primary metrics</td><td>R1</td><td>On the fixed comparison set, multiple seeds, spread reported</td></tr>
+<tr><td>M7</td><td>Apfeld baseline implemented</td><td>R3</td><td>Reproduces the paper's qualitative behaviour</td></tr>
+<tr><td>M8</td><td>Reward candidates compared; winner chosen on PS metrics</td><td>all</td><td>Full table for each candidate; choice recorded in DECISIONS.md</td></tr>
+<tr><td>M9</td><td>Agent beats <strong>Apfeld</strong> — or we can say precisely why not</td><td>R1 + R3</td><td>The claim worth making, with the evidence behind it</td></tr>
+<tr><td>M10</td><td>System frozen; held-out evaluation run <strong>once</strong></td><td>all</td><td>Numbers recorded; the use of the held-out set logged</td></tr>
+</tbody>
+</table>
+
+<p>M6 is the point at which the project has an RL result at all. M9 is the point at which it has one worth
+presenting. Everything between M0 and M5 is scaffolding, and skipping it is the most reliable way to arrive
+at M6 with a number nobody can defend.</p>
+
+<h2>15. Working rules</h2>
+
+<p>These come from <span class="mono">CLAUDE.md</span> and the research protocol and apply to the RL lane
+exactly as to everyone else.</p>
+
+<ul>
+<li><strong>Every number is traceable.</strong> When you quote a figure, say how you got it — which script,
+which run, which seed. "I measured it on run 2026-09-14-ppo-c-seed3" and "I remember it being about 40%" are
+different claims and only one of them belongs in a table.</li>
+<li><strong>A measurement from a previous session is not a fact.</strong> Re-run it, or label it unverified.</li>
+<li><strong>Record every decision in <span class="mono">DECISIONS.md</span></strong>, including small ones,
+with the <em>why</em>. The reasoning is what makes a decision reusable; the decision alone is not. This is
+also where the SIH pitch narrative comes from — what we tried, what the data showed, what changed our mind.</li>
+<li><strong>Do not change anything on the freeze list</strong> (§4). If an RL result seems to require it, the
+environment must be re-validated from gate 1 and every baseline re-run — which is a project-level decision,
+not a lane-level one.</li>
+<li><strong>Surface findings as you get them.</strong> Not in an end-of-week summary. A finding that only
+ever existed in a chat log is a finding the project has lost.</li>
+<li><strong>Flag improvements-for-later separately</strong> from what you are doing now, rather than silently
+fixing them (scope creep) or silently dropping them (lost work).</li>
+</ul>
+
+<h2>16. Glossary</h2>
+
+<table>
+<thead><tr><th>Term</th><th>Meaning here</th></tr></thead>
+<tbody>
+<tr><td><strong>Band</strong></td><td>One of 36 tuning positions, each ±500 MHz around its centre. Adjacent bands overlap by half</td></tr>
+<tr><td><strong>Dwell</strong></td><td>One period of listening on one band: 50 ms (29 bands) or 100 ms (7 bands)</td></tr>
+<tr><td><strong>Slot</strong></td><td>The 50 ms time quantum. 600 slots per 30 s episode</td></tr>
+<tr><td><strong>Sweep</strong></td><td>One pass through all 36 bands in order: 2.15 s</td></tr>
+<tr><td><strong>Illumination / pulse</strong></td><td>A single transmission from an emitter that reaches our receiver</td></tr>
+<tr><td><strong>Intercept</strong></td><td>We were tuned to a band whose window contained a pulse, at the time it arrived</td></tr>
+<tr><td><strong>Interception ratio</strong></td><td>Fraction of all illuminations we captured. Per pulse, not per dwell</td></tr>
+<tr><td><strong>Intercept time (TTI)</strong></td><td>Time from an emitter becoming detectable to our first intercept of it. Censored at 30 s if never found</td></tr>
+<tr><td><strong>Coverage</strong></td><td>Fraction of detectable emitters found at least once</td></tr>
+<tr><td><strong>P<sub>d</sub></strong></td><td>Probability of declaring a hit given the cell really was occupied. A receiver property; the same for every scheduler</td></tr>
+<tr><td><strong>P<sub>fa</sub></strong></td><td>Probability of declaring a hit given the cell was empty. Also a receiver property</td></tr>
+<tr><td><strong>Sensitivity</strong></td><td>The signal level at which P<sub>d</sub> reaches a stated value at the operating P<sub>fa</sub>. Quoted with both, never alone</td></tr>
+<tr><td><strong>γ (gamma)</strong></td><td>The detection threshold, −111 dB. Frozen. Not the RL discount factor, which unfortunately shares the letter</td></tr>
+<tr><td><strong>Z, S, C</strong></td><td>Truth arrays: occupancy (boolean), level (dB), pulse count. 36 × 600 each</td></tr>
+<tr><td><strong>Y</strong></td><td>What the receiver <em>declares</em> when it looks. Sometimes wrong. This is what the agent learns from</td></tr>
+<tr><td><strong>Cold start</strong></td><td>Every episode begins with zero prior emitter knowledge. Required by the problem statement</td></tr>
+<tr><td><strong>ESM</strong></td><td>Electronic Support Measures — the passive listening half of electronic warfare</td></tr>
+<tr><td><strong>Deinterleaving</strong></td><td>Separating a mixed pulse stream by emitter. The Turing dataset's native task; explicitly <em>not</em> ours (D19)</td></tr>
+</tbody>
+</table>
+
+<div class="meta">
+<strong>Where this document is wrong, the source wins.</strong> The problem statement outranks
+<span class="mono">ENVIRONMENT_SPEC.md</span> and <span class="mono">EVALUATION.md</span>, which outrank this
+handoff. If you find a disagreement, it is a finding — report it rather than picking one.
+</div>
+
+</body>
+</html>
