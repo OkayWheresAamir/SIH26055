@@ -1,0 +1,650 @@
+# Decisions
+
+Every decision this project has taken, why, and what evidence backed it. Written so that
+months later — or while building the PPT — anyone can reconstruct *why* the system looks the
+way it does, and so no settled question gets silently reopened.
+
+**Status vocabulary**
+
+| Status | Meaning |
+|---|---|
+| `SETTLED` | Decided. Do not reopen without new evidence. Build on it. |
+| `PROPOSED` | Recommendation with evidence, **awaiting a human decision.** `CLAUDE.md` requires this for anything shaping the environment, receiver, ground truth, reward, evaluation or scheduler. |
+| `OPEN` | Genuinely undecided. Needs discussion or research. |
+| `CLOSED` | Was a question, turned out not to need a decision. Recorded so it stays closed. |
+
+**Evidence vocabulary.** *Measured* = a command run against the HDF5 files, reproducible.
+*Sourced* = quoted from a document in `docs/`, cited. *Reasoned* = follows from the above; no
+new evidence. Anything else is unverified and says so.
+
+---
+
+## D1 — The environment is generative, not a replay of the recordings
+
+**Status:** `SETTLED` (2026-08-28)
+
+We build a simulated RF environment carrying its own truth state, and use the Turing
+recordings to construct and validate it. We do not replay pulse logs as if they were the world.
+
+**Why.** The problem statement requires it outright: *"A system model for the receiver needs to
+be developed with measurements obtained from a simulated RF environment which has truth
+information on status of emitters in each band and at each time slot."* Independently, a replay
+cannot answer counterfactuals — "what would the receiver have seen in band 12 at t=7.3 s if it
+had looked there?" — and answering those is the entire point of having an environment.
+
+**Evidence.** Sourced: `docs/project/SIH26055_PROBLEM_STATEMENT.md`. Reached independently before the
+PS was available, then confirmed by it.
+
+**Consequence.** `docs/project/PROJECT_ARCHITECTURE.md` §3 was right; the pulse table is not a complete
+description of the hidden world.
+
+---
+
+## D2 — Truth is built from metadata for *who/what/where*, and from the recordings for *when*
+
+**Status:** `SETTLED` (2026-08-28)
+
+Emitter identity, frequency, PRI, pulse width, beam geometry, position and power come from
+`metadata/transmitters`. Activity windows — when each emitter is transmitting at all — are
+recovered from the recordings.
+
+**Why.** The metadata is complete but has no notion of when an emitter turns on. The recordings
+have that information but are incomplete in other ways. Together they cover the state we need.
+
+**Evidence.** Measured: transmitter metadata is byte-identical between scan and stare across all
+47 train pairs (every attribute and dataset compared recursively). Measured: 63 of 82 emitters
+across six scenarios (76.8%) transmit in a single continuous window — e.g. `config_2` emitter 3
+runs 4.14 s to 16.98 s with no gap over 100 ms — and nothing under
+`metadata/transmitters/transmitters_3` encodes that window.
+
+**Known limit, to be stated in the write-up.** An emitter that neither recording ever captured
+is invisible to us. We do not claim otherwise.
+
+---
+
+## D3 — Adopt Turing's receiver geometry unchanged
+
+**Status:** `SETTLED` (2026-08-28, reaffirmed 2026-08-29)
+
+36 bands on 500 MHz centres from 250 MHz to 17750 MHz, each ±500 MHz wide, on Turing's native
+non-uniform dwell schedule (seven 100 ms, twenty-nine 50 ms, 2.150 s per sweep). A band keeps
+its native dwell length when our scheduler selects it.
+
+**Why.** The reference comparison is the project's value proposition. Changing the geometry
+breaks comparability with the Turing sweep and with every baseline number measured against it.
+
+**Evidence.** Measured: 99.985% of 4,393,233 scan pulses fall within ±500 MHz of the dwell
+centre active at their ToA, with a hard edge at exactly 500 MHz and zero pulses in [500, 520).
+
+**Note — bands overlap by half, and the dataset paper disagrees.** The paper says the receiver
+sweeps *"in 500 MHz steps and 500 MHz bandwidth"*, implying a disjoint tiling. The files say
+otherwise: pulses spread evenly across ±500 MHz (52.63% within ±250; a 500 MHz-total window
+would give ~100%). Effective window is 1000 MHz on 500 MHz centres. Most likely
+`bandwith_mhz = 500` is applied as a half-width in their generator. Per the `CLAUDE.md`
+authority table, **the files win.**
+
+**Interpretive consequence.** Two *adjacent* band choices share half their spectrum, so for
+neighbours "picked a different band" is not "looked somewhere else". For non-adjacent choices it
+genuinely is. This affects how we read exploration behaviour; it does not invalidate the setup.
+
+---
+
+## D4 — Environment state is a per-(band, slot) signal level; the PS's binary occupancy is derived from it by threshold
+
+**Status:** `SETTLED` — **accepted by the team 2026-09-01.**
+
+The environment holds a continuous received-signal level for every (band, time slot) cell. The
+binary transmission / non-transmission status the PS asks for is produced by thresholding that
+level. The threshold is an explicit receiver parameter.
+
+**Why this rather than a native binary model.** Three independent lines agree:
+
+1. **The data is not a window function.** Measured on `config_2` stare: folding each emitter's
+   pulse times at its rotation period, peak received amplitude swings **53–62 dB** across one
+   revolution in a smooth antenna-pattern shape, and **all 36 phase bins contain pulses**. The
+   emitter is detectable at every beam angle, just far weaker off-boresight. A binary
+   illuminating / not-illuminating model cannot represent that.
+2. **The dataset was generated that way.** The TSRD paper §II: ambient noise −100 dB, received
+   amplitude falling quadratically with distance, and *"the probability of pulse detection
+   increases the more distinct the signal is from the noise floor."*
+3. **The literature made this exact correction.** Apfeld, Charlish & Koch (2016),
+   `docs/reference/scheduling/paperSSPD (1).pdf`, argue the window-function model used by Clarkson, Köksal and others
+   is *"rather simplistic"* and replace it with SNR time series precisely so sidelobe intercepts
+   are representable. Our measurement is that correction, reproduced independently in Turing data.
+
+**What it buys us.** Probability of false alarm and sensitivity — both PS-mandated metrics —
+are only definable as a threshold on a noisy continuous quantity. A natively binary environment
+cannot be wrong, so its Pfa is identically zero and the metric carries no information. This
+resolves what was tracked as Q4.
+
+**It still satisfies the PS.** *"The status of environment for each frequency band at each time
+step can be recorded as a transmission or a non-transmission"* — it can, and is. The PS
+constrains the state we expose to the scheduler, not the machinery underneath.
+
+**Feasibility measured.** Prototype grid built from stare recordings: 36 bands × 600 slots of
+50 ms over 30 s. Occupancy is a smooth function of threshold — `config_2` runs 25.0% at −120 dB
+down to 4.9% at −80 dB; `config_921` 48.8% to 16.4%; `config_59` 6.3% to 1.3%. The set of bands
+that are ever active stays stable across thresholds (20, 21 and 8 of 36 respectively), so the
+structure is robust while the operating point is tunable.
+
+**Accepted 2026-09-01.** The architecture is settled. The numeric value of γ is not a separate
+judgement call — it is produced by the calibration procedure in D15 and reported as a full ROC
+sweep, so no arbitrary constant is ever chosen by hand. D5, D6 and D15 settle with it.
+
+---
+
+## D5 — A hit is: tuned to the band, during the slot, with signal above threshold
+
+**Status:** `SETTLED` with D4 (2026-09-01)
+
+**Why.** It is the PS's own definition once D4 supplies the occupancy: *"the model should then
+be trained based on hits and misses."* No extra machinery.
+
+**Still open inside this:** whether all hits score equally, or whether first-interception of a
+previously unseen emitter is worth more. The PS names two objectives that pull apart —
+*minimise intercept time* favours weighting discovery, *high interception rate* favours raw
+volume. **Empirical warning from the literature:** Apfeld et al. found their Random baseline had
+the **best** percentage of radars detected at least once while having the **worst** efficiency —
+pure exploration wins coverage, exploitation wins efficiency. Whatever we choose will move those
+two metrics in opposite directions, and we should report both.
+
+---
+
+## D6 — Pfa and sensitivity come from the detection threshold
+
+**Status:** `SETTLED` with D4 (2026-09-01)
+
+Sweeping the threshold traces an ROC curve; that is where Pd, Pfa and sensitivity come from,
+and it gives us a principled operating point rather than an arbitrary one.
+
+**Evidence.** Reasoned from D4. Enabled by the measured threshold sweep in D4.
+
+---
+
+## D7 — The reward is a hyperparameter, selected on the PS's own metrics
+
+**Status:** `SETTLED` (2026-08-29)
+
+Define two or three candidate reward functions, train under each, then score all of them on
+*intercept time* and *interception rate*. Whichever produces the best PS-mandated metrics wins.
+
+**Why.** Scoring a reward by results it itself generated is circular. Intercept time and
+interception rate are mandated by the PS and are reward-independent, so they can judge a reward
+from outside. Reward is decided *before* training and *chosen* after comparison.
+
+**Evidence.** Reasoned. Metric list sourced from `docs/project/SIH26055_PROBLEM_STATEMENT.md`.
+
+---
+
+## D8 — Held-out test set: 45 pairs, rule fixed in advance
+
+**Status:** `SETTLED` (2026-08-28)
+
+45 scan/stare pairs from the test split, in `data/turing/*/test_*/`. Selection rule and config
+ids recorded in `docs/project/RESEARCH_MAP.md`. **Not to be touched until the system is frozen.**
+
+**Why not all 250?** Train was chosen by stratified sampling on stare file size. If test were
+the full split, train and test would have different size distributions and any performance gap
+could be distribution shift rather than a genuine generalisation failure. Matching the selection
+rule keeps them comparable. What makes a held-out set honest is that the rule was fixed before
+any result was seen — not its size. 45 scenarios is ample for a confidence interval.
+
+---
+
+## D9 — `sensitivity_dbm` is not a detection threshold
+
+**Status:** `CLOSED` (2026-08-29)
+
+**Why it came up.** The receiver attribute reads −110.0, yet 4.49% of scan pulses and 4.01% of
+stare pulses sit below it, with no cliff in the amplitude histogram at −110 or at −120
+(−110 minus the 10 dB `gain_db`).
+
+**Resolution.** The TSRD paper §II states detection is probabilistic against a −100 dB ambient
+noise floor. There was never meant to be a hard threshold. The field is configuration that does
+not gate the Amplitude column. Our measurement was correct; the dataset card simply did not
+document the model. **We define our own threshold (D4); we do not inherit theirs.**
+
+---
+
+## D10 — Scan and stare are not nested, and that is a property, not a defect
+
+**Status:** `CLOSED` (2026-08-29)
+
+**Measured:** across the 47 train pairs, 209 emitter-instances appear in scan but not stare, and
+174 the other way. Neither is a superset.
+
+**Resolution.** TSRD paper §II: *"Pulses were dropped when the Rx was not tuned to the correct
+frequency band, when the Tx was too far for detection, or when the pulse width dropped below a
+threshold (0.0069µs)."* Verified — minimum pulse width across 72,031,672 train pulses is exactly
+0.006900 µs, with none below. These rules apply to **both** modes, plus random drops. Stare is
+an oracle in *coverage*, not in *detection*. The HF dataset card's "detecting all signals" is
+wrong; the paper it summarises is not.
+
+---
+
+## D11 — No additional datasets
+
+**Status:** `SETTLED` (2026-08-29)
+
+Turing only.
+
+**Why.** Our difficulties were documentation gaps, not data gaps, and they are now closed
+(D9, D10). Of the alternatives considered: the **Radar Emitter Database** by John C. Wise MBE
+([radars.org.uk](https://www.radars.org.uk/)) — the "JC Wise" in the PS's dataset line — is a
+commercial reference product of 16,500 emitter identities sold with a handbook, not a
+downloadable training set; it is a parameter reference of the kind Turing used to set its
+emitter ranges. **RadioML 2018** is communications modulation classification on IQ streams —
+wrong problem, wrong data type, and the TSRD paper explicitly rejects that family as
+*"insufficient for congested radar environments"*. Mixing sources would create exactly the
+environment-mismatch problem we would be trying to avoid.
+
+---
+
+## D12 — Clustering is not the deliverable
+
+**Status:** `SETTLED` (2026-08-29)
+
+Emitter clustering may later serve as a *supporting* component — for example, estimating how
+many distinct emitters have been seen in a band. It is not the system we are asked to build.
+
+**Why.** Clustering pulses by emitter is **deinterleaving**, which is what the Turing dataset
+was built for and what its challenge scores. Our PS asks for a *scheduler*: *"Expected Solution:
+Machine learning based Electronic Support receiver scheduler software."* Building a clusterer
+would be solving a different, already-benchmarked problem.
+
+**If we ever want it:** the TSRD paper publishes HDBSCAN baselines on raw PDWs — V-measure 0.54
+stare, 0.19 scan (Table IV) — so there is a citable reference point without us doing the work.
+
+---
+
+## D13 — Baseline set
+
+**Status:** `SETTLED` (2026-08-29)
+
+Random; round-robin; **Turing's own reference sweep**; a recency/activity heuristic; and
+**Apfeld's adaptive strategy** as the strong non-learning baseline. RL is compared against all
+of them under identical conditions.
+
+**Why Apfeld specifically.** It is published, directly on our problem, non-learning, and
+described in enough detail to reimplement (`docs/reference/scheduling/paperSSPD (1).pdf` §II, plus its Algorithm 1).
+Beating a real published adaptive strategy is a far stronger claim than beating round-robin.
+Its own baselines — Random, "Active RFs", adaptive-without-tracking — give us a ladder that
+maps onto the ablation study we need anyway.
+
+---
+
+## D14 — The problem is only hard if we measure it with both metrics at once
+
+**Status:** `SETTLED` as a finding (2026-08-29). **AMENDED 2026-08-30 — read the amendment; it corrects the interpretation below.**
+
+A trivial scheduler that picks the single busiest band at t=0 and **never moves again** achieves
+**90.3%** hit rate against an oracle's 91.9%, and beats round-robin on **47 of 47** scenarios.
+On hit rate alone, this problem is close to solved by a scheduler that does nothing.
+
+It is saved by the second metric. Measured across all 47 train scenarios on a stare-derived
+occupancy grid (36 bands × 600 slots of 50 ms):
+
+| Scheduler | Hit rate | Emitter coverage | Mean time to first intercept |
+|---|---|---|---|
+| Oracle (knows the future) | 91.9% | — | — |
+| Greedy static (camp on busiest band) | **90.3%** | **27.9%** | 6.47 s |
+| Round-robin | 33.3% | **92.8%** | 8.70 s |
+| Random | 33.3% | 89.3% | 8.96 s |
+
+**Why this matters more than anything else measured so far.**
+
+1. **Optimising hit rate alone produces a scheduler that camps on one band and ignores 72% of
+   the emitters.** That is operationally useless and would score well on a naive metric.
+2. **Optimising coverage alone gives you round-robin** — which is the open-loop baseline the PS
+   is explicitly asking us to beat.
+3. **Nothing in the table is good at both.** Greedy has 2.7× round-robin's hit rate and less
+   than a third of its coverage. That gap is exactly the space an adaptive scheduler should
+   occupy, and it is now measured rather than assumed.
+4. It reproduces, in Turing data, precisely what Apfeld et al. found: their Random baseline was
+   best on radars-detected-at-least-once and worst on efficiency. Two independent datasets, same
+   tension.
+5. It vindicates not promoting the ~35% figure into the environment definition — a single
+   scalar hides all of this.
+
+**Consequences.**
+- The reward (D7) must express both, or be selected against both.
+- **Never report hit rate, interception ratio or efficiency without coverage beside it.**
+- The oracle row is our ceiling; round-robin is the floor the PS names. Both go in every table.
+
+**A metric trap inside this result.** Greedy's mean time-to-first-intercept (6.47 s) looks
+*better* than round-robin's (8.70 s) — but it is conditioned on the 27.9% of emitters greedy
+ever finds, which are the loudest and easiest. Time-to-intercept averaged over *found* emitters
+rewards not looking. Either average over all detectable emitters with a censoring penalty for
+misses, or report coverage alongside it every time.
+
+**AMENDMENT 2026-08-30 — the metrics below were naively instantiated; the corrected ones
+change the conclusion.**
+
+The 2026-08-29 table used a *per-dwell* hit rate, which is not how the literature defines
+interception. Gul & Erer (Fig. 2) define interception ratio as *"the percentage of the total
+amount of intercepted illuminations on the total amount of illuminations"* — per illumination,
+not per dwell. And intercept time must be **censored**: an emitter never found counts at the
+full 30 s, not dropped from the average (the 2026-08-29 table averaged only over found emitters,
+which rewards not looking). Re-measured across all 47 scenarios with capture defined per pulse
+(a pulse is intercepted iff the scheduler's band window contains it at its slot):
+
+| Scheduler | Per-dwell hit | Interception ratio (per pulse) | Coverage | Censored mean TTI |
+|---|---|---|---|---|
+| Pulse-capture oracle | 91.9% | 66.8% | 75.1% | 15.04 s |
+| Greedy static (camp) | 85.0% | **57.4%** | 30.4% | **23.78 s** |
+| Round-robin | 33.3% | **5.5%** | 95.7% | **9.72 s** |
+| Random | 33.3% | 5.5% | 93.5% | 10.01 s |
+
+("Oracle" here maximises per-slot pulse capture; a TTI-optimal oracle would look different —
+each column has a different optimum, which is itself the point.)
+
+**What survives from 2026-08-29:** the tension is real, and single-metric reporting is fatal.
+
+**What changes:**
+1. **The camper's strength on interception ratio is genuine, not an artifact of per-dwell
+   accounting** — it captures 57.4% of all pulses because the busiest band really does hold a
+   mean 57.4% of a scenario's pulses (median 52.2%; >50% in 27 of 47 scenarios). And this
+   dominance is a *documented dataset property*: the TSRD paper introduces label imbalance "at a
+   proportion of up to 99.7%" and states *"the high proportion of strongly dominating
+   transmitters is likely exaggerated."* So camping is strong because the dataset deliberately
+   exaggerates dominance — universal across the dataset, not a bias in our 47 (which are
+   stratified samples of it).
+2. **The PS's own second metric already defeats the camper.** With censored intercept time,
+   greedy scores 23.78 s against round-robin's 9.72 s. The 2026-08-29 claim that coverage —
+   "a metric SIH didn't specify" — was what rescued the problem is **wrong**: intercept time is
+   PS-mandated, and correctly computed it does the rescuing. Coverage remains a useful
+   diagnostic, but we do not need off-spec metrics to make the problem honest.
+3. **The two PS objectives are in direct, measured tension.** Interception ratio champion:
+   greedy (57.4%, TTI 23.78 s). Intercept-time champion: round-robin (9.72 s, ratio 5.5%).
+   No trivial strategy is good at both. **The problem, measured: Pareto-dominate that pair —
+   an adaptive scheduler must approach round-robin's intercept time while multiplying its
+   interception ratio.** That is exactly the explore-then-exploit arc Apfeld's algorithm
+   embodies, and it is now a quantified target rather than a slogan.
+
+**Caveats on these numbers.** Truth is stare-derived, so emitters below 500 MHz that only scan
+sees are missing (D10). Occupancy is "≥1 pulse in band during slot" with no detection threshold,
+which is the permissive end — D4's threshold will lower every row. Band assignment for pulses in
+the overlap between adjacent bands takes the last matching band rather than both. Directional
+conclusions are robust to all three; the exact figures are not final.
+
+---
+
+## D15 — The detection threshold is calibrated and swept, not trained
+
+**Status:** `SETTLED` with D4 (2026-09-01)
+
+The threshold that turns the continuous signal level (D4) into binary occupancy is a **receiver
+design parameter**, not something the RL agent learns. Two commitments:
+
+1. **Report the whole curve.** Sweeping the threshold traces Pd against Pfa — the ROC. The PS
+   asks for Pd, Pfa *and* sensitivity as figures of merit; the sweep *is* that deliverable, and
+   every scheduler is evaluated at the same operating point on it.
+2. **Calibrate the default operating point against the recordings.** Choose the threshold at
+   which replaying Turing's own sweep through our environment best reproduces the observed scan
+   recordings (the ~35% non-empty dwell rate and the per-band structure). The TSRD paper's
+   −100 dB ambient noise floor anchors the plausible range.
+
+**Why not train it?** It defines the world the agent lives in. Training it alongside the agent
+would let the optimiser move the goalposts — a scheduler could "improve" by making detection
+easier. Fixed world, competing schedulers: that is the whole experimental design (D3, D7).
+
+---
+
+## D16 — Time base: 50 ms slots; native dwells span one or two slots
+
+**Status:** `SETTLED` (2026-08-30) — routine implementation inside D3
+
+The occupancy/signal grid uses a 50 ms slot — Turing's minimum dwell. The seven 100 ms dwells
+in the reference schedule occupy two consecutive slots. An action is "choose a band"; the dwell
+then lasts that band's native length per D3. Verified compatible: the dwell-schedule replay that
+assigned 99.985% of scan pulses correctly was built on exactly this clock.
+
+---
+
+## D17 — Truth grid from the union of both recordings; validation kept out-of-sample
+
+**Status:** `SETTLED` (2026-09-01) — adopted alongside D4; flag if you disagree
+
+**Construction:** the truth state is built from the union of scan- and stare-derived evidence.
+Neither recording is "the truth" (D1/D2 already say truth is the *constructed* state); they are
+two incomplete observations of one world, and discarding either throws away real emitters.
+Measured: adding scan on top of stare adds a mean **6.15%** more occupied cells — and up to
+**+158%** in the outlier (`config_1089`, where scan recorded more pulses than stare, 1,693 vs
+923) — plus the sub-500 MHz emitters stare's frequency floor cuts off entirely (D10).
+
+**The circularity worry, and its fix.** If truth is built partly *from* the scan recording,
+then validating by replaying the scan schedule and comparing to that same recording is partly
+self-fulfilling. So the primary validation gate is **out-of-sample**: build a truth grid from
+**stare only**, replay Turing's scan schedule through it, and compare the predicted detections
+against the *actual scan recording* — data that never touched the construction. That is a
+genuine prediction test (stare evidence → scan observations). The union grid is then used for
+the final environment. The scan-only content (mostly sub-500 MHz) has no independent recording
+to test against; that limitation is stated, not hidden.
+
+---
+
+## D18 — The environment must support scenario variation, not just 47 fixed replays
+
+**Status:** `SETTLED` as a design requirement (2026-08-30)
+
+The scenario loader takes one of the 47 configs as a **template** and can randomise within it:
+activity-window placement, emitter beam phase (`scan_start_angle` is already per-instance
+randomised in the data), positions within plausible range, and which emitters are active.
+Deterministic replay of the exact recorded scenario remains available for validation.
+
+**Why.** 47 scenarios × 600 slots is ~28k decision steps per pass — small if the agent can only
+ever see 47 fixed worlds, and an agent trained on fixed replays can memorise them. Because the
+environment is generative (D1), the 47 configs plus the 68 documented transmitter types are a
+*scenario distribution*, not a fixed set — randomisation gives unlimited distinct episodes while
+staying Turing-grounded. This preserves the original "exhaustiveness over volume" rationale for
+the 47 (they are stratified for diversity) and is the standard sim-training practice (domain
+randomisation). Whether and how much randomisation to use during training is the RL lane's
+call; the environment's job is to make it available.
+
+**Consequence for construction:** build the scenario loader with a seedable randomisation knob
+from day one. It does not delay anything else.
+
+---
+
+## D19 — Deinterleaving is not required; the observation vector is the RL lane's open choice
+
+**Status:** deinterleaving question `CLOSED`; observation contents `OPEN` (2026-08-30)
+
+**Deinterleaving — separating interleaved pulses by emitter — is the Turing dataset's native
+task, not ours, and nothing in the PS requires the scheduler to do it.** The training signal is
+hit/miss per dwell; the environment knows every pulse's emitter internally (the `labels`
+dataset, verified) and can score per-emitter metrics (coverage, intercept time) without the
+scheduler ever attributing pulses. Note Apfeld et al. *assumed one radar per frequency
+precisely to avoid deinterleaving* — Turing violates that heavily, so any future design that
+needs per-emitter attribution from observations inherits a deinterleaving problem. Avoid
+needing it.
+
+**Open for the RL lane:** what the scheduler observes beyond binary hit/miss — pulse count in
+the dwell? peak amplitude? nothing? Richer observations help learning but move away from the
+PS's minimal hit/miss framing. To be decided when Lane E starts, not now.
+
+---
+
+## D20 — Cold start: zero prior emitter knowledge each episode
+
+**Status:** `SETTLED` (2026-09-01)
+
+Every episode begins with no emitter library, no map of who transmits where, and no carry-over
+between scenarios. The scheduler knows only what its own scan history has accumulated.
+
+**Why — three sources agree, which is rare:**
+- **[PS]** The title condition: *"in the absence of prior reliable intelligence of emitters and
+  their operating characteristics."*
+- **[intent, user 2026-09-01]** The project targets *active* warfare — emitters are not where any
+  historical library says, so a library is a liability, not an asset. The ADITI 4.0 Cognitive EW
+  problem statement (Indian Army, `docs/reference/problem-context/iDEX ADITI 4.0 (Go to Page 12).pdf` p.12 — the same problem family)
+  frames exactly this: *"Historically, EW systems were developed based on knowledge of specific,
+  previously learned threats,"* to be replaced by a system that *"sense, adapt and self-learn
+  environment changes."* In the ADITI Q&A the Army would not even commit to sharing a threat
+  library, reinforcing that the system cannot assume one.
+- **[lit]** `docs/reference/scheduling/Dynamic Scan Scheduling.pdf` (Dutertre, SRI, RTSS'02): *"Today's systems rely
+  on a fixed schedule, computed offline from an a priori table of known emitter types,"* which he
+  identifies as the limitation to remove.
+
+**Consequence.** The observation vector is built purely from scan history (D19). No pretraining
+on emitter identities. This is also what makes the exploration/exploitation tension real: with a
+prior, camping would be defensible; without one, you must keep discovering.
+
+---
+
+## D21 — Pd and Pfa are receiver properties at the frozen threshold, not agent-dependent quantities
+
+**Status:** `SETTLED` — clarification (2026-09-01)
+
+Raised by the team: if the threshold is frozen with the environment, why do Pd and Pfa — which
+sound like they should depend on the scheduler — depend on the threshold?
+
+**Resolution: they are two different questions, and separating them is correct.**
+
+- **Pd and Pfa are per-look detection quantities.** Given the receiver looked at a band-slot,
+  Pd = P(declare hit | truly occupied), Pfa = P(declare hit | truly empty). Both are fixed by
+  the detector's threshold γ against the noise floor — pure receiver characterisation. They are
+  reported once, by sweeping γ (the ROC), and are **identical for every scheduler** because they
+  do not depend on *which* cells you look at, only on what the detector does *when* it looks.
+- **The scheduler controls coverage, not detection.** What the agent changes is which
+  band-slots get looked at — measured by interception ratio, intercept time, intercept rate.
+  A scheduler cannot improve Pd; it can only point the detector at more of the right cells.
+
+**Why freezing γ is right, not contradictory.** If γ were trainable alongside the agent, the
+optimiser could lower it to manufacture hits — improving apparent interception by degrading Pfa.
+Freezing the receiver (γ, geometry, noise) and letting only the schedulers vary is what makes
+the comparison fair — the same reasoning as D3 (fixed receiver) and D7 (reward chosen, not the
+world). This is the standard separation in the detection literature (`docs/reference/background/SIH- Smart Scan Strategy.pdf` §3–5: sensitivity is specified *together with* a required Pd and Pfa at a fixed
+operating point; `docs/reference/scheduling/Dwell_Time_Optimization_of_Alert-Confirm_Detection.pdf` treats detection threshold and scheduling
+as separate layers). **The apparent paradox dissolves: Pd/Pfa answer "how good is the
+receiver?", the scheduler metrics answer "how well did we aim it?".**
+
+---
+
+## D22 — Keep the architecture at three layers; defer the generative signal model to v2
+
+**Status:** `SETTLED` — scope discipline (2026-09-01)
+
+The environment is three layers (truth grid → receiver → agent interface), consolidated in
+`docs/project/ENVIRONMENT_SPEC.md`. The v1 truth grid is built **from the recordings** (union, D17). The
+physics-based generative signal model (Apfeld Eq. 1 from emitter position/power/beam) is a **v2
+upgrade**, not built now.
+
+**Why defer, not skip.** The team flagged (2026-09-01) that judges value an architecture they
+can follow, and that decisions-on-decisions risk complexity and inconsistency. The recording-built
+grid satisfies the PS end to end and is directly checkable against the raw data. The generative
+model buys richer counterfactuals (D1's original motivation) but adds a calibration surface we do
+not need for a working, explainable v1. Its acceptance test already exists — it must reproduce the
+v1 grid — so it can be added later without reopening anything. **One path now; the upgrade is
+staged, not preserved as a live alternative** (matches `CLAUDE.md` "one path, not a menu").
+
+**This slightly narrows D1 for v1.** D1 (generative environment) remains the direction; v1
+realises it as "generative *scenario structure* — activity windows, variation, counterfactual
+band/time queries — over a recording-derived signal grid," which is enough for every counterfactual
+the scheduler actually poses (what if I look at band b at time t). Full physical generativity is
+v2. Flagged here so the narrowing is explicit, not silent.
+
+---
+
+## Consistency audit — 2026-08-30
+
+Requested by the team: a check that the decisions form one coherent story. Result: **two real
+inconsistencies found and fixed, three tensions clarified.** Everything else holds together.
+
+| # | Check | Outcome |
+|---|---|---|
+| 1 | D14's claim that only off-spec "coverage" rescued the problem | **Wrong — fixed.** PS-mandated intercept time, censored properly, defeats the camper (see D14 amendment). We do not need metrics the PS didn't ask for. |
+| 2 | Measurement scripts used two different pulse→band conventions (all-covering-bands vs last-band-wins) | **Fixed.** Canonical rule: a pulse is intercepted iff the scheduler's tuned window contains it at its slot. The 2026-08-29 exact figures shifted slightly (e.g. greedy 90.3%→85.0% per-dwell); directions unchanged. |
+| 3 | D1 (generative environment) vs D4's prototype grid (built empirically from recordings) | **Clarified, not contradictory.** The empirical grid is scaffold and validation reference. The target signal model is *generated* — Apfeld's Eq. 1 SNR form fed by Turing metadata (position→range, power/gain, beam angle) with activity windows from recordings (D2). Generated and empirical grids must agree; that agreement is itself a validation gate. |
+| 4 | Union-truth construction vs replay validation (circularity) | **Real risk — addressed by D17's out-of-sample gate.** |
+| 5 | D3 "adopt receiver exactly" vs undefined slot length | **Closed by D16.** |
+| 6 | "Stare as partial ground truth" phrasing vs union construction | **Consistent** — D1/D2 already define truth as constructed, recordings as evidence. Union uses all evidence; no framing change. |
+| 7 | 47-scenario scale vs RL training needs | **Consistent via D18** — generative env turns 47 templates into a distribution. The env-construction dependency chain ("RL depends on env; env from 47; good env → RL fine") holds with the D18 requirement added. |
+| 8 | D7 (reward as hyperparameter) vs D14 amendment | **Consistent and sharpened** — candidate rewards are judged on censored TTI *and* interception ratio jointly; a candidate that wins one by sacrificing the other loses. |
+
+---
+
+## Consistency audit — 2026-09-01 (after ADITI, teammate docs, env spec)
+
+Second pass, triggered by new documents and the consolidated `ENVIRONMENT_SPEC.md`. No
+contradictions with D1–D19 introduced. Points checked:
+
+| Check | Outcome |
+|---|---|
+| ADITI 4.0 CEW PS vs our SIH PS | **Sibling, not identical.** ADITI (Indian Army) is the broader Cognitive EW system — ES + EA, fusion, jamming, geolocation. Ours (SIH26055, DRDO) is the **ES scan-scheduling slice** of that vision. ADITI is valid *context* for intent (D20); it does not expand our scope to jamming or DF. Recorded so nobody imports EA requirements. |
+| Teammate env `rf_env_grounded.py` vs our spec | **Adopted at the interface (L3), superseded inside.** Its action space, POMDP framing and history-based observation are sound and PS-grounded; we keep them and credit it. Its truth grid is a binary placeholder; L0–L2 replace that with the measured signal grid. No conflict — it stops where our data work begins. |
+| Teammate crash-course `SIH- Smart Scan Strategy.pdf` | **Consistent and confirmatory.** Its detection model (Z truth vs Y declaration, Pd/Pfa, ROC, γ), its noise floor arithmetic (kTBF ≈ −109 dBm at 1 MHz), and its bandit framing all match D4/D6/D21 independently. Good onboarding + PPT source. |
+| `Dynamic Scan Scheduling.pdf` (Dutertre) vs D3 | **Note only.** Dutertre assumes *disjoint* bands and treats the schedule as NP-hard time-allocation. Our bands overlap (D3) and our action is next-band, not a full cyclic schedule. Useful as a baseline-family reference and for the D20 "fixed a-priori table is the limitation" quote; not adopted wholesale. |
+| PassiveRadar.pdf | **Off-topic, filed BACKGROUND.** Passive *bistatic* radar (transmitters of opportunity) is a different sense of "passive" than passive ES receiving. No bearing on our design. Guard against conflation. |
+| Deinterleaving papers (Nuhoglu & Cirpan; Radar_Signal_Deinterleaving) | **Consistent with D12/D19** — deinterleaving stays out of scope; these are references if a future observation channel ever needs per-emitter attribution. |
+| ENVIRONMENT_SPEC three-layer design vs D1–D19 | **Faithful consolidation.** Every layer cites its decisions; the one narrowing (v1 recording-built grid) is made explicit in D22, not smuggled. |
+
+**Net:** the new material *confirmed* the direction more than it changed it. The one genuine
+scope risk — ADITI's much larger CEW brief bleeding jamming/DF/fusion into our ES-only task — is
+now fenced off explicitly.
+
+---
+
+# Evaluation plan
+
+What we will measure, why, and the traps. Drafted 2026-08-29; not yet exercised against
+anything, so treat as a plan rather than a protocol.
+
+### The seven metrics the PS mandates
+
+Probability of detection · probability of false alarm · sensitivity · average intercept rate ·
+average reward/cost · percentage of correct predictions · average intercept time error. Plus
+intercept time and interception ratio, named separately in the same paragraph. **These are not
+ours to choose** — reporting a different set is a failure to answer the PS.
+
+### How each becomes computable
+
+| Metric | Where it comes from | Depends on |
+|---|---|---|
+| Pd, Pfa, sensitivity | Sweeping the detection threshold — an ROC over the signal grid | D4 |
+| Interception ratio | **Per illumination** (Gul & Erer Fig. 2): fraction of all pulses whose band the scheduler was tuned to at their ToA — *not* per-dwell | D4, D5 |
+| Intercept time | Delay from an emitter becoming active to first detection, **censored at episode end for emitters never found** — averaging only over found emitters rewards not looking (D14 amendment) | D2 activity windows |
+| Avg intercept time error | Predicted minus actual intercept time | a scheduler that ranks bands |
+| % correct predictions | Was the top-ranked band actually occupied | ranking, not a separate model |
+| Avg reward / cost | The chosen reward, reported as a scalar | D7 |
+
+### Three traps to design around
+
+**A "predict nothing" model can score well.** Flagged in
+`docs/reference/background/Smart Spectrum Surveillance for Electronic Support (ES) [BASICS].pdf` §6: with sparse occupancy, always predicting
+"no transmission" gives high accuracy and zero operational value. Our own measurement shows how
+sparse — thresholded occupancy runs 1.3%–48.8% depending on scenario and threshold. **Never
+report bare accuracy.** Use interception ratio and intercept time, which a null predictor cannot
+game.
+
+**Coverage and efficiency move in opposite directions.** Apfeld et al. measured Random as best
+on "percentage of radars detected at least once" and worst on efficiency. Reporting only one
+lets any scheduler look good. **Report both, always, on the same table.**
+
+**A per-scenario mean hides everything.** Scenario difficulty spans a huge range — our 47 hold
+2 to 99 transmitters. Report distributions and per-scenario results, not just a grand mean.
+
+### Protocol
+
+Develop and tune on the 47 train scenarios. Validate the environment (below) before any
+scheduler number is quoted. Freeze the environment, then run every scheduler on identical
+scenarios and seeds. Touch the 45 held-out test pairs **once**, at the end, and record that use.
+
+### Environment validation gates
+
+Before any scheduler result is believed:
+
+1. **Out-of-sample prediction (primary).** Build truth from **stare only**, replay Turing's
+   scan schedule through it, and compare predicted detections against the actual scan
+   recordings — data never used in construction (D17). Then, on the final union-built
+   environment, the replay should also recover the measured **~35%** non-empty dwell rate
+   (35.3–35.7% depending on the final-partial-dwell convention) as a consistency check.
+2. **Reproduce per-band structure.** Band-level interception ratios should match the recordings,
+   not just the aggregate.
+3. **Check against theory.** For a controlled periodic case, intercept time and probability of
+   intercept should match Köksal's closed forms (`docs/reference/scheduling/optimumsearch.pdf` ch. 3.2, 6.1).
+4. **Sanity-check the extremes.** `config_81` (2 emitters) and `config_921` (99) should behave
+   sensibly at both ends.
+
+Gate 1 is the one that matters most: it is a single number, measured from real data, that our
+environment either reproduces or does not.
