@@ -4,35 +4,46 @@ An interactive RF environment for evaluating receiver scheduling strategies, gro
 Turing Synthetic Radar Dataset, working toward a learned (RL) scheduler that decides which
 frequency band a receiver should inspect next.
 
-This repository is a **fresh start**. It currently contains source material and data only — no
-code has been written, and no conclusions have been drawn. See `CLAUDE.md` for why, and for the
-provenance rules that govern how anything gets added from here.
+This repository is a **fresh start**. See `CLAUDE.md` for why, and for the provenance rules
+that govern how anything gets added.
 
 ## Status
 
-Stage: **understand the Turing data** (`docs/project/PROJECT_ARCHITECTURE.md` §10). Nothing downstream —
-scenario construction, the environment, the scheduler, RL — has been built yet.
+Stage: **building the RF environment** (`docs/project/PROJECT_ARCHITECTURE.md` §10, build order
+in `docs/project/ENVIRONMENT_SPEC.md`).
 
-Two things are open and blocking real modelling decisions; see "Unresolved" in
-`docs/project/RESEARCH_MAP.md`:
-- what `sensitivity_dbm` actually means, given that ~4% of recorded pulses fall below it
-- scan and stare are not nested in each other, despite the dataset card describing stare as an oracle
+Built so far:
+- `rfenv/constants.py` — the freeze list
+- `rfenv/scenario.py` — L0: emitter contributions, pool, replay/sampled scenarios, held-out guard
+- `rfenv/truth.py` — L1: the Z/S/C truth grid
+- Tests for both, passing (`tests/`)
+
+Next: `receiver.py` (L2 — the noise draw and `Y`), then `env.py` (L3 — gymnasium), then
+`render.py` + `metrics.py`, then `validate.py` (gates 1–4).
+
+The two questions that were previously open (`sensitivity_dbm` semantics, scan/stare
+non-nesting) are closed — see `docs/project/DECISIONS.md` (D9, D10, D24).
 
 ## Layout
 
 | Path | What it is |
 |---|---|
-| `data/turing/` | The Turing dataset (94 HDF5 files, gitignored, already present locally). 47 scan/stare pairs, train split only. |
+| `rfenv/` | The environment implementation, built incrementally per `ENVIRONMENT_SPEC.md`. |
+| `tests/` | Tests for `rfenv/`. |
+| `data/turing/` | The Turing dataset (184 HDF5 files, gitignored, already present locally). 47 scan/stare pairs (train, development set) + 45 held-out test pairs. |
 | `docs/project/PROJECT_ARCHITECTURE.md` | The working architecture — read this first. |
-| `docs/protocol/CLAUDE_CODE_RESEARCH_PROTOCOL.md` | Rules for how the reference PDFs may and may not be used. |
-| `docs/project/RESEARCH_MAP.md` | The actual inventory of every document in `docs/`, classified per the protocol, with what each one does and does not establish. |
-| `docs/` (six PDFs) | Reference material — research papers, a thesis, and strategy notes. Authority varies; see the research map before citing any of them. |
+| `docs/project/ENVIRONMENT_SPEC.md` | The consolidated buildable spec for the RF environment. |
+| `docs/project/EVALUATION.md` | The single authority on metrics, baselines, validation gates and protocol. |
+| `docs/project/DECISIONS.md` | Every decision taken, with its evidence and status. |
+| `docs/project/RESEARCH_MAP.md` | Inventory of every document in `docs/`, classified per the research protocol. |
+| `docs/protocol/CLAUDE_CODE_RESEARCH_PROTOCOL.md` | Rules for how reference documents may and may not be used. |
+| `docs/reference/` | Reference material — research papers, a thesis, and strategy notes. Authority varies; see `RESEARCH_MAP.md` before citing any of them. |
 | `CLAUDE.md` | Authoritative rules for this repository: source-of-truth table, provenance rules, working rules. |
 
 ## Working here
 
-If you're picking this up with Claude Code, read `CLAUDE.md` and the two documents it points to
-before doing anything else. The short version:
+If you're picking this up with Claude Code, read `CLAUDE.md` and the docs it points to before
+doing anything else. The short version:
 
 - The HDF5 files outrank every document, including the dataset's own README.
 - Every factual claim needs a named source and a stated method ("verified by opening `config_2.h5`"
