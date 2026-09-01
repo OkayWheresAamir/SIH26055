@@ -30,12 +30,17 @@ cells. Reporting a scheduler comparison on receiver-level metrics is a category 
 For one scenario over one 30 s episode:
 
 - Bands `b ∈ {0..35}`, slots `t ∈ {0..599}` (50 ms each) — D3, D16.
-- `S[b,t]` — true received signal level (dB). `O[b,t] = (S[b,t] ≥ γ)` — true occupancy, D4.
+- `Z[b,t]` — physical occupancy: is any emitter transmitting into this cell? Threshold-free,
+  and the PS's binary transmission/non-transmission status (D26).
+- `S[b,t]` — true received signal level (dB); the noise floor `N₀` where `Z` is false (D4).
 - `a(t)` — band the scheduler is tuned to at slot `t`.
 - `Y(t) ∈ {0,1}` — the receiver's **declared** detection at slot `t`, i.e. what the scheduler
-  actually observes. `Y` may differ from `O[a(t),t]` because of noise: that difference is
-  exactly what P<sub>d</sub> and P<sub>fa</sub> measure.
-- `E` — set of emitters detectable in the scenario. `on_e` — emitter `e`'s activity start.
+  actually observes: `Y = 1` iff `S[a(t),t] + n ≥ γ`, `n ~ N(0, σ)`. `Y` may differ from
+  `Z[a(t),t]` because of noise: that difference is exactly what P<sub>d</sub> and
+  P<sub>fa</sub> measure.
+- `E` — emitters with a non-empty **detectable activity interval**, i.e. whose own received
+  level clears γ at some slot (D27). Not every transmitter in the metadata: 19.0% of train
+  transmitters never appear in either recording. `on_e` — the start of that interval.
 - `first_e` — slot of the first true intercept of `e`; `∞` if never intercepted.
 
 **Every metric below is computed identically for every scheduler, including baselines.**
@@ -65,12 +70,19 @@ chosen operating point. **Identical for every scheduler** (D15, D21).
 
 | Metric | Definition |
 |---|---|
-| **P<sub>d</sub>** | `P(Y=1 | O=1)` — declared a hit given the cell was truly occupied. |
-| **P<sub>fa</sub>** | `P(Y=1 | O=0)` — declared a hit given the cell was truly empty. |
+| **P<sub>d</sub>** | `P(Y=1 | Z=1)` — declared a hit given an emitter really was transmitting there. |
+| **P<sub>fa</sub>** | `P(Y=1 | Z=0)` — declared a hit given the cell was truly empty. |
 | **Sensitivity** | The signal level at which P<sub>d</sub> reaches a stated value (e.g. 0.9) at the operating P<sub>fa</sub>. Quoted *with* both, never alone. |
 
 Only cells the receiver actually looked at contribute — these are per-look conditional
 probabilities, not properties of the whole grid.
+
+**Conditioned on `Z`, not on `(S ≥ γ)`** (D26). Referencing P<sub>d</sub> to a second copy of
+`S` thresholded at the same γ is degenerate — it forces `P_d ≥ 0.5` for every γ and the curve
+can never sweep. Against threshold-free `Z` it does: measured over the 47 train configs,
+P<sub>d</sub> falls 0.894 → 0.681 as γ goes −120 → −100 dB. At the default operating point
+`γ = N₀ + 3σ = −111 dB`: **P<sub>d</sub> = 0.822, P<sub>fa</sub> = 1.35e−3, sensitivity
+−107.2 dB.**
 
 ---
 
@@ -131,12 +143,14 @@ that pair — approach round-robin's intercept time while multiplying its interc
 
 | # | Gate | Why it matters |
 |---|---|---|
-| **1** | **Out-of-sample prediction.** Build truth from **stare only**, replay Turing's scan schedule, compare predicted detections against the **actual scan recordings** — data never used in construction (D17). | The only gate that is a genuine prediction rather than a fit. If one gate is run, run this one. |
-| **2** | **Per-band structure.** Band-level interception ratios match the recordings, not just the aggregate ~35% non-empty dwell rate. | An aggregate can match while the structure is wrong. |
+| **1** | **Out-of-sample prediction.** Build truth from **stare only**, replay Turing's scan schedule, compare predicted detections against the **actual scan recordings** — data never used in construction (D17). Measured 2026-09-01: **accuracy 86.19%, precision 87.87%, recall 71.14%, MCC 0.694, per-band r = 0.940** at γ = −110 against a 35.70% base rate. Known limitation, not a defect: band 0 (250 MHz) is 59.12% occupied in the recordings and 0.00% predicted, because stare cannot see below 500 MHz (D10). | The only gate that is a genuine prediction rather than a fit. If one gate is run, run this one. This is also why no physics signal model is fitted to these same recordings (D25). |
+| **2** | **Per-band structure.** Band-level interception ratios match the recordings, not just the aggregate. The ~35% dwell rate is no longer a γ calibration (D23) — it is a pipeline self-consistency test: grid built from the scan recording, replayed on the schedule that produced it, thresholded not at all. Measured **35.403% replayed against 35.700% recorded.** | An aggregate can match while the structure is wrong. |
 | **3** | **Theory.** A controlled periodic case matches Köksal's closed-form intercept time and probability of intercept (`docs/reference/scheduling/optimumsearch.pdf` ch. 3.2, 6.1). | Independent of the dataset entirely. |
 | **4** | **Extremes.** `config_81` (2 emitters) and `config_921` (99) both behave sensibly. | Catches failures that averages hide. |
 
-On pass, **freeze**: band geometry, γ, truth pipeline, metric definitions.
+On pass, **freeze** everything in `rfenv/constants.py`: band geometry, slot clock, native dwell
+lengths, truth pipeline, `N₀`, `σ`, γ, metric definitions, and the scenario sampling
+distribution (D25).
 
 ---
 
@@ -168,8 +182,8 @@ Evaluation is only possible if the environment logs these (see `ENVIRONMENT_SPEC
 
 1. **Episode log** — per slot: time, band chosen, dwell length, declared hit `Y`, true occupancy
    `O`, pulse count, peak level.
-2. **Emitter table** — per emitter: activity window, first/last intercept slot, intercept count,
-   bands seen in. *(Everything in §4 is computable from artefacts 1 and 2 alone.)*
+2. **Emitter table** — per emitter: detectable activity interval (D27), first/last intercept
+   slot, intercept count, bands seen in. *(Everything in §4 is computable from artefacts 1 and 2 alone.)*
 3. **Waterfall render** — the 36×600 grid as a frequency-vs-time heatmap with the scheduler's
    path and hits overlaid. The same picture drawn from the raw Turing recording should match:
    the standard ESM operator view, and the fastest way to see that the environment is sane.

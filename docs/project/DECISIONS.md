@@ -546,6 +546,220 @@ v2. Flagged here so the narrowing is explicit, not silent.
 
 ---
 
+## D23 — γ is not calibrated against the recorded dwell rate; it is a swept receiver parameter
+
+**Status:** `SETTLED` (2026-09-01). **Retracts D15 commitment 2.**
+
+D15 said: choose γ so that replaying Turing's own sweep reproduces the recorded ~35% non-empty
+dwell rate. Applied to the D17 union grid that returns γ ≈ −111 dB. **That procedure is
+confounded and the number it produced is withdrawn.**
+
+**Why it is wrong.** Measured this session — Turing's schedule replayed through grids built from
+different sources, 47 train configs, 23,594 dwells, recorded non-empty rate **35.70%**:
+
+| γ | scan-only grid | stare-only grid | union grid |
+|---|---|---|---|
+| no threshold | 36.14% | 34.73% | 41.54% |
+| −150 | 35.72% | 34.30% | 40.96% |
+| −110 | 30.13% | 28.90% | 35.35% |
+
+The **scan-only grid with no threshold already returns the recorded rate**. The union grid's
+excess is not undetected signal — it is stare's *independent simulation run* (D24) contributing
+emitters and timings the scan run never had. Raising γ to cancel that excess mislabels
+run-mixing as a detection threshold.
+
+**The dataset is not contradictory.** Raised by the team: how can the recordings calibrate below
+their own stated −100 dB noise floor? They do not. TSRD §II says detection was **probabilistic**
+(*"the probability of pulse detection increases the more distinct the signal is from the noise
+floor"*) and that *"amplitude ... [was] blurred using the OU process"* **after** reception. Weak
+pulses therefore appear below −100 dB in the recording — measured, 13.25% of scan pulses and
+15.96% of stare pulses do. This is exactly D9's finding about `sensitivity_dbm` (−110, with
+4.49% of pulses below it), applied to a second field. **The recordings are already
+post-detection**; −100 dB is not a floor our threshold has to clear.
+
+**What replaces it.**
+1. **γ is swept, and the sweep is the deliverable** — D15 commitment 1, unchanged.
+2. **The default operating point is set by the receiver's own noise, not by a fit.** Noise floor
+   `N₀ = −120 dB` (`sensitivity_dbm` −110 minus `gain_db` 10 — the anchor D9 noted); `σ = 3 dB`,
+   **chosen, not measured**; `γ = N₀ + 3σ = −111 dB`, giving Pfa = 1.35e−3. Measured ROC over the
+   47 train configs at that point: **Pd = 0.822, sensitivity (level at which Pd = 0.9) = −107.2 dB.**
+   The same number as the discredited calibration, reached for a defensible reason.
+3. **The 35.70% becomes a pipeline self-consistency test**, which is what it should always have
+   been: build the grid from the scan recording, replay the schedule that produced it, threshold
+   nothing. Implemented as `tests/test_truth.py::test_pipeline_reproduces_the_recorded_dwell_rate`
+   — measured **35.403% replayed against 35.700% recorded**, the 0.3 pp residual being slot
+   quantisation. It tests band assignment, slot clock and dwell schedule; it says nothing about
+   detection, which is why γ is no longer fitted to it.
+
+**Evidence.** Measured: all figures above, this session, over all 47 train pairs. Sourced: TSRD
+paper §II.
+
+---
+
+## D24 — scan and stare are independent simulation runs, not two views of one world
+
+**Status:** `SETTLED` (2026-09-01). **Amends D17's premise; keeps its conclusion.**
+
+D17 builds truth from the union of both recordings, premised on *"two incomplete observations of
+one world."* **That premise is false.**
+
+**Evidence.** Measured: nearest-neighbour ToA matching between the scan and stare files of the
+same config finds no correspondence — median |Δt| ranges from 185 µs to 4.81 s against a
+`toa_noise_scale_us` of 0.025. The same emitter gets disjoint activity in the two runs:
+
+| config_2 | scan | stare |
+|---|---|---|
+| label 13 | 2.47 – 17.70 s | 19.01 – 28.21 s |
+| label 16 | 4.96 – 13.65 s | **26.40 – 29.93 s** (disjoint) |
+| label 28 | never seen | 2.58 – 14.00 s |
+
+Emitter metadata is identical between the two files, so position, beam phase and power are
+fixed; what differs is *when each emitter transmits*, which nothing in
+`metadata/transmitters` encodes (already noted in D2). It is a per-run draw.
+
+**Consequence.** A union grid is one incoherent timeline stitched from two. D17's *conclusion* —
+use both recordings, discard neither — survives and is honoured by D25: both runs contribute
+realisations to the emitter pool. They are simply never stitched into a single grid. Each
+scenario carries contributions from exactly one recording, so every scenario is
+self-consistent.
+
+**What this does not change.** D17's out-of-sample gate stands and passes. Measured this
+session: stare-only truth grid, replay Turing's scan schedule, predict the **scan** recording
+(never used in construction) — **accuracy 86.19%, precision 87.87%, recall 71.14%, MCC 0.694,
+per-band r = 0.940**, against a 35.70% base rate. Aggregate band occupancy is robust to which
+individual emitter is on, even though individual activity is not.
+
+One systematic failure, fully explained by D10: **band 0 (centre 250 MHz) is 59.12% occupied in
+the recordings and 0.00% predicted**, because stare's `freq_range_mhz` starts at 500 MHz. Stated
+as a limitation of the gate, not patched.
+
+---
+
+## D25 — the environment is a generative scenario sampler over recorded emitter contributions
+
+**Status:** `SETTLED` (2026-09-01). **Supersedes D22's v1/v2 framing and narrows D18.**
+
+Raised by the team: if the goal is a validated *generative* environment, why validate a
+recording-derived one first and defer physics to a "v2"? And why treat physically justified
+variation as messing with the environment rather than normal scenario sampling?
+
+**Resolution: the v1/v2 split was the wrong axis. It is dropped.** The environment is generative
+now — what is recording-derived is the *signal values*, not the environment's structure.
+
+**Why no physics signal model in the validated environment.** To generate `S[b,t]` from emitter
+physics we would need: range `R(t)` (✅ exact from metadata); beam angle `θ(t)` (⚠️
+`scan_rate_rpm` takes 116 distinct values across the train set including 0.0 and 0.1, so it is
+not literal rpm and its semantics are unconfirmed — folding config_2 emitter 3 gives max/mean
+bin 4.59 at 30/rpm against 3.92 at 60/rpm, which is not decisive); the antenna pattern `G_t(θ)`
+(❌ sidelobe structure published nowhere — **must be invented**); the absolute power scale onto
+Turing's amplitude column (❌ **must be fitted**); and whether an emitter transmits at all (❌ not
+in metadata, and it differs between runs per D24 — **still needs the recordings**).
+
+So a physics model is not more fundamental than the recording-derived grid. It is that grid plus
+an interpolator carrying ≥2 fitted parameters and one unconfirmed convention, still taking
+activity from the recordings.
+
+**The cost is methodological, not effort.** Those parameters would be fitted against the same
+recordings the primary validation gate scores. **The gate would stop being a prediction and
+become a fit.** It currently predicts held-out data at 86.19% accuracy (D24). Trading that for
+realism we cannot independently verify is a bad trade. **What is lost:** placing an emitter at a
+position or beam phase never recorded, and continuous control of difficulty. Both real; neither
+required by the PS.
+
+**What the environment is instead.** TSRD built each config by sampling emitter instances from a
+68-type library and placing them independently, with **no emitter–emitter interaction** (paper
+§II: *"line-of-sight path loss without multi-path interference"*). Therefore one emitter's
+recorded contribution to the (band, slot) grid is a valid sample of *one emitter of that type at
+a plausible position and beam phase over 30 s*, emitters compose by `max`, and **a new scenario
+is a draw of N contributions from the pool.**
+
+This is not an approximation of a physics model — it is the *same generative process TSRD used*,
+one level up, with **zero invented parameters and nothing fitted**. Measured pool: **3,443
+contributions** (1,739 scan-seen + 1,704 stare-seen) over **1,913 distinct emitters**, from
+2,363 train transmitters — 19.0% are never detectable in either run.
+
+**Dropped from D18: the per-emitter time-shift knob.** Circular-shifting an emitter in time
+desynchronises its beam phase from its position track, so it is arbitrary randomisation of
+exactly the kind we want to avoid. Emitter recombination alone defeats memorisation and is
+physically justified; the shift is neither.
+
+**The architecture, in four sentences** (unchanged three layers, D22):
+
+> An emitter is a recorded contribution to the time–frequency grid.
+> A scenario is a set of emitters; the world is their maximum.
+> The receiver looks at one band at a time and declares a hit when what it hears beats its threshold.
+> The scheduler chooses the band.
+
+**Freeze list** — frozen before any scheduler number is quoted, and it lives in
+`rfenv/constants.py` so the list is a literal file: band geometry, slot clock, native dwell
+lengths, the truth-construction rule, `N₀`, `σ`, `γ`, the metric definitions, and the scenario
+sampling distribution. **Free to vary per episode:** only the draw — which emitters, and the
+seed. **Never:** no RL result may motivate a change to the frozen list; if one does, the
+environment is re-validated from gate 1 and every baseline re-run.
+
+**Memorisation vs validation contamination — separate tracks.**
+
+| Track | Scenarios |
+|---|---|
+| Validation (gates 1–4) | the 47 **deterministic** single-run replays, unmodified |
+| RL training | sampled draws from the pool (train configs only) — no episode repeats |
+| Scheduler comparison | one fixed seeded set of sampled scenarios *plus* the 47 replays, identical for every scheduler |
+| Final claim | the 45 held-out pairs, **once** (D8) |
+
+Sampled `n` is drawn from the empirical per-config count of *detectable* emitters (measured:
+1 to 82, summing to 1,913), so sampled scenarios keep the difficulty spread the data has.
+
+---
+
+## D26 — Pd and Pfa reference physical occupancy Z, not a second thresholded copy of S
+
+**Status:** `SETTLED` (2026-09-01) — corrects a degeneracy in `EVALUATION.md` §3.
+
+Three quantities, and only two of them are truth:
+
+- **`Z[b,t]`** — physical occupancy: is any emitter transmitting into this cell? Threshold-free.
+  This is the PS's *"transmission or a non-transmission"* status.
+- **`S[b,t]`** — the continuous level: peak recorded amplitude where `Z` is true, `N₀` where not (D4).
+- **`Y`** — the receiver's declaration when it looks: `Y = 1` iff `S + n ≥ γ`, `n ~ N(0, σ)`.
+
+`Pd = P(Y=1 | Z=1)`, `Pfa = P(Y=1 | Z=0)`.
+
+**Why not against `O = (S ≥ γ)`.** EVALUATION.md §3 defined Pd against `O`, which is itself `S`
+thresholded at the same γ. That is degenerate: `Pd = P(S+n ≥ γ | S ≥ γ) ≥ 0.5` by construction,
+for every γ, so it can never sweep and the ROC carries no information. Referencing the
+threshold-free `Z` gives a real curve — measured, Pd falls 0.894 → 0.681 as γ goes −120 → −100.
+
+This is the Z-versus-Y framing the 2026-09-01 consistency audit already recorded as consistent
+with `docs/reference/background/SIH- Smart Scan Strategy.pdf` §3–5. D21 is unaffected: Pd and
+Pfa remain receiver properties at frozen γ, identical for every scheduler.
+
+---
+
+## D27 — "detectable activity interval", not "activity window"
+
+**Status:** `SETTLED` (2026-09-01) — terminology, raised by the team.
+
+`on_e` and `off_e` are derived from the truth grid: the first and last slot at which the
+emitter's **own** received level clears γ. No separate window field is stored.
+
+**Why derived.** Self-consistent by construction — nothing can be "active" that is not in the
+world the scheduler faces, so censored intercept time is measured against exactly the grid it
+was earned on. It also needs no extra decision, which matters given D24 killed the idea of a
+single true window.
+
+**Why the name.** This is activity *detectable under this receiver at this γ*, not the emitter's
+physical transmission window. An emitter can be transmitting for the whole episode with its
+received signal below γ, and this interval will not show it. Judged on the emitter's own level
+rather than the combined `S`, so a quiet emitter sharing a band with a loud one does not inherit
+the loud one's detectability.
+
+**Consequence for `E`** (EVALUATION.md §1, the coverage denominator): `E` is the set of emitters
+with a non-empty detectable interval — not every transmitter in the metadata. Measured, 19.0% of
+train transmitters never appear in either recording, several because they transmit above 18 GHz;
+scoring a scheduler for missing those would be meaningless.
+
+---
+
 ## Consistency audit — 2026-08-30
 
 Requested by the team: a check that the decisions form one coherent story. Result: **two real

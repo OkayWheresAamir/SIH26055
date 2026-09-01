@@ -1,9 +1,9 @@
-# RF Environment — Consolidated Specification (v1)
+# RF Environment — Consolidated Specification
 
 **What this is.** The single buildable specification of the RF environment, consolidating every
-decision in `docs/project/DECISIONS.md` (referenced as D1–D22) into one coherent design. A planning
+decision in `docs/project/DECISIONS.md` (referenced as D1–D27) into one coherent design. A planning
 session should be able to read this file plus `DECISIONS.md` and start building without
-re-deriving anything. Written 2026-09-01.
+re-deriving anything. Written 2026-09-01; L0/L1 corrected 2026-09-01 after D23–D27.
 
 **Design stance:** three layers, each simple enough to explain in a sentence. Complexity lives
 in *calibration and validation*, not in the architecture.
@@ -12,10 +12,10 @@ in *calibration and validation*, not in the architecture.
                  ┌──────────────────────────────────────────────┐
    Turing data → │ L0  SCENARIO PIPELINE  (offline, per config) │
                  └──────────────────┬───────────────────────────┘
-                                    ↓  emitter table + signal grid
+                                    ↓  emitter contributions
                  ┌──────────────────────────────────────────────┐
-                 │ L1  TRUTH LAYER      S[36 bands × 600 slots] │
-                 │     continuous signal level; occupancy = S≥γ │
+                 │ L1  TRUTH LAYER    Z, S, C [36 bands × 600]  │
+                 │     occupancy Z; level S; pulse count C      │
                  └──────────────────┬───────────────────────────┘
                                     ↓  looked-at cells only
                  ┌──────────────────────────────────────────────┐
@@ -32,49 +32,66 @@ in *calibration and validation*, not in the architecture.
 ## L0 — Scenario pipeline (offline, one pass per config)
 
 **Input:** one Turing config — `metadata/transmitters` (identical in scan and stare, verified)
-plus **both** recordings (union of evidence, D17).
+plus both recordings. They are **independent simulation runs**, not two views of one world
+(D24), so each contributes its own emitter realisations; they are never stitched into one grid.
 
 **Output per scenario:**
 
-1. **Emitter table** — one row per transmitter: label, `freqs_mhz`, `freq_mode`, `pris_us`,
-   `pws_us`, beam (`beam_width_deg`, rotation period = `30/scan_rate_rpm` [measured — the field
-   is not literal rpm], `scan_start_angle`), position, `power_w`/`gain`, and the **activity
-   window** `[t_start, t_end]` recovered from the union of recordings (D2). 76.8% of emitters
-   are a single continuous window; multi-burst emitters get their observed burst list.
-2. **Signal grid** `S[36, 600]` — peak received level (dB) per (band, 50 ms slot), built from
-   the union of both recordings. Empty cells sit at the ambient noise floor (TSRD paper:
-   −100 dB) plus a small noise draw, so that thresholding produces a real Pfa.
+1. **Emitter contributions** — the unit the environment is built from. One per emitter *per
+   recording*: label, `freqs_mhz`, `freq_mode`, `pris_us`, `pws_us`, beam
+   (`beam_width_deg`, `scan_rate_rpm`, `scan_start_angle`), position, `power_w`/`gain`, and a
+   **sparse set of (band, slot, peak level, pulse count) cells**. Beam and position fields are
+   carried through but not computed with — `scan_rate_rpm` is not literal rpm and its semantics
+   are unconfirmed (D25). No activity-window field: `on_e`/`off_e` are derived from the grid as
+   the **detectable activity interval** (D27).
+2. **Signal grid** `S[36, 600]` — peak received level (dB) per (band, 50 ms slot), the maximum
+   over the scenario's emitter contributions. Empty cells sit at the receiver's noise floor
+   `N₀ = −120 dB` (= `sensitivity_dbm` −110 minus `gain_db` 10). **Not the TSRD paper's −100 dB
+   ambient noise** — that describes the generator's probabilistic detector, and 13.25% of
+   recorded scan pulses sit below it; the recordings are already post-detection (D23). The noise
+   draw is applied by the receiver at look time, which is what makes Pfa real.
 
-**Scenario variation (D18):** the loader replays a config deterministically (for validation) or
-randomises within it (for training): activity-window placement, beam phase, and positions,
-behind a single seed. The 47 train configs are templates for a scenario *distribution*, not 47
-fixed worlds.
+**Scenario sampling (D25):** the loader either **replays** one recording deterministically (what
+the validation gates run on) or **samples** a scenario as a draw of N emitter contributions from
+the pool of 3,443 (what RL trains on). Because TSRD placed emitters independently with no
+emitter–emitter interaction, a recombination is as physically valid as an original config — it
+is the same generative process TSRD used, one level up, with nothing invented and nothing
+fitted. `N` is drawn from the empirical per-config count of detectable emitters (1 to 82).
 
-**Deferred, deliberately (keep it simple):** generating `S` from emitter physics (Apfeld Eq. 1:
-power, range, beam pattern) instead of from recordings. The recording-built grid is the v1
-truth; the generative signal model is a v2 upgrade whose acceptance test already exists —
-it must reproduce the v1 grid. Do not build both at once.
+**Not built, and not deferred either (D25):** a physics signal model generating `S` from power,
+range and beam pattern. Its antenna pattern and power scale are published nowhere and would have
+to be **fitted to the same recordings the primary validation gate scores** — turning that gate
+from a prediction into a fit. The recording-derived grid keeps it a prediction (86.19% accuracy
+on held-out data, D24).
 
 ## L1 — Truth layer
 
 - **Bands:** Turing's 36 centres (250 + 500k MHz), window = centre ± 500 MHz (measured; bands
   overlap by half — D3). **Clock:** 50 ms slots; 600 per 30 s episode (D16).
-- **State:** `S[b, t]` continuous. **Occupancy** `O[b, t] = (S[b, t] ≥ γ)` — the PS's binary
-  transmission/non-transmission, derived, per D4.
-- **γ is frozen with the environment before any agent runs** (D15). Chosen by calibration:
-  replaying Turing's own sweep must reproduce the recorded scan statistics (~35% non-empty
-  dwell rate — measured 35.3–35.7% by convention — and per-band structure). The full threshold sweep (ROC) is reported once as the
-  receiver characterisation.
+- **State:** three arrays. `Z[b, t]` — physical occupancy, threshold-free: is any emitter
+  transmitting into this cell? That is the PS's binary transmission/non-transmission.
+  `S[b, t]` — the continuous level, `N₀` where `Z` is false (D4). `C[b, t]` — pulse count, the
+  interception-ratio numerator.
+- **γ is frozen with the environment before any agent runs** (D15). It is **not** calibrated to
+  the recorded ~35% dwell rate — that procedure was confounded and is retracted (D23). γ is a
+  swept receiver parameter; the default operating point is `γ = N₀ + 3σ = −111 dB` with
+  `σ = 3 dB` (chosen, not measured), giving **Pd = 0.822, Pfa = 1.35e−3, sensitivity −107.2 dB**
+  measured over the 47 train configs. The full sweep (ROC) is the receiver characterisation.
+- The recorded **35.70%** non-empty dwell rate is now a **pipeline self-consistency test**:
+  build the grid from the scan recording, replay the schedule that produced it, threshold
+  nothing. Measured 35.403% replayed against 35.700% recorded.
 
 ## L2 — Receiver layer
 
 - **Action = choose a band.** The dwell then runs that band's native Turing length — 100 ms
   (2 slots) for the seven wide-dwell bands, 50 ms (1 slot) otherwise (D3, D16).
-- **Observation channel:** for each slot of the dwell, the receiver sees hit/miss = `O[band, t]`.
-  Because empty cells carry noise, a hit can be false (Pfa > 0) and a weak transmission can be
-  missed (Pd < 1). Pd and Pfa are **properties of this layer at the frozen γ — they do not
-  depend on the scheduler** (D15). What the scheduler controls is *which cells get looked at*.
-- No retune cost in v1 (Turing's own sweep has none observable); if one is added later it is a
+- **Observation channel:** for each slot of the dwell the receiver measures `S[band, t] + n`,
+  `n ~ N(0, σ)`, and declares `Y = 1` iff that beats γ. A hit can be false (Pfa > 0) and a weak
+  transmission missed (Pd < 1). Pd and Pfa are measured against **physical occupancy `Z`**, not
+  against a second thresholded copy of `S` — referencing them to `(S ≥ γ)` is degenerate and
+  cannot sweep (D26). They are **properties of this layer at the frozen γ and do not depend on
+  the scheduler** (D15, D21). What the scheduler controls is *which cells get looked at*.
+- No retune cost (Turing's own sweep has none observable); if one is added later it is a
   reward term, not a receiver change.
 
 ## L3 — Agent interface
@@ -94,11 +111,12 @@ placeholder, which is precisely the part this spec replaces.
   agent's own scan history — no prior emitter intelligence (D19, D20). The RL lane may extend
   this; extensions get logged as decisions.
 - `reward`: pluggable (D7). Candidates are trained separately and judged on the scheduler-level
-  metrics below. Default v1 candidate: +1 per true hit, with censored intercept time doing the
+  metrics below. Default first candidate: +1 per true hit, with censored intercept time doing the
   discovery-pricing at evaluation (D5, D14).
 - `info` dict: truth-side quantities for the evaluator only (per-emitter first-intercept slots,
   cell occupancy) — never fed to the agent.
-- `reset(seed, options={config, randomize})` selects scenario and variation.
+- `reset(seed, options={scenario})` takes either a deterministic replay or a sampled scenario
+  (D25). Validation always uses replays; training uses samples.
 
 ## Cold-start operating assumption (D20)
 
@@ -146,16 +164,19 @@ definitions across documents is how they drift apart.
 ## Freeze list
 
 When the four gates in `docs/project/EVALUATION.md` pass, these freeze and stop being open
-questions: band geometry, the detection threshold γ, the truth pipeline, and the metric
-definitions. **Stays open for the RL lane:** reward candidates, observation extensions, and how
-much scenario randomisation to train with.
+questions — and they live in `rfenv/constants.py`, so the freeze list is a literal file: band
+geometry, the slot clock, native dwell lengths, the truth-construction rule, `N₀`, `σ`, γ, the
+metric definitions, and the scenario sampling distribution. **Free to vary per episode:** only
+the draw — which emitters, and the seed. **Stays open for the RL lane:** reward candidates and
+observation extensions. **Never:** no RL result may move anything on the frozen list; if one
+does, the environment is re-validated from gate 1 and every baseline re-run (D25).
 
 ## Build order (for the planning session)
 
-1. `scenario.py` — L0 loader: emitter table + signal grid from one config; seedable variation.
-2. `truth.py` — L1: grid container, γ, occupancy.
-3. `receiver.py` — L2: dwell mechanics, detection channel.
-4. `env.py` — L3: gymnasium wrapper (start from the interface of `rf_env_grounded.py`).
+1. `scenario.py` — L0: emitter contributions, pool, replay and sampled scenarios. ✅ built
+2. `truth.py` — L1: the `Z`/`S`/`C` grid, detectable intervals. ✅ built
+3. `receiver.py` — L2: dwell mechanics, the noise draw, `Y`.
+4. `env.py` — L3: gymnasium wrapper.
 5. `render.py` + `metrics.py` — outputs above.
 6. `validate.py` — gates 1–4 as a runnable script.
 

@@ -24,7 +24,7 @@ These are ours. They are kept current; if a chat changes a decision, it changes 
 | `PROJECT_ARCHITECTURE.md` | The human team's working architecture. Direction, not immutable. |
 | `ENVIRONMENT_SPEC.md` | Consolidated three-layer spec: scenario pipeline → truth → receiver → agent interface, plus build order. |
 | `EVALUATION.md` | **Single authority on metrics, baselines, validation gates and protocol.** |
-| `DECISIONS.md` | D1–D22 with status, evidence and two consistency audits. Read before proposing anything. |
+| `DECISIONS.md` | D1–D27 with status, evidence and two consistency audits. Read before proposing anything. |
 | `RESEARCH_MAP.md` | Every document in `reference/` classified: what it establishes, what it does not, its authority level. |
 
 ## `protocol/` — how we work
