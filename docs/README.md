@@ -49,6 +49,24 @@ what each one does and does not establish.
 | `background/` | Domain grounding, EW landscape, strategy notes, a crash course. Useful for the write-up; low authority for design. |
 | `problem-context/` | The iDEX ADITI 4.0 Cognitive EW challenge (p.12) and its official Q&A transcript — the sibling Army problem that grounds our intent reading. |
 
+## The code it governs — `rfenv/`
+
+Not part of `docs/`, but this is what the documents above exist to constrain. One module per
+layer of `ENVIRONMENT_SPEC.md`; `tests/` mirrors it.
+
+| Module | Layer | Status |
+|---|---|---|
+| `rfenv/constants.py` | the freeze list, as a file | built |
+| `rfenv/scenario.py` | L0 — emitter contributions, pool, replay and sampled scenarios | built |
+| `rfenv/truth.py` | L1 — the `Z`/`S`/`C` grid, detectable intervals | built |
+| `rfenv/receiver.py` | L2 — dwell mechanics, the noise draw, `Y` | not built |
+| `rfenv/env.py` | L3 — gymnasium interface | not built |
+| `rfenv/render.py`, `rfenv/metrics.py` | waterfall, episode log, metrics | not built |
+| `rfenv/validate.py` | gates 1–4 as a runnable script | not built |
+
+**No validation gate has been run yet.** `EVALUATION.md` §7 forbids quoting a scheduler number
+before they pass.
+
 ## `teammate-work/`
 
 A teammate's independently-derived Gymnasium environment (`rf_env_grounded.py` plus its write-up).

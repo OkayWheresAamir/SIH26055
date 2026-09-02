@@ -2,12 +2,18 @@
 
 ## What this repository is
 
-A fresh start on SIH26055. It contains **source material and data only**. No code has been
-written yet, and no conclusions have been drawn yet.
+A fresh start on SIH26055. It holds the source material, the data, the decisions taken from
+them, and the RF environment being built on top.
 
 A previous attempt accumulated derived documents and measured claims that became difficult to
 separate from their sources. This repository exists to avoid that. The rules below are the
 whole point of it — follow them before doing anything else.
+
+**Build status (2026-09-01).** `rfenv/` has L0 (`scenario.py`) and L1 (`truth.py`) built, with
+23 passing tests under `tests/`. Next in `docs/project/ENVIRONMENT_SPEC.md` §Build order:
+`receiver.py`, then `env.py`, then `render.py` + `metrics.py`, then `validate.py`. **The four
+validation gates in `docs/project/EVALUATION.md` §6 have not been run yet** — no scheduler
+number may be quoted until they have.
 
 ## What is authoritative here
 
@@ -21,10 +27,14 @@ whole point of it — follow them before doing anything else.
 | `docs/project/EVALUATION.md` | The single authority on metrics, baselines, validation gates and protocol. Do not redefine a metric anywhere else. |
 | `docs/reference/dataset/TSRD_dataset_paper_arXiv_2602.03856.pdf` | How the data was generated. Primary source on dataset semantics; the HF dataset card is only a summary of it. |
 | Everything under `docs/reference/` | Reference material. Classify before use, per the protocol. See `docs/project/RESEARCH_MAP.md`. |
+| `rfenv/constants.py` | **The freeze list, as a file.** Band geometry, slot clock, `N₀`, `σ`, `γ`. Frozen once the gates pass; no result may move it (D25). |
 
 `docs/` is organised by authority: `project/` is authored and governs the build, `protocol/` is
 how we work, `reference/` is external material, `teammate-work/` is cross-check only. See
 `docs/README.md`.
+
+`rfenv/` is the environment, one module per layer of `ENVIRONMENT_SPEC.md`. Its module
+docstrings carry the reasoning; the decisions themselves live in `DECISIONS.md`.
 
 Read `docs/project/PROJECT_ARCHITECTURE.md` and `docs/protocol/CLAUDE_CODE_RESEARCH_PROTOCOL.md` before
 designing anything.
