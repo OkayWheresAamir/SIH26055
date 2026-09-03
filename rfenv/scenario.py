@@ -9,9 +9,10 @@ library and placing them independently, with no emitter-emitter interaction (pap
 §II: "line-of-sight path loss without multi-path interference"). So one emitter's
 recorded contribution is a valid sample of "one emitter of this type, at a plausible
 position and beam phase, over 30 s", and emitters compose by taking the maximum
-level per cell. A new scenario is therefore just a draw of N contributions from the
+level per cell. A new scenario is therefore just a draw of N emitters from the
 pool -- the same generative process TSRD used, one level up, with no invented
-physics and no fitted parameters (D25).
+physics and no fitted parameters (D25). One emitter contributes at most once to a
+scenario, so an emitter detected in both runs never appears twice (D32).
 
 One contribution comes from exactly one recording. scan and stare are independent
 simulation runs, not two views of one world -- the same emitter gets disjoint
@@ -347,6 +348,7 @@ class EmitterPool:
 
     contributions: list[EmitterContribution]
     emitter_counts: np.ndarray  # per-config count of emitters detected at all
+    _by_emitter: dict | None = field(default=None, repr=False, compare=False)
 
     @classmethod
     def from_train(cls, *, rebuild: bool = False, sources=SOURCES) -> "EmitterPool":
@@ -367,10 +369,34 @@ class EmitterPool:
         return len(self.contributions)
 
     @property
+    def by_emitter(self) -> dict[tuple[str, int], list[EmitterContribution]]:
+        """Contributions grouped by physical emitter, `(config_id, label)`.
+
+        An emitter detected in both runs has two entries: the scan realisation and
+        the stare realisation. They are alternative samples of the same emitter,
+        never two emitters (D24), which is why `sample` picks one per emitter (D32).
+        """
+        if self._by_emitter is None:
+            index: dict[tuple[str, int], list[EmitterContribution]] = {}
+            for c in self.contributions:
+                index.setdefault((c.config_id, c.label), []).append(c)
+            self._by_emitter = index
+        return self._by_emitter
+
+    @property
+    def emitter_keys(self) -> list[tuple[str, int]]:
+        """Sorted `(config_id, label)` keys -- the population `sample` draws over.
+
+        Sorted so a seeded draw is reproducible across runs: dict insertion order
+        follows the order recordings happened to be read.
+        """
+        return sorted(self.by_emitter)
+
+    @property
     def n_distinct_emitters(self) -> int:
         """Emitters seen in at least one run (a scan and a stare sighting of the
         same transmitter are two contributions but one emitter)."""
-        return len({(c.config_id, c.label) for c in self.contributions})
+        return len(self.by_emitter)
 
 
 @dataclass
@@ -410,15 +436,29 @@ class Scenario:
     ) -> "Scenario":
         """Draw a scenario from the pool.
 
-        `n_emitters` defaults to a draw from the real per-config transmitter counts
-        (2 to 99 across the 47 train configs), so sampled scenarios keep the
-        difficulty spread the dataset actually has rather than a flat one.
+        `n_emitters` defaults to a draw from the per-config count of emitters that
+        were *detectable at all* (1 to 82 across the 47 train configs, summing to
+        1,913), so sampled scenarios keep the difficulty spread the dataset
+        actually has rather than a flat one. Not the metadata transmitter count
+        (2 to 99): 19.0% of transmitters never appear in either recording.
+
+        One emitter appears at most once (D32). 1,530 of the 1,913 pool emitters
+        have both a scan and a stare realisation, so a uniform draw over
+        contributions returned the same physical emitter twice in 23.9% of
+        scenarios -- at identical position and beam phase, with disjoint activity.
+        That is not the plausible independent placement D25 justifies sampling
+        with, and it double-counts one emitter in `E`. So the draw is over
+        emitters, and one realisation is chosen per emitter drawn.
         """
         if n_emitters is None:
             n_emitters = int(rng.choice(pool.emitter_counts))
-        n_emitters = min(n_emitters, len(pool))
-        idx = rng.choice(len(pool), size=n_emitters, replace=False)
-        picked = [pool.contributions[i] for i in idx]
+        keys = pool.emitter_keys
+        n_emitters = min(n_emitters, len(keys))
+        idx = rng.choice(len(keys), size=n_emitters, replace=False)
+        picked = [
+            pool.by_emitter[keys[i]][rng.integers(len(pool.by_emitter[keys[i]]))]
+            for i in idx
+        ]
         return cls(name=f"sample:n={n_emitters}", contributions=picked)
 
     def __len__(self) -> int:

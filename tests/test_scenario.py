@@ -134,8 +134,9 @@ def test_pool_size():
     assert sum(c.source == "scan" for c in pool.contributions) == 1739
     assert sum(c.source == "stare" for c in pool.contributions) == 1704
     # Difficulty spread: emitters *detectable* per config, which is what a
-    # scheduler faces. The metadata lists 2-99 transmitters per config; 1-76 of
-    # them are detectable in either run, and those sum to the 1,913 distinct emitters.
+    # scheduler faces. The metadata lists 2-99 transmitters per config; 1-82 of
+    # them are detectable in either run, and those sum to the 1,913 distinct
+    # emitters. 19.04% of the 2,363 train transmitters are never detectable at all.
     assert pool.emitter_counts.sum() == 1913
     assert pool.emitter_counts.min() == 1 and pool.emitter_counts.max() == 82
 
@@ -148,6 +149,42 @@ def test_sampled_scenarios_differ_and_are_reproducible():
     assert [x.uid for x in a.contributions] == [x.uid for x in b.contributions]
     assert [x.uid for x in a.contributions] != [x.uid for x in c.contributions]
     assert len(Scenario.sample(pool, np.random.default_rng(2), n_emitters=12)) == 12
+
+
+def test_sampled_scenarios_never_repeat_a_physical_emitter():
+    """One emitter, at most one contribution per scenario (D32).
+
+    1,530 of the 1,913 pool emitters have both a scan and a stare realisation, so
+    a uniform draw over contributions returned the same physical emitter twice in
+    23.9% of scenarios (59.0% at n=82) -- same position, same beam phase, disjoint
+    activity, and double-counted in `E`. Drawing over emitters instead of over
+    contributions is what makes this impossible rather than merely unlikely.
+    """
+    pool = EmitterPool.from_train()
+    both = sum(1 for v in pool.by_emitter.values() if len(v) > 1)
+    assert both == 1530
+
+    rng = np.random.default_rng(0)
+    for _ in range(200):
+        keys = [(c.config_id, c.label) for c in Scenario.sample(pool, rng).contributions]
+        assert len(keys) == len(set(keys))
+
+    # and at the top of the difficulty range, where it used to happen 59% of the time
+    for _ in range(50):
+        keys = [(c.config_id, c.label)
+                for c in Scenario.sample(pool, rng, n_emitters=82).contributions]
+        assert len(keys) == len(set(keys)) == 82
+
+
+def test_sample_can_draw_either_realisation_of_an_emitter():
+    """Both runs still feed the pool -- the fix picks one realisation, it does not
+    discard stare (D17's conclusion, D24's mechanism, D32's correction)."""
+    pool = EmitterPool.from_train()
+    rng = np.random.default_rng(3)
+    sources = set()
+    for _ in range(30):
+        sources.update(c.source for c in Scenario.sample(pool, rng, n_emitters=60).contributions)
+    assert sources == {"scan", "stare"}
 
 
 def test_replay_carries_exactly_one_recording():
