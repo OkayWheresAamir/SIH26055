@@ -91,6 +91,12 @@ on held-out data, D24).
   against a second thresholded copy of `S` — referencing them to `(S ≥ γ)` is degenerate and
   cannot sweep (D26). They are **properties of this layer at the frozen γ and do not depend on
   the scheduler** (D15, D21). What the scheduler controls is *which cells get looked at*.
+- **Crediting an intercept to an emitter** (D28): `e` is intercepted at slot `t` iff the tuned
+  band is one `e` pulses into at `t`, **`e`'s own** level there clears γ, and `Y(t) = 1`. `Y` is
+  declared on the combined `S`, so a weak emitter qualifying under its own level and sharing a
+  cell with a louder one is near-certain to be credited — accepted; per-pulse detection is the
+  v2 form. The own-level clause is what stops a quiet emitter inheriting a loud neighbour's
+  detectability, and it is the same rule that fixes `on_e` (D27).
 - No retune cost (Turing's own sweep has none observable); if one is added later it is a
   reward term, not a receiver change.
 
@@ -113,8 +119,8 @@ placeholder, which is precisely the part this spec replaces.
 - `reward`: pluggable (D7). Candidates are trained separately and judged on the scheduler-level
   metrics below. Default first candidate: +1 per true hit, with censored intercept time doing the
   discovery-pricing at evaluation (D5, D14).
-- `info` dict: truth-side quantities for the evaluator only (per-emitter first-intercept slots,
-  cell occupancy) — never fed to the agent.
+- `info` dict: truth-side quantities for the evaluator only (per-emitter first-intercept slots
+  under D28, cell occupancy) — never fed to the agent.
 - `reset(seed, options={scenario})` takes either a deterministic replay or a sampled scenario
   (D25). Validation always uses replays; training uses samples.
 

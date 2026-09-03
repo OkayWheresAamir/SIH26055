@@ -760,6 +760,62 @@ scoring a scheduler for missing those would be meaningless.
 
 ---
 
+## D28 — What counts as intercepting an emitter: D5 and D27 conjoined
+
+**Status:** `SETTLED` (2026-09-03) — not a new decision. Records the answer to a question the
+implementation lane raised in `first_e` terminology, which D5 and D27 already settle jointly.
+
+An emitter `e` is **intercepted at slot `t`** iff all three hold:
+
+1. `a(t)` is a band `e` puts pulses into at `t` — the scheduler was looking where it radiates;
+2. **`e`'s own** received level in that cell clears γ;
+3. the receiver declared `Y(t) = 1`, i.e. `S[a(t),t] + n ≥ γ`.
+
+(1) ∧ (3) is D5 verbatim. (2) is D27's own-level rule, the same one that defines `on_e` — so
+numerator and denominator of censored intercept time are measured by one rule and
+`first_e ≥ on_e` holds by construction.
+
+**Why the question arose, and the misreading to avoid.** It reads as though γ replaces the
+"double coincidence" of receiver-tuned × emitter-illuminating with a generic noise threshold.
+It does not. D4 already converted the second factor from a boolean gate into a continuous
+level, on measured evidence, and clause (2) *is* that factor — an emitter pointed away is
+represented by its own level collapsing, not by a flag going false.
+
+**Evidence — D4's beam measurement, re-run 2026-09-03** on `config_2` stare, folding each
+emitter's ToAs at `30/scan_rate_rpm` into 36 phase bins: **15 of 19 emitters occupy all 36
+bins**, median peak-amplitude swing across phase **53.8 dB** (max 72.0). The four that do not
+are sampling-limited, not gated — label 18 has 32 pulses over 17.1 revolutions (1.9/rev),
+label 30 spans 0.1 of a revolution. The single `Omni` emitter (label 28) swings **3.9 dB**
+against 53.8 dB median for `Circular` ones, which is the antenna pattern appearing exactly
+where it should. A rotating emitter is interceptable through its sidelobes; there is no
+off-state to coincide with.
+
+**Why not the γ-free alternative** ("intercepted = tuned to a band it pulses into, no detection
+required"). It mirrors interception ratio's wording, but it contradicts D5, credits intercepts
+no receiver declared, and breaks `first_e ≥ on_e`. Measured on the same file: label 24 has
+pulses in band 18 at slot 35 at own level −120.4 dB while its detectable interval starts at
+slot 36, so a scheduler tuned there at slot 35 would score an intercept time of **−0.05 s**.
+The division of labour is already correct without it: **interception ratio** is the
+threshold-free opportunity metric, **intercept time** is the detection metric (D14).
+
+**Implementation choice taken inside this design** (routine, not gated): `Y` is declared on the
+**combined** `S[a(t),t]`, per D26 — not on the emitter's own level plus noise. `Y` is the
+scheduler's only observable and a real receiver cannot un-mix a cell. Since `S = max` over
+contributors, `own ≥ γ` implies `S ≥ γ`, so clauses (2) and (3) never conflict; the effect is
+that at a cell shared with a louder emitter, a qualifying weak emitter's detection is close to
+assured. Accepted as the cost of a cell-level model.
+
+**Known limitation, deferred to v2.** The honest form is per-pulse detection — a real receiver
+deinterleaves PDWs, so each pulse should clear γ on its own amplitude rather than the cell
+maximum deciding for every contributor. That needs per-emitter noise draws at L2 and belongs
+after the gates, not before.
+
+**Consequence.** `EVALUATION.md` §1 now carries the three-clause `first_e` definition.
+`receiver.py` implements it; nothing in `truth.py` changes — `detectable_interval` already
+judges on `c.peak_dbm`, the emitter's own array.
+
+---
+
 ## Consistency audit — 2026-08-30
 
 Requested by the team: a check that the decisions form one coherent story. Result: **two real

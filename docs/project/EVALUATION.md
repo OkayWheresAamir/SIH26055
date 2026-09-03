@@ -41,7 +41,14 @@ For one scenario over one 30 s episode:
 - `E` — emitters with a non-empty **detectable activity interval**, i.e. whose own received
   level clears γ at some slot (D27). Not every transmitter in the metadata: 19.0% of train
   transmitters never appear in either recording. `on_e` — the start of that interval.
-- `first_e` — slot of the first true intercept of `e`; `∞` if never intercepted.
+- `first_e` — slot of the first true intercept of `e`; `∞` if never intercepted. An
+  intercept of `e` at slot `t` requires **all three** (D5 ∧ D27, restated as D28): the
+  scheduler was tuned to a band `e` puts pulses into (`a(t)` ∈ bands of `e` at `t`); **`e`'s
+  own** received level in that cell clears γ; and the receiver declared `Y(t) = 1`. The
+  own-level clause is what stops a quiet emitter inheriting a loud neighbour's detectability —
+  the same rule that defines `on_e`, so numerator and denominator agree and `first_e ≥ on_e`
+  always. `Y` itself is declared on the **combined** `S[a(t),t]`, because that is all a real
+  receiver has (D28).
 
 **Every metric below is computed identically for every scheduler, including baselines.**
 
