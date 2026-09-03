@@ -1,7 +1,7 @@
 # RF Environment — Consolidated Specification
 
 **What this is.** The single buildable specification of the RF environment, consolidating every
-decision in `docs/project/DECISIONS.md` (referenced as D1–D27) into one coherent design. A planning
+decision in `docs/project/DECISIONS.md` (referenced as D1–D31) into one coherent design. A planning
 session should be able to read this file plus `DECISIONS.md` and start building without
 re-deriving anything. Written 2026-09-01; L0/L1 corrected 2026-09-01 after D23–D27.
 
@@ -97,8 +97,12 @@ on held-out data, D24).
   cell with a louder one is near-certain to be credited — accepted; per-pulse detection is the
   v2 form. The own-level clause is what stops a quiet emitter inheriting a loud neighbour's
   detectability, and it is the same rule that fixes `on_e` (D27).
-- No retune cost (Turing's own sweep has none observable); if one is added later it is a
-  reward term, not a receiver change.
+- **No retune cost — measured, not assumed** (D31). The sweep period is exactly 2.15 s =
+  `sum(dwell_times_s)`; assuming even 1 µs of dead time per retune drops the schedule replay's
+  in-band fraction from **99.985% to 99.829%** over 4,393,233 train scan pulses, and 100 µs drops
+  it to 82.9%. Retuning costs under 1 µs, i.e. under 0.002% of a slot. **Airtime is therefore the
+  only currency in this problem.** If a retune cost is added later it is a reward term, not a
+  receiver change.
 
 ## L3 — Agent interface
 
@@ -128,6 +132,17 @@ placeholder, which is precisely the part this spec replaces.
   hit (`Z`), +1 per declared hit (`Y`), and +1 per first intercept of an emitter (D28's three
   clauses). **No reward can move P<sub>d</sub> or P<sub>fa</sub>** — those are frozen receiver
   properties (D15, D21); a false-alarm penalty prices a wasted dwell, nothing more.
+  **Reward is defined per slot, and a dwell's reward is the sum of its slots'** (D31) — so a
+  100 ms dwell on one of the seven wide bands is scored on both its cells and can earn up to +2.
+  This holds for all three candidates, and it keeps reward-per-unit-time equal across wide and
+  narrow bands: a wide band costs twice the airtime and can earn twice the credit. The rejected
+  alternative, +1 per dwell regardless of length, would make those seven bands strictly dominated
+  — and they are measurably the bands that matter most, holding the densest emitter populations
+  (mean 764.6 emitter-frequency placements against 170.4) and the slowest rotators (bands 0 and 1
+  at median 3.00 rpm). Every metric that judges a reward is already per-slot or per-illumination
+  (`EVALUATION.md` §4), so per-dwell scoring would be the only per-dwell quantity in the project.
+  Implementation: a wide-band action returns one `step()` with `reward = r[t] + r[t+1]` and
+  advances the clock by two slots.
 - `info` dict: truth-side quantities for the evaluator only (per-emitter first-intercept slots
   under D28, cell occupancy) — never fed to the agent.
 - `reset(seed, options={scenario})` takes either a deterministic replay or a sampled scenario

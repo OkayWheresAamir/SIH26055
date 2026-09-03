@@ -19,10 +19,18 @@ Built so far:
 - Tests for both, passing (`tests/`)
 
 Next: `receiver.py` (L2 — the noise draw and `Y`), then `env.py` (L3 — gymnasium), then
-`render.py` + `metrics.py`, then `validate.py` (gates 1–4).
+`render.py` + `metrics.py`, then `validate.py` (gates 1–4). Nothing blocks `receiver.py`: the
+three questions it raised are answered by **D28** (what counts as intercepting an emitter),
+**D29** (the reward may read truth; the observation may not) and **D31** (reward is per slot, so
+a 100 ms dwell is scored on both its cells).
 
-The two questions that were previously open (`sensitivity_dbm` semantics, scan/stare
-non-nesting) are closed — see `docs/project/DECISIONS.md` (D9, D10, D24).
+Earlier open questions (`sensitivity_dbm` semantics, scan/stare non-nesting) are closed — see
+`docs/project/DECISIONS.md` (D9, D10, D24).
+
+One decision is still open and should be fixed **before** training starts: D29's selection rule
+for choosing among the three reward candidates when they Pareto-dominate the baselines but not
+each other. One is `PROPOSED` and awaiting a human: D30 (whether AoA and PulseWidth enter the
+observation).
 
 ## Layout
 

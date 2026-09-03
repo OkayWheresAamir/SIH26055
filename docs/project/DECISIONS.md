@@ -988,6 +988,105 @@ Column-drop confirmed by reading `rfenv/scenario.py`.
 
 ---
 
+## D31 — Reward is defined per slot; a dwell's reward is the sum of its slots'
+
+**Status:** `SETTLED` (2026-09-03) — accepted by the team. Records the answer to the third
+question the implementation lane raised. Unlike D28 and D29, this one was **not** already
+settled elsewhere: no prior decision covers how reward accounts for a two-slot dwell. It is
+nevertheless tightly constrained, because the metrics that judge a reward (D7) are already
+per-slot and per-illumination.
+
+Seven bands — 0, 1, 6, 7, 17, 18, 19 (250, 750, 3250, 3750, 8750, 9250, 9750 MHz) — carry a
+native 100 ms dwell, so choosing one consumes two 50 ms slots (D3, D16). **Reward is scored on
+each slot the dwell covers, and the dwell's reward is their sum.** A 2-slot dwell can therefore
+earn up to +2 under a per-hit reward. The rejected alternative is OR-over-slots: +1 per dwell
+regardless of length.
+
+**Why, in order of force.**
+
+1. **Nothing else in the system is per-dwell.** Interception ratio is *per illumination*
+   (`EVALUATION.md` §4, explicit: *"Per illumination, not per dwell"*). Censored intercept time
+   is per emitter via `first_e`, which is per slot (D28). D7 selects a reward by scoring it on
+   exactly these metrics, so a per-dwell reward would be the only per-dwell quantity in the
+   project — and `EVALUATION.md` §4 trap 1 already records per-dwell accounting as a *measured*
+   trap: the camper scores 85–90% per-dwell while capturing 30% of emitters.
+2. **L2 performs two measurements, not one long one.** A 100 ms dwell is `S[b,t] + n₀` at slot
+   `t` and `S[b,t+1] + n₁` at `t+1` — two independent noise draws, two chances at `Y = 1`. Under
+   D29's `P(Y=1) = Φ((S−γ)/σ)`, a marginal emitter at `S = γ` yields 0.5 per look and **0.75 over
+   two**. D29's case for a `Y`-reward is precisely that it teaches *"a marginal emitter needs
+   repeated looks before it yields a declaration"*; OR-over-slots erases that signal.
+3. **OR-over-slots trains the agent to abandon the best part of the spectrum.** It makes the
+   seven wide bands strictly dominated — twice the airtime for the same maximum reward — so a
+   trained agent learns to avoid them. Measured this session across all 47 train scan configs,
+   those are the bands that matter most:
+
+   | | wide bands | narrow bands |
+   |---|---|---|
+   | emitter-frequency placements | mean **764.6** | mean **170.4** |
+   | median `scan_rate_rpm` | **10.00** | **35.00** |
+
+   Correlation of *is-wide* with density **+0.629**, with median scan rate **−0.425**. Five of
+   the seven rank in the top 8 of 36 by density. Bands 0 and 1 are not dense (ranks 16 and 13)
+   but hold the slowest rotators in the dataset — **median 3.00 rpm**, one revolution per 20 s,
+   the hardest emitters to catch. Avoiding these bands would be D14's camper pathology
+   reintroduced by an accounting artifact rather than by the physics.
+4. **The second slot is not filler.** Measured this session, 47 train scan configs, γ = −111 dB:
+   persistence `P(Z[b,t+1] | Z[b,t])` in wide bands **77.72%** (narrow control 60.59%); over
+   16,000 wide dwells starting on an occupied slot, mean **307.63** pulses in slot 1 against
+   **254.84** in slot 2 (**82.8%**); and over 17,584 non-empty wide slot-pairs, **32.89%** contain
+   an emitter detectable in slot 2 that was not detectable in slot 1 (D28's own-level rule).
+
+**What this keeps invariant.** Reward per unit time is the same for wide and narrow bands: a
+wide band costs twice the airtime and can earn twice the credit. Since retuning is free (below),
+airtime is the only currency in the problem, and this is the accounting that leaves the agent
+free to trade it on the merits rather than on a units artifact.
+
+**Uniform across all three D7 candidates.** Candidates 1 (`+1` per true hit, `Z`) and 2 (`+1` per
+declared hit, `Y`) are per-slot quantities and simply sum. Candidate 3 (`+1` per **first**
+intercept of an emitter) is unaffected — an emitter is first-intercepted once, whichever slot of
+the dwell delivers it.
+
+**Implementation** (routine, inside this design): a wide-band action returns one `step()` with
+`reward = r[t] + r[t+1]` and advances the clock by two slots. `env.py` exposes one action per
+band; dwell length is the band's, never the agent's.
+
+**Supporting measurement — retuning is free, so airtime is the only cost.** The sweep period is
+exactly 2.15 s = `sum(dwell_times_s)`. If each retune cost `dt`, the true period would be
+`2.15 + 36·dt` and band assignment would drift across a 30 s episode. Replayed against all
+**4,393,233** train scan pulses:
+
+| assumed dead time per retune | pulses in the predicted band |
+|---|---|
+| **0 µs** | **99.985%** |
+| 1 µs | 99.829% |
+| 5 µs | 99.146% |
+| 20 µs | 96.549% |
+| 100 µs | 82.896% |
+
+No drift within the episode either: 99.996% / 99.984% / 99.973% across the three 10 s thirds.
+Retune costs well under 1 µs — under 0.002% of a slot. This confirms by measurement what
+`ENVIRONMENT_SPEC.md` §L2 previously asserted ("no retune cost"). `dwell_times_s` and
+`dwell_centres_mhz` are byte-identical to `rfenv/constants.py` in **47/47** train scan configs,
+so the wide-dwell set is a fixed receiver property, not a per-config one.
+
+**What is *not* represented, and is out of scope.** Staying on a band has operational value our
+scorecard does not score: contiguous observation is what lets a real ES receiver estimate PRI and
+scan period. No metric in `EVALUATION.md` prices it. That is consistent with the PS, whose primary
+objective is *"minimize intercept time and ensure a high interception rate"* and not
+characterisation quality — but the asymmetry is stated rather than hidden.
+
+**Noted, not acted on — the dwell schedule encodes prior intelligence.** The seven 100 ms bands
+sit exactly where the emitters are densest and where the beams come round slowest. That is sound
+receiver design, and we adopt it under D3, but it means the *receiver* carries prior knowledge of
+the emitter population even though D20 starts the *scheduler* cold. Not a defect and not a change
+to anything; recorded so the write-up states it before a reviewer notices it.
+
+**Evidence.** Measured this session (2026-09-03) over all 47 train scan pairs via scratch scripts,
+using `rfenv.truth` at the frozen γ = −111 dB; dwell-schedule and retune figures read directly
+from `data/turing/scan/train_scan/*.h5`. Sourced: `EVALUATION.md` §4, D3, D7, D14, D16, D28, D29.
+
+---
+
 ## Consistency audit — 2026-08-30
 
 Requested by the team: a check that the decisions form one coherent story. Result: **two real
