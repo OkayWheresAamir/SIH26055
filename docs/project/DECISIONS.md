@@ -140,8 +140,12 @@ sweep, so no arbitrary constant is ever chosen by hand. D5, D6 and D15 settle wi
 **Why.** It is the PS's own definition once D4 supplies the occupancy: *"the model should then
 be trained based on hits and misses."* No extra machinery.
 
-**Still open inside this:** whether all hits score equally, or whether first-interception of a
-previously unseen emitter is worth more. The PS names two objectives that pull apart —
+**The sub-question this raised is now closed — see D29.** "Whether all hits score equally, or
+whether first-interception of a previously unseen emitter is worth more" became D7 candidate 3
+(`+1` per first intercept of an emitter), given a precise three-clause definition by D28. It is
+no longer an open question and `RESEARCH_MAP.md` no longer lists it as one. The original framing
+is kept below because the tension it names is real and still governs how the candidates are
+judged. The PS names two objectives that pull apart —
 *minimise intercept time* favours weighting discovery, *high interception rate* favours raw
 volume. **Empirical warning from the literature:** Apfeld et al. found their Random baseline had
 the **best** percentage of radars detected at least once while having the **worst** efficiency —
@@ -448,7 +452,9 @@ from day one. It does not delay anything else.
 
 ## D19 — Deinterleaving is not required; the observation vector is the RL lane's open choice
 
-**Status:** deinterleaving question `CLOSED`; observation contents `OPEN` (2026-08-30)
+**Status:** deinterleaving question `CLOSED` (2026-08-30); observation contents **default taken
+in `ENVIRONMENT_SPEC.md` §L3 and recorded as D34** (2026-09-03) — extensions remain the RL lane's
+call and get logged as decisions.
 
 **Deinterleaving — separating interleaved pulses by emitter — is the Turing dataset's native
 task, not ours, and nothing in the PS requires the scheduler to do it.** The training signal is
@@ -584,6 +590,9 @@ post-detection**; −100 dB is not a floor our threshold has to clear.
    `N₀ = −120 dB` (`sensitivity_dbm` −110 minus `gain_db` 10 — the anchor D9 noted); `σ = 3 dB`,
    **chosen, not measured**; `γ = N₀ + 3σ = −111 dB`, giving Pfa = 1.35e−3. Measured ROC over the
    47 train configs at that point: **Pd = 0.822, sensitivity (level at which Pd = 0.9) = −107.2 dB.**
+   *(Amended 2026-09-03: sensitivity re-ran exactly; **`Pd = 0.822` is withdrawn** — the cell
+   population it was averaged over was never recorded, and the three candidates measure 0.819,
+   0.837 and 0.851. See D33. Nothing else in D23 is affected: γ, N₀, σ and Pfa are unchanged.)*
    The same number as the discredited calibration, reached for a defensible reason.
 3. **The 35.70% becomes a pipeline self-consistency test**, which is what it should always have
    been: build the grid from the scan recording, replay the schedule that produced it, threshold
@@ -893,8 +902,10 @@ outside without circularity.
    `receiver.py` and `env.py` do not depend on it.
 
 **Evidence.** Reasoned from D5, D7, D14, D21, D26, D28 and the architecture's own stage order.
-The `Φ((S−γ)/σ)` curve is the L2 model definition, not a measurement. `Pd = 0.822` is quoted from
-`EVALUATION.md` §3 (measured 2026-09-01); not re-run for this entry.
+The `Φ((S−γ)/σ)` curve is the L2 model definition, not a measurement. `Pd = 0.822` was quoted from
+`EVALUATION.md` §3 (measured 2026-09-01) and not re-run for this entry — **it has since been
+withdrawn (D33)**; read the two mentions above as "the aggregate Pd, whatever D33 fixes it at,
+is a mixture over the per-cell curve". The argument does not depend on the value.
 
 ---
 
@@ -1087,6 +1098,119 @@ from `data/turing/scan/train_scan/*.h5`. Sourced: `EVALUATION.md` §4, D3, D7, D
 
 ---
 
+## D32 — a sampled scenario draws at most one contribution per physical emitter
+
+**Status:** `SETTLED` (2026-09-03) — implementation correction inside D25, found by the
+consistency audit. Lands before the freeze, so nothing is re-validated.
+
+`Scenario.sample` drew uniformly from all 3,443 pool contributions. But 1,530 emitters appear in
+the pool **twice** — once from the scan run, once from the stare run (3,443 contributions over
+1,913 distinct emitters). So a draw could return both realisations of the same physical emitter.
+
+**Why that is wrong.** D25 justifies the sampler on the grounds that one recorded contribution is
+"a valid sample of *one emitter of that type at a plausible position and beam phase* over 30 s".
+Two contributions of the same `(config_id, label)` are the same emitter at **identical** position
+and beam phase with **disjoint** activity (D24) — which is not a plausible independent placement,
+and is precisely the arbitrary randomisation D25 rejected the time-shift knob for. It also
+double-counts one emitter in `E`, inflating both emitter coverage and censored mean intercept
+time.
+
+**Measured this session.** Over 2,000 sampled scenarios at the default `n` draw: **23.9%**
+contained at least one duplicated physical emitter, mean 0.306 duplicates per scenario, max 4.
+At the top of the difficulty range (`n = 82`): **59.0%** of scenarios, mean 0.854.
+
+**Decision.** Sample distinct `(config_id, label)` keys, then take one contribution per key. Both
+runs still feed the pool (D17's conclusion, D24's mechanism); a scenario simply never contains
+the same emitter twice.
+
+**Consequence.** The scenario sampling distribution is on the freeze list (D25), so this had to
+land before the gates run — it now has. `n` continues to be drawn from the empirical per-config
+count of *detectable* emitters, re-verified this session as **1 to 82, summing to 1,913 over 47
+configs**, matching D25 exactly.
+
+**Evidence.** Measured 2026-09-03 via `rfenv.scenario` against `data/turing`; pool figures
+re-run and identical to D25's.
+
+---
+
+## D33 — which cells P<sub>d</sub> is averaged over
+
+**Status:** `PROPOSED` (2026-09-03) — **awaiting a human decision.** Receiver characterisation, so
+gated by `CLAUDE.md`. **`receiver.py` needs this to emit a ROC at all.**
+
+**The problem.** `EVALUATION.md` §3 said "only cells the receiver actually looked at contribute".
+Taken literally that makes P<sub>d</sub> **scheduler-dependent** — different schedulers look at
+different cells, and per-cell detection probability is not uniform (`P(Y=1 | cell) =
+Φ((S−γ)/σ)`, D29), so a camper parked on loud cells would report a higher P<sub>d</sub> than a
+sweeper. That contradicts D21 and §0, both of which state P<sub>d</sub> is identical for every
+scheduler. The population was never specified, and the figure depends on it entirely.
+
+**Measured this session** — ROC re-run from `rfenv` over the 47 train configs at the frozen
+γ = −111 dB, analytic in the noise draw (`Pd = mean of Φ((S−γ)/σ)` over the population;
+confirmed against a Monte-Carlo draw to three decimals):
+
+| Population | n occupied cells | P<sub>d</sub> |
+|---|---|---|
+| All occupied cells, scan replays | 29,707 | **0.837** |
+| All occupied cells, stare replays | 336,210 | **0.819** |
+| Only cells Turing's reference sweep looks at, scan replays | 11,710 | **0.851** |
+
+The previously quoted **0.822** is closest to the stare population but matches none of them, and
+is withdrawn. P<sub>fa</sub> = 1.35e−3 and sensitivity −107.2 dB are unaffected — both are
+analytic in γ and σ (`1 − Φ(3)` and `γ + 1.2816σ`), and both re-ran exactly.
+
+**Proposal: the reference-sweep population** (0.851 at the operating point). It keeps the
+"per-look" reading `EVALUATION.md` §3 already commits to, it is **fixed and
+scheduler-independent** because the schedule is Turing's own and never varies, and it is the same
+fixed schedule every other model-level check already uses (D3, gates 1 and 2, baseline 3). The
+alternative worth naming once: **all occupied cells** (0.837), a larger sample and independent of
+any schedule at all, but it characterises the detector over cells no receiver ever visits, which
+is not what a per-look probability means.
+
+**Either way, the population goes on the freeze list** beside γ, N₀ and σ, and the ROC is
+reported as a curve with the population stated on it. The *shape* of the sweep does not depend on
+this choice; only the quoted operating point does.
+
+**Evidence.** Measured 2026-09-03 via `rfenv.truth` over all 47 train pairs. Reasoned from D21,
+D26 and D29.
+
+---
+
+## D34 — the base observation vector, recorded
+
+**Status:** `PROPOSED` (2026-09-03) — **awaiting a human decision.** Records a choice that was
+already made in `ENVIRONMENT_SPEC.md` §L3 but never written down as a decision. Build to it
+meanwhile; approval ratifies what the spec already says rather than changing it.
+
+**Why this entry exists.** `ENVIRONMENT_SPEC.md` §L3 fixes `observation_space` at **36×3 + 1 =
+109**: per-band empirical hit rate, per-band visit density, per-band staleness, plus normalised
+episode time. That choice appears in no decision entry — no evidence line, no alternatives, no
+recorded approval. Meanwhile D19's status still reads *"observation contents `OPEN`"*, and D30 is
+correctly being held for a human decision **because it changes the observation vector**. So the
+base vector went through no gate while its proposed extension waits at one. The 2026-09-03 audit
+flagged the asymmetry; this entry closes it either way.
+
+**The case for the three quantities.** Each maps onto one of the PS's own figures of merit, which
+is why they were chosen: **hit rate** is what a scheduler needs to estimate detection
+probability, **visit density** is intercept rate, **staleness** is what makes the problem
+restless rather than a plain bandit — a band ignored for 10 s may have become busy without
+telling you. All three are computed **only from the agent's own scan history**, so the vector
+carries no prior emitter intelligence (D19, D20) and nothing truth-side leaks into the policy's
+input path (D29).
+
+**What it deliberately excludes.** Pulse count and peak amplitude within the dwell (available at
+L2, richer than the PS's minimal hit/miss framing); AoA and PulseWidth (D30, separately gated);
+anything per-emitter (D19: avoid needing deinterleaving).
+
+**Consequence.** `D19` is amended from *"observation contents `OPEN`"* to **"default taken here;
+extensions remain the RL lane's call and get logged as decisions."** The four validation gates do
+not touch the observation vector, so nothing in validation depends on this.
+
+**Evidence.** Sourced: `ENVIRONMENT_SPEC.md` §L3, `SIH26055_PROBLEM_STATEMENT.md` (figures of
+merit). Reasoned from D19, D20, D29. No new measurement.
+
+---
+
 ## Consistency audit — 2026-08-30
 
 Requested by the team: a check that the decisions form one coherent story. Result: **two real
@@ -1096,7 +1220,7 @@ inconsistencies found and fixed, three tensions clarified.** Everything else hol
 |---|---|---|
 | 1 | D14's claim that only off-spec "coverage" rescued the problem | **Wrong — fixed.** PS-mandated intercept time, censored properly, defeats the camper (see D14 amendment). We do not need metrics the PS didn't ask for. |
 | 2 | Measurement scripts used two different pulse→band conventions (all-covering-bands vs last-band-wins) | **Fixed.** Canonical rule: a pulse is intercepted iff the scheduler's tuned window contains it at its slot. The 2026-08-29 exact figures shifted slightly (e.g. greedy 90.3%→85.0% per-dwell); directions unchanged. |
-| 3 | D1 (generative environment) vs D4's prototype grid (built empirically from recordings) | **Clarified, not contradictory.** The empirical grid is scaffold and validation reference. The target signal model is *generated* — Apfeld's Eq. 1 SNR form fed by Turing metadata (position→range, power/gain, beam angle) with activity windows from recordings (D2). Generated and empirical grids must agree; that agreement is itself a validation gate. |
+| 3 | D1 (generative environment) vs D4's prototype grid (built empirically from recordings) | **Resolution below is OVERTAKEN BY D25 (2026-09-01) — do not build from this row.** It said the target signal model was *generated* (Apfeld's Eq. 1 fed by Turing metadata) and that generated-vs-empirical agreement would be "itself a validation gate". D25 dropped the physics signal model outright: its antenna pattern is published nowhere and its power scale would have to be fitted to the same recordings the primary gate scores. **There is no fifth gate**; the four in `EVALUATION.md` §6 are all of them. What survives is the framing D25 gives: the environment is generative in its *scenario structure*, over recording-derived signal values. |
 | 4 | Union-truth construction vs replay validation (circularity) | **Real risk — addressed by D17's out-of-sample gate.** |
 | 5 | D3 "adopt receiver exactly" vs undefined slot length | **Closed by D16.** |
 | 6 | "Stare as partial ground truth" phrasing vs union construction | **Consistent** — D1/D2 already define truth as constructed, recordings as evidence. Union uses all evidence; no framing change. |
@@ -1126,10 +1250,90 @@ now fenced off explicitly.
 
 ---
 
-# Evaluation plan
+## Consistency audit — 2026-09-03 (D1–D31, architecture, spec, code)
 
-What we will measure, why, and the traps. Drafted 2026-08-29; not yet exercised against
-anything, so treat as a plan rather than a protocol.
+Third pass, requested by the team before L2/L3 implementation: check that every decision is
+consistent with every other one and with the built code, and re-run whatever could be re-run.
+Scope was D1–D31, `PROJECT_ARCHITECTURE.md`, `ENVIRONMENT_SPEC.md`, `EVALUATION.md`,
+`RESEARCH_MAP.md`, `RL_LANE_HANDOFF`, and `rfenv/` L0–L1 with its tests.
+
+**Result: the decision spine has no contradictions. Three quoted numbers did not reproduce, one
+implementation did not match its decision, and the surrounding documents had drifted.**
+
+### The spine holds
+
+D1 → D4 → D26 → D5/D27 → D28 is coherent end to end, and `first_e ≥ on_e` is true by
+construction rather than by luck. D24 → D25 amends D17 and D22 without leaving a rejected path
+alive. D31 is consistent with D3, D16, D7 and D14; D29 with D7 and D21. Nothing in D1–D31 needs
+reopening.
+
+### Re-run and exact
+
+Measured this session against `data/turing`, all 47 train pairs:
+
+| Check | Documented | Re-run | |
+|---|---|---|---|
+| Pool contributions | 3,443 | 3,443 | exact |
+| Distinct emitters in pool | 1,913 | 1,913 | exact |
+| Per-config detectable emitters | 1–82 | 1–82 | exact |
+| Transmitters never detectable | 19.0% | 19.04% | exact |
+| Recorded non-empty dwell rate | 35.70% | 35.70% | exact |
+| P<sub>fa</sub> at γ = −111 | 1.35e−3 | 1.35e−3 | exact |
+| Sensitivity at γ = −111 | −107.2 dB | −107.16 dB | exact |
+| Test suite | 23 pass | 23 pass | exact |
+
+New, and no issue found: **zero** of the 4,393,233 train scan pulses fall outside every band
+window, and zero fall outside the 30 s episode — so the interception-ratio denominator contains
+no unreachable illuminations.
+
+### Findings, and what was done about each
+
+| # | Finding | Action |
+|---|---|---|
+| 1 | **Gate 1's headline numbers do not reproduce.** `EVALUATION.md` §6 quoted accuracy 86.19%, precision 87.87%, recall 71.14%, MCC 0.694, per-band r = 0.940 at γ = −110 — *not* the frozen γ = −111. Rebuilt from `rfenv` across four comparison conventions (per-dwell and per-cell, against the raw ToA stream and against a scan-built grid), none reproduces them; the range is accuracy 83.5–86.0%, precision 88.5–89.5%, recall 68.2–69.5%, MCC 0.66–0.69, per-band r ≈ 0.93. Directionally the gate passes, and band 0 behaves exactly as documented (59.12% recorded, 0.00% predicted). The original convention was never recorded, so the discrepancy cannot be attributed. | `EVALUATION.md` §6 now labels these **pre-gate, convention unrecorded**, not "measured". `validate.py` must define the convention in code; whatever it returns becomes the number. |
+| 2 | **P<sub>d</sub> = 0.822 depends on an unstated cell population**, and `EVALUATION.md` §3's own wording ("only cells the receiver actually looked at") would make P<sub>d</sub> scheduler-dependent, contradicting D21. | 0.822 **withdrawn**; the three candidate populations measured and recorded as **D33** (`PROPOSED`). |
+| 3 | **`Scenario.sample` could draw the same physical emitter twice** — 23.9% of sampled scenarios, 59.0% at `n = 82` — because 1,530 emitters sit in the pool as both a scan and a stare realisation. Contradicts D25's own justification and double-counts in `E`. | Fixed in `scenario.py` and recorded as **D32**. Landed before the freeze. |
+| 4 | **The base observation vector (36×3+1) was never gated**, while D30 — its proposed extension — correctly is. D19 still read "observation contents `OPEN`". | Recorded as **D34** (`PROPOSED`); D19's status amended. |
+| 5 | **`RL_LANE_HANDOFF` contradicts D29 and D31.** Its §6 assigns the per-dwell accounting question and the reward-on-`Y`-or-`Z` question to the RL lane as undecided; D31 and D29 settled both. Its §9 candidate list includes a staleness-shaped reward, while D29 fixes the set at three. This is the document the teammates have already read. | HTML patched to point at D29/D31. **The PDF is stale until regenerated — owner: the human team.** |
+| 6 | **A superseded evaluation draft still sat inside this file**, redefining "% correct predictions" and "average intercept time error" differently from `EVALUATION.md` §2, keying intercept time to D2 activity windows (D27 replaced them), and phrasing gate 1 against the union grid (D24/D25 abolished it). | Section retitled **SUPERSEDED** with the four conflicts listed inline. Kept for history. |
+| 7 | **The 2026-08-30 audit row 3 still promised a physics signal model** and asserted a fifth validation gate ("generated and empirical grids must agree"). D25 dropped the model; `EVALUATION.md` §6 has four gates. | Row annotated as overtaken by D25. |
+| 8 | Smaller drift: `PROJECT_ARCHITECTURE.md` said "40 scenarios" in four places (it is 47); `EVALUATION.md` §8 still named occupancy `O`, the symbol D26 abolished; `RESEARCH_MAP.md` §Unresolved still listed D4 and D5's sub-question as awaiting a human, both since closed; D5's own text still said "still open inside this"; `scenario.py`'s sampler docstring described metadata transmitter counts (2–99) where the code correctly uses detectable counts (1–82). | All corrected. |
+
+### Not re-run, and therefore still quoted rather than verified
+
+D14's scheduler comparison table, D28's beam-phase measurement, D30's AoA attribution accuracy,
+and D31's band-density, persistence and retune figures were **not** re-measured in this pass.
+They remain as recorded, with their original session's evidence.
+
+### Standing risk, recorded not fixed
+
+Findings 1 and 2 are the same failure: a headline number produced by a scratch script whose
+convention was not written down. That is the failure mode this repository was created to prevent.
+The structural fix is `validate.py` — until a gate is a runnable check, its number is a claim.
+
+---
+
+# Evaluation plan — SUPERSEDED, kept for history
+
+> **Do not build from this section. `docs/project/EVALUATION.md` is the single authority on every
+> metric, baseline and gate** (`CLAUDE.md`; a metric is not defined in two places). This was the
+> first draft, written 2026-08-29 before EVALUATION.md existed. The 2026-09-03 audit found it
+> still in conflict with later decisions in four places, which is exactly the drift the
+> single-authority rule exists to prevent:
+>
+> - **"% correct predictions"** is defined below as *was the top-ranked band actually occupied* —
+>   a scheduler-ranking metric. `EVALUATION.md` §2 defines it as *environment-predicted vs
+>   recorded detection agreement*, a model-level metric. Two different quantities under one PS
+>   name; §2 is correct.
+> - **"Avg intercept time error"** is defined below as a *scheduler's* prediction error;
+>   `EVALUATION.md` §2 makes it the *environment's* prediction error, per the PS's own wording
+>   ("the model should enable prediction of…").
+> - **Intercept time** is keyed below to "D2 activity windows"; D27 replaced those with the
+>   **detectable activity interval** derived from the grid.
+> - **Gate 1** is phrased below against "the final union-built environment"; D24 and D25
+>   abolished the union grid (scan and stare are independent simulation runs).
+>
+> Retained unedited because it records what we thought before measuring, which is worth keeping.
 
 ### The seven metrics the PS mandates
 
