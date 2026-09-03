@@ -44,6 +44,12 @@ SLOT_S = 0.05
 EPISODE_S = 30.0  # `metadata.attrs["collection_time_s"]`, 30.0 for all 47 train pairs
 N_SLOTS = int(round(EPISODE_S / SLOT_S))  # 600
 
+# Each band's native dwell as a whole number of slots: 2 for bands 0, 1, 6, 7, 17,
+# 18, 19 and 1 for the other twenty-nine. This is what an action costs (D3, D16) --
+# the agent picks a band, never a dwell length -- and since retuning is free (D31,
+# measured under 1 us) airtime is the only currency in the problem.
+DWELL_SLOTS = np.round(DWELL_TIMES_S / SLOT_S).astype(np.int64)
+
 # --- Receiver detection model (D4, D23, D26) ----------------------------------
 # The truth grid holds a continuous level S. Empty cells sit at the noise floor;
 # when the receiver looks it measures S + n and declares a hit iff that beats gamma.
@@ -63,12 +69,21 @@ NOISE_SIGMA_DB = 3.0
 # (it is 1 - Phi(3)), sensitivity (the level at which Pd = 0.9) = gamma + 1.2816*sigma
 # = -107.2 dB. Both re-run 2026-09-03. The full sweep is the deliverable (D15).
 #
-# Pd at this point is NOT settled: it depends on which cell population it averages
-# over, which was never specified. Measured 2026-09-03 -- 0.819 over stare-replay
-# cells, 0.837 over scan-replay cells, 0.851 over only the cells Turing's reference
-# sweep looks at. The previously recorded 0.822 is withdrawn. See D33 (PROPOSED);
-# `receiver.py` needs it decided, and the chosen population joins this freeze list.
 GAMMA_DBM = NOISE_FLOOR_DBM + 3.0 * NOISE_SIGMA_DB  # -111.0
+
+# Which cells Pd is averaged over (D33). Frozen with gamma, N0 and sigma, because
+# the figure depends on it entirely: measured 2026-09-03, Pd at gamma = -111 comes
+# out 0.819 over stare-replay cells, 0.837 over scan-replay cells and 0.851 over
+# these. The previously recorded 0.822 matched none of them and is withdrawn.
+#
+# "reference_sweep" = the occupied cells Turing's own dwell_schedule() looks at.
+# It is per-look, which is what EVALUATION.md §3 means by a detection probability,
+# and it is scheduler-independent, which D21 requires -- the schedule is Turing's
+# and never varies, so no scheduler can move the population by looking elsewhere.
+# The rejected alternative was all occupied cells (0.837): a larger sample and
+# schedule-free, but it characterises the detector over cells no receiver visits,
+# which is not what "per look" means.
+PD_POPULATION = "reference_sweep"
 
 # --- Data layout --------------------------------------------------------------
 DATA_ROOT = "data/turing"

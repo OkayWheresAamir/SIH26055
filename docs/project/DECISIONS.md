@@ -1135,8 +1135,9 @@ re-run and identical to D25's.
 
 ## D33 — which cells P<sub>d</sub> is averaged over
 
-**Status:** `PROPOSED` (2026-09-03) — **awaiting a human decision.** Receiver characterisation, so
-gated by `CLAUDE.md`. **`receiver.py` needs this to emit a ROC at all.**
+**Status:** `SETTLED` (2026-09-03) — **accepted by the team: the reference-sweep population.**
+Receiver characterisation, so it was gated by `CLAUDE.md`. It is what unblocked `receiver.py`'s
+ROC; `PD_POPULATION = "reference_sweep"` is now on the freeze list in `rfenv/constants.py`.
 
 **The problem.** `EVALUATION.md` §3 said "only cells the receiver actually looked at contribute".
 Taken literally that makes P<sub>d</sub> **scheduler-dependent** — different schedulers look at
@@ -1159,20 +1160,24 @@ The previously quoted **0.822** is closest to the stare population but matches n
 is withdrawn. P<sub>fa</sub> = 1.35e−3 and sensitivity −107.2 dB are unaffected — both are
 analytic in γ and σ (`1 − Φ(3)` and `γ + 1.2816σ`), and both re-ran exactly.
 
-**Proposal: the reference-sweep population** (0.851 at the operating point). It keeps the
-"per-look" reading `EVALUATION.md` §3 already commits to, it is **fixed and
-scheduler-independent** because the schedule is Turing's own and never varies, and it is the same
-fixed schedule every other model-level check already uses (D3, gates 1 and 2, baseline 3). The
-alternative worth naming once: **all occupied cells** (0.837), a larger sample and independent of
-any schedule at all, but it characterises the detector over cells no receiver ever visits, which
-is not what a per-look probability means.
+**Decision: the reference-sweep population** — the occupied cells Turing's own
+`dwell_schedule()` looks at, giving **P<sub>d</sub> = 0.851** at the operating point. It keeps
+the "per-look" reading `EVALUATION.md` §3 already commits to, it is **fixed and
+scheduler-independent** as D21 requires — the schedule is Turing's own and never varies, so no
+scheduler can move the population by looking elsewhere — and it is the same fixed schedule every
+other model-level check already uses (D3, gates 1 and 2, baseline 3).
 
-**Either way, the population goes on the freeze list** beside γ, N₀ and σ, and the ROC is
-reported as a curve with the population stated on it. The *shape* of the sweep does not depend on
-this choice; only the quoted operating point does.
+**Rejected, and recorded once so it does not come back: all occupied cells** (0.837). A larger
+sample and independent of any schedule, but it characterises the detector over cells no receiver
+ever visits, which is not what a per-look probability means.
+
+**The population is on the freeze list** beside γ, N₀ and σ, as `PD_POPULATION` in
+`rfenv/constants.py`, and the ROC is reported as a curve with the population stated on it. The
+*shape* of the sweep does not depend on this choice; only the quoted operating point does.
 
 **Evidence.** Measured 2026-09-03 via `rfenv.truth` over all 47 train pairs. Reasoned from D21,
-D26 and D29.
+D26 and D29. Re-measured from `rfenv.receiver` when L2 landed (2026-09-03) — see the
+`test_receiver.py` operating-point test, which asserts the figure rather than quoting it.
 
 ---
 
@@ -1208,6 +1213,38 @@ not touch the observation vector, so nothing in validation depends on this.
 
 **Evidence.** Sourced: `ENVIRONMENT_SPEC.md` §L3, `SIH26055_PROBLEM_STATEMENT.md` (figures of
 merit). Reasoned from D19, D20, D29. No new measurement.
+
+---
+
+## D35 — the episode terminates at 600 slots, and an overrunning dwell is clipped
+
+**Status:** `SETTLED` (2026-09-03) — routine implementation inside D16 and D31, recorded because
+the first half changes how an RL algorithm bootstraps and the second is a boundary rule someone
+will otherwise have to rediscover by reading `env.py`.
+
+**Two rules, taken while building L3.**
+
+1. **The 600-slot horizon returns `terminated=True`, not `truncated=True`.** Gymnasium separates
+   the two so that an agent knows whether to bootstrap a value estimate past the boundary:
+   `truncated` means the task continues and the *harness* stopped it, `terminated` means the
+   world ended. Here 30 s is the task — it is Turing's own `collection_time_s` (D16), and it is
+   the entire extent of the grid the scenario describes. There is no slot 600 to have a value.
+   Reporting `truncated` would invite an agent to bootstrap from a state that does not exist.
+2. **A wide-band action at slot 599 is clipped to one slot** rather than being made illegal.
+   This matches `constants.dwell_schedule()`, which already truncates its final dwell at the
+   30 s boundary, and it keeps all 36 bands legal at every slot — so the action space never has
+   to change shape mid-episode, and no policy needs a masking layer for one edge case.
+
+**Consequence worth stating plainly, because it surprises people.** An episode is **600 slots but
+300 to 600 `step()` calls**: seven bands consume two slots each (D3, D16, D31), so the number of
+decisions depends on what the agent chooses while the wall clock does not. Measured this session
+— camping band 0 (wide) takes 300 steps, camping band 5 (narrow) takes 600, and both cover
+exactly 30 s. Anything computing a per-step average must know this; anything computing a
+per-second average is unaffected, which is another reason every metric in `EVALUATION.md` §4 is
+per-illumination or per-emitter rather than per-step.
+
+**Evidence.** Reasoned from D16 and D31 plus the Gymnasium API contract. The step-count figures
+are measured, and are asserted in `tests/test_env.py::test_step_count_varies_with_dwell_width_but_airtime_does_not`.
 
 ---
 

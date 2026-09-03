@@ -83,12 +83,13 @@ chosen operating point. **Identical for every scheduler** (D15, D21).
 
 These are per-look conditional probabilities, not properties of the whole grid.
 
-**Which cells they are averaged over is a decision, and it is `PROPOSED` — see D33.** "Cells the
-receiver actually looked at" cannot be the answer as written: different schedulers look at
-different cells, and per-cell detection probability is not uniform (`Φ((S−γ)/σ)`, D29), so that
-population would make P<sub>d</sub> scheduler-dependent and contradict D21. The reference
-population must be fixed and scheduler-independent. Until D33 is decided, no P<sub>d</sub> figure
-below is final.
+**The cells they are averaged over: the reference-sweep population** — the occupied cells
+Turing's own dwell schedule looks at (D33, `SETTLED`; `PD_POPULATION` in `rfenv/constants.py`).
+"Cells the receiver actually looked at" cannot be the answer as written: different schedulers
+look at different cells, and per-cell detection probability is not uniform (`Φ((S−γ)/σ)`, D29),
+so that population would make P<sub>d</sub> scheduler-dependent and contradict D21. Turing's
+schedule never varies, so this population is per-look *and* scheduler-independent. Every ROC is
+reported with its population stated on it.
 
 **Conditioned on `Z`, not on `(S ≥ γ)`** (D26). Referencing P<sub>d</sub> to a second copy of
 `S` thresholded at the same γ is degenerate — it forces `P_d ≥ 0.5` for every γ and the curve
@@ -97,11 +98,11 @@ P<sub>d</sub> falls as γ rises. At the default operating point `γ = N₀ + 3σ
 **P<sub>fa</sub> = 1.35e−3** (exact — it is `1 − Φ(3)`) and **sensitivity −107.2 dB**
 (= `γ + 1.2816σ`); both re-run 2026-09-03 and confirmed.
 
-**P<sub>d</sub> is not final and the previously quoted 0.822 is withdrawn** (audit 2026-09-03).
-Re-running the ROC from `rfenv` at γ = −111 gives **0.819** over stare-replay cells, **0.837**
-over scan-replay cells and **0.851** over only the cells Turing's reference sweep looks at. The
-figure depends entirely on the population, which was never stated — hence D33. The sweep's
-*shape* is unaffected and the ROC remains the deliverable (D15); only the quoted point moves.
+**P<sub>d</sub> = 0.851** at γ = −111 over the reference-sweep population (D33). The previously
+quoted 0.822 is withdrawn: it matched no population, and the 2026-09-03 re-run gives 0.819 over
+stare-replay cells and 0.837 over scan-replay cells, so the figure depends entirely on a choice
+that had never been stated. The sweep's *shape* is unaffected by it, and the ROC — not the single
+point — remains the deliverable (D15).
 
 ---
 
