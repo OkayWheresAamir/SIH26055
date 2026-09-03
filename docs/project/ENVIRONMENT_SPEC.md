@@ -155,7 +155,13 @@ placeholder, which is precisely the part this spec replaces.
 - `info` dict: truth-side quantities for the evaluator only (per-emitter first-intercept slots
   under D28, cell occupancy) — never fed to the agent.
 - `reset(seed, options={scenario})` takes either a deterministic replay or a sampled scenario
-  (D25). Validation always uses replays; training uses samples.
+  (D25). Validation always uses replays; training uses samples. Seeding fixes both the
+  scenario draw and the receiver's noise, so a seed reproduces an episode exactly.
+- **An episode is 600 slots but 300–600 `step()` calls** (D35), because the seven wide bands
+  consume two slots each — the wall clock is always 30 s, the number of decisions is not.
+  The horizon returns `terminated`, not `truncated`: 30 s is the task, not a harness cap, so
+  there is no state past it to bootstrap from. A wide dwell starting at slot 599 is clipped
+  rather than forbidden, so every band stays legal at every slot.
 
 ## Cold-start operating assumption (D20)
 
@@ -215,8 +221,8 @@ does, the environment is re-validated from gate 1 and every baseline re-run (D25
 1. `scenario.py` — L0: emitter contributions, pool, replay and sampled scenarios. ✅ built
    (sampler corrected 2026-09-03, D32)
 2. `truth.py` — L1: the `Z`/`S`/`C` grid, detectable intervals. ✅ built
-3. `receiver.py` — L2: dwell mechanics, the noise draw, `Y`.
-4. `env.py` — L3: gymnasium wrapper.
+3. `receiver.py` — L2: dwell mechanics, the noise draw, `Y`. ✅ built
+4. `env.py` — L3: gymnasium wrapper. ✅ built
 5. `render.py` + `metrics.py` — outputs above.
 6. `validate.py` — gates 1–4 as a runnable script.
 

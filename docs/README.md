@@ -24,7 +24,7 @@ These are ours. They are kept current; if a chat changes a decision, it changes 
 | `PROJECT_ARCHITECTURE.md` | The human team's working architecture. Direction, not immutable. |
 | `ENVIRONMENT_SPEC.md` | Consolidated three-layer spec: scenario pipeline → truth → receiver → agent interface, plus build order. |
 | `EVALUATION.md` | **Single authority on metrics, baselines, validation gates and protocol.** |
-| `DECISIONS.md` | D1–D27 with status, evidence and two consistency audits. Read before proposing anything. |
+| `DECISIONS.md` | D1–D35 with status, evidence and three consistency audits. Read before proposing anything. |
 | `RESEARCH_MAP.md` | Every document in `reference/` classified: what it establishes, what it does not, its authority level. |
 | `RL_LANE_HANDOFF.pdf` (+ `.html` source) | Onboarding handoff for the RL lane: role split for three people, what is frozen, what is theirs to decide, what to learn. **Derived from the four files above — where they disagree, they win.** |
 
@@ -59,8 +59,8 @@ layer of `ENVIRONMENT_SPEC.md`; `tests/` mirrors it.
 | `rfenv/constants.py` | the freeze list, as a file | built |
 | `rfenv/scenario.py` | L0 — emitter contributions, pool, replay and sampled scenarios | built |
 | `rfenv/truth.py` | L1 — the `Z`/`S`/`C` grid, detectable intervals | built |
-| `rfenv/receiver.py` | L2 — dwell mechanics, the noise draw, `Y` | not built |
-| `rfenv/env.py` | L3 — gymnasium interface | not built |
+| `rfenv/receiver.py` | L2 — dwell mechanics, the noise draw, `Y`, the ROC | built |
+| `rfenv/env.py` | L3 — gymnasium interface, the three reward candidates | built |
 | `rfenv/render.py`, `rfenv/metrics.py` | waterfall, episode log, metrics | not built |
 | `rfenv/validate.py` | gates 1–4 as a runnable script | not built |
 

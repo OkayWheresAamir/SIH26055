@@ -95,7 +95,7 @@ def test_emitters_at_matches_the_contributions():
         assert set(g.emitters_at(band, slot).tolist()) == expected
 
 
-def test_extremes_behave(): 
+def test_extremes_behave():
     """EVALUATION.md gate 4. Both runs of each config, since a scenario carries one
     recording: config_81 has 2 transmitters, config_921 has 99."""
     small = TruthGrid.from_scenario(

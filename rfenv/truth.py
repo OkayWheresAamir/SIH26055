@@ -113,20 +113,24 @@ class TruthGrid:
         """
         return self.S >= gamma
 
-    def emitters_at(self, band: int, slot: int) -> np.ndarray:
-        """Indices of the emitters contributing to one cell.
+    def contributors_at(self, band: int, slot: int) -> tuple[np.ndarray, np.ndarray]:
+        """Emitters contributing to one cell, and **each one's own level** there.
 
-        Evaluator-side only. This never reaches the agent: the scheduler runs cold,
-        with no emitter knowledge beyond its own scan history (D19, D20).
+        The own-level array is the point. `S[b, t]` is the max over contributors, so
+        it cannot answer "does *this* emitter clear gamma here?" -- and that is
+        D28's clause 2, the one that stops a quiet emitter inheriting a loud
+        neighbour's detectability. The data was always stored; this exposes it.
+
+        Evaluator-side only. Neither array ever reaches the agent: the scheduler
+        runs cold, with no emitter knowledge beyond its own scan history (D19, D20).
         """
         key = int(band) * N_SLOTS + int(slot)
         lo, hi = np.searchsorted(self._cell_id, [key, key + 1])
-        return self._owner[lo:hi]
+        return self._owner[lo:hi], self._owner_peak[lo:hi]
 
-    def emitters_in_dwell(self, band: int, slots) -> np.ndarray:
-        """Distinct emitters contributing to a band across several slots."""
-        found = [self.emitters_at(band, s) for s in np.atleast_1d(slots)]
-        return np.unique(np.concatenate(found)) if found else np.zeros(0, np.int32)
+    def emitters_at(self, band: int, slot: int) -> np.ndarray:
+        """Indices of the emitters contributing to one cell."""
+        return self.contributors_at(band, slot)[0]
 
     def detectable_interval(
         self, emitter_index: int, gamma: float = GAMMA_DBM

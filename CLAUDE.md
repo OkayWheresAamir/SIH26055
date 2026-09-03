@@ -9,11 +9,11 @@ A previous attempt accumulated derived documents and measured claims that became
 separate from their sources. This repository exists to avoid that. The rules below are the
 whole point of it — follow them before doing anything else.
 
-**Build status (2026-09-03).** `rfenv/` has L0 (`scenario.py`) and L1 (`truth.py`) built, with
-25 passing tests under `tests/`. Next in `docs/project/ENVIRONMENT_SPEC.md` §Build order:
-`receiver.py`, then `env.py`, then `render.py` + `metrics.py`, then `validate.py`. **The four
-validation gates in `docs/project/EVALUATION.md` §6 have not been run yet** — no scheduler
-number may be quoted until they have.
+**Build status (2026-09-03).** `rfenv/` has L0 (`scenario.py`), L1 (`truth.py`), L2
+(`receiver.py`) and L3 (`env.py`) built, with 59 passing tests under `tests/`. Next in
+`docs/project/ENVIRONMENT_SPEC.md` §Build order: `render.py` + `metrics.py`, then `validate.py`.
+**The four validation gates in `docs/project/EVALUATION.md` §6 have not been run yet** — no
+scheduler number may be quoted until they have.
 
 The three questions L2 was blocked on are all answered: **D28** (what counts as intercepting an
 emitter), **D29** (what the reward may read), **D31** (a dwell's reward is the sum of its slots').
