@@ -60,8 +60,26 @@ that primary is not in this repository.
 > `docs/project/DECISIONS.md`; this list holds only what genuinely remains.
 
 **Needs a human decision (not more research):**
-- **D4 in `docs/project/DECISIONS.md`** — accept the continuous-signal environment with a derived binary occupancy, and set the default detection threshold. Everything in D5/D6 depends on it.
-- **D5's sub-question** — do all hits score equally, or is first-interception of a new emitter worth more?
+- **D30** — do `AoA` and `PulseWidth` enter the observation vector? They are measured PDW fields
+  `rfenv/scenario.py` currently discards. Bearing-based attribution was measured at 96.7%
+  (`config_2`) and 86.1% (`config_921`), and it is the only observable that separates a dwell
+  finding a *new* emitter from one re-finding a known emitter — which is D14's camper pathology in
+  information terms, and what would make D29's candidate 3 actionable rather than merely scorable.
+  Costs L1 an angular dimension and the observation a fixed-width bearing encoding. **Not
+  blocking** `receiver.py` or `env.py`, and the four gates do not touch the observation vector.
+- **D33** — which cell population P<sub>d</sub> is averaged over. Three candidates measured
+  (0.819 / 0.837 / 0.851 at the frozen γ); the previously quoted 0.822 is withdrawn.
+  **`receiver.py` needs this to emit a ROC at all.**
+- **D34** — ratify the base observation vector (36×3+1), which `ENVIRONMENT_SPEC.md` §L3 already
+  fixes but which was never recorded as a decision. Build to it meanwhile.
+- **D29's selection rule** — how to choose among the three reward candidates when they
+  Pareto-dominate the baselines but not each other. Must be fixed **before** training, so the
+  choice is not made after seeing results. Not blocking the environment build.
+
+> Closed since the 2026-08-28 list: **D4** (accepted by the team 2026-09-01 — the
+> continuous-signal environment with derived binary occupancy) and **D5's sub-question** (do all
+> hits score equally, or is first-interception worth more — it became D7 candidate 3, given a
+> precise three-clause definition by D28 and recorded in D29).
 
 **Needs domain review:**
 - *"Approaches to intercept a periodic scan receiver optimally should be outlined"* (PS). Most likely the scan-on-scan problem. A written deliverable, owed to the evaluators; Köksal ch. 3 is the source. Needs someone with the domain reading to write it.

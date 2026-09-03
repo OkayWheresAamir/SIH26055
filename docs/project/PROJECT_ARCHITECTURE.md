@@ -93,7 +93,7 @@ ONE ENVIRONMENT
 └── Scenario N
 ```
 
-The current 40 scenarios are therefore **40 scenario inputs**, not 40 environments.
+The current 47 scenarios are therefore **47 scenario inputs**, not 47 environments.
 
 ---
 
@@ -248,7 +248,7 @@ Once the team considers the environment sufficiently validated, create a reprodu
 
 # 9. Development scenarios and final evaluation
 
-The current 40 selected Turing scenarios are a **development/training subset**.
+The current 47 selected Turing scenarios are a **development/training subset**.
 
 They are useful for:
 - building and debugging the environment,
@@ -350,8 +350,8 @@ Do not assume:
 
 - CEWS defines the final architecture.
 - Every Turing pulse row is an RL training example.
-- The 40 scenarios are the complete dataset.
-- The 40 scenarios are the final test set.
+- The 47 scenarios are the complete dataset.
+- The 47 scenarios are the final test set.
 - One specific RL algorithm has already been selected.
 - The reward function is finalized.
 - Every Turing metadata field has an obvious interpretation.

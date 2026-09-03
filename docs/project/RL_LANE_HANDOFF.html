@@ -292,7 +292,9 @@ signals — and more noise. That trade-off is the receiver's ROC curve, and it i
 apparent interception improves, false alarms explode, and the comparison becomes meaningless. So:</p>
 <ul>
 <li><strong>P<sub>d</sub> and P<sub>fa</sub> are identical for every scheduler</strong>, yours included.
-At γ = −111 dB, measured over the 47 train configs: P<sub>d</sub> = 0.822, P<sub>fa</sub> = 1.35×10⁻³,
+At γ = −111 dB: P<sub>fa</sub> = 1.35×10⁻³ and P<sub>d</sub> ≈ 0.82–0.85 (the exact figure is
+<strong>pending D33</strong> — the cell population it averages over was never specified, and the previously
+quoted 0.822 is withdrawn; audit 2026-09-03),
 sensitivity −107.2 dB (recorded in D23/D26, 2026-09-01).</li>
 <li><strong>Your agent cannot improve detection. It can only aim the detector at more of the right cells.</strong>
 That is what the scheduler-level metrics measure, and it is the only thing you are being judged on.</li>
@@ -349,7 +351,7 @@ scenario is a draw from that pool (D25).</p>
 
 <pre><code>Y = 1  iff  S[b, t] + n ≥ γ ,    n ~ Normal(0, σ = 3 dB),    γ = −111 dB</code></pre>
 
-<p>So a real transmission can be missed (P<sub>d</sub> = 0.822, not 1) and an empty cell can produce a false
+<p>So a real transmission can be missed (P<sub>d</sub> ≈ 0.82–0.85, not 1) and an empty cell can produce a false
 alarm (P<sub>fa</sub> = 1.35×10⁻³). <strong>Your agent learns from <span class="mono">Y</span>, which is
 sometimes wrong.</strong> That is the point — a real ESM receiver's feedback is also sometimes wrong, and an
 agent that cannot tolerate it would not survive deployment.</p>
@@ -397,9 +399,21 @@ leakage and the result is invalid. R3 should check every extension against this.
 seven of the 36 bands, 50 ms (1 slot) for the other 29. So an episode of 600 slots is somewhere between 300
 and 600 agent decisions depending on which bands were chosen.</p>
 <p>This is a direct reading of <span class="mono">ENVIRONMENT_SPEC.md</span> §L2 and D3/D16, not an
-independent claim. It means: variable-length episodes; a bootstrapping/discounting decision (does a 100 ms
-dwell discount twice?); and a subtle incentive — the wide-dwell bands cost double, so the agent is implicitly
-choosing how to spend time, not just where to look. Decide how you handle it and write it down.</p>
+independent claim. It means variable-length episodes: an episode is 600 slots but somewhere between 300 and
+600 decisions, and the wide-dwell bands cost double, so the agent is implicitly choosing how to spend time,
+not just where to look.</p>
+<p><strong>Updated 2026-09-03 — the accounting question this used to hand you is now settled by D31, and it
+is no longer yours to decide.</strong> Reward is defined <strong>per slot</strong>, and a dwell's reward is
+the <strong>sum</strong> of its slots': a 100 ms dwell is scored on both its cells and can earn up to +2.
+The rejected alternative (+1 per dwell regardless of length) would make the seven wide bands strictly
+dominated — and those are measurably the bands that matter most, holding the densest emitter populations
+(mean 764.6 emitter-frequency placements against 170.4) and the slowest rotators (bands 0 and 1 at median
+3.00 rpm), so avoiding them would reintroduce the camper pathology as an accounting artifact. Retuning is
+free (measured under 1 µs), so airtime is the only currency, and per-slot scoring keeps reward-per-unit-time
+equal across wide and narrow bands. Implementation: a wide-band action returns one
+<span class="mono">step()</span> with <span class="mono">reward = r[t] + r[t+1]</span> and advances the clock
+two slots. <strong>What is still yours:</strong> the discounting question — whether γ<sub>RL</sub> is applied
+per decision or per slot. D31 fixes the reward accounting, not the discount.</p>
 </div>
 
 <div class="box open">
@@ -415,9 +429,20 @@ privileged. But it trains an agent against a cleaner world than it will observe.
 ever rewarded by what it declares), and is the honest reading of the PS's "trained based on hits and misses".
 Noisier.</li>
 </ul>
-<p><strong>This is not settled anywhere.</strong> It is the RL lane's first real decision. Settle it early —
-it changes what your reward functions can even reference — and record it in
-<span class="mono">DECISIONS.md</span>.</p>
+<p><strong>Updated 2026-09-03 — settled by D29; this is no longer the RL lane's decision to make.</strong>
+The rule is: <strong>the reward may read truth; the observation may not.</strong> Training is offline and the
+policy is frozen before evaluation, so the reward is a training-time construct that is discarded at
+inference — it may read <span class="mono">Z</span>, per-emitter own levels or
+<span class="mono">first<sub>e</sub></span> freely (ordinary privileged-information training). Only the
+<em>observation</em> carries the deployability constraint, and the paragraph above about leakage still
+applies to it in full.</p>
+<p>D29 keeps <strong>candidate 1 as the default: +1 per true hit</strong> (<span class="mono">Z</span>), and
+promotes the alternatives to principled D7 candidates rather than variants — because D28 puts the two
+headline metrics on opposite sides of the <span class="mono">Y</span>/<span class="mono">Z</span> line
+(censored intercept time requires <span class="mono">Y = 1</span>; interception ratio does not), so no single
+reward is aligned with both. The set is fixed at three (§9). <strong>What is still yours, and must be fixed
+before you train:</strong> the selection rule when candidates Pareto-dominate the baselines but not each
+other — a scalarisation, a lexicographic order, or reporting the front.</p>
 </div>
 
 <h2 class="pb">7. RL concepts you need, in the order you need them</h2>
@@ -521,18 +546,33 @@ targets intercept time. Two problems to solve: the agent cannot identify emitter
 explicitly out of scope, D19), so "previously unseen" has to be defined from the environment's truth side at
 training time — which is legitimate but must be declared; and it may over-explore and lose interception ratio.</p>
 
-<h4>Candidate C — staleness / information-gain shaped</h4>
-<p>Reward hits, plus a term that grows with how long a band has gone unvisited. Cheap, computable purely from
-the agent's own history (so no truth-side dependence), and directly encodes the restless-bandit intuition.
-The risk is that it degenerates into round-robin if the staleness term dominates. The weighting is the
-experiment.</p>
+<h4>Candidate C — declared-hit reward (<span class="mono">Y</span>)</h4>
+<p><strong>Replaced 2026-09-03 by D29.</strong> This slot previously held a staleness / information-gain
+shaped reward. D29 fixes the candidate set at three and says explicitly <em>"keep the set to the three
+above"</em> — every extra candidate scored on the same 47 scenarios is another draw, and best-of-many is
+partly selection noise. The third candidate is <strong>+1 per declared hit</strong>
+(<span class="mono">Y</span>): receiver-side only, and predicted to favour censored intercept time, because
+it weights cells by loudness and teaches the agent that a marginal emitter needs <em>repeated looks</em>
+before it yields a declaration. Under D28 that is exactly what lowers its
+<span class="mono">first<sub>e</sub></span>; a <span class="mono">Z</span>-reward never teaches it.</p>
+<p>So the three are: <strong>1.</strong> +1 per true hit (<span class="mono">Z</span>, the default) —
+predicted to favour interception ratio. <strong>2.</strong> +1 per declared hit
+(<span class="mono">Y</span>) — predicted to favour censored intercept time. <strong>3.</strong> +1 per
+<em>first</em> intercept of an emitter (D28's three clauses) — predicted to favour censored intercept time
+and coverage. Candidate 3 is Candidate B above, now with the precise definition D28 gave it. A staleness
+term remains available as <em>shaping inside</em> a candidate, but not as a fourth candidate.</p>
+<p><strong>Note the gap D30 opens:</strong> candidate 3 is a novelty reward, but novelty is truth-side — with
+binary hit/miss the agent cannot perceive at inference what it is being trained to value, and staleness is a
+proxy for <em>time since looked</em>, not for <em>have I already got everyone here</em>. That is what D30
+(AoA in the observation) is about, and it is awaiting a human decision.</p>
 
 <div class="box">
 <span class="lbl">How to judge them — decide this before you train anything</span>
 <p>Every candidate is scored on the same fixed scenario set with the same seeds, and reported as the full
 scheduler-level table (§12), never as reward-per-episode. <strong>Reward values are not comparable across
-reward families</strong> — an agent that scores 400 under Candidate A and 90 under Candidate C has told you
-nothing. Only the PS metrics can rank them (D7).</p>
+reward families</strong> — an agent that scores 400 under one candidate and 90 under another has told you
+nothing. Only the PS metrics can rank them (D7), and <span class="mono">EVALUATION.md</span> §4 bars ranking
+across reward families by accumulated reward.</p>
 </div>
 
 <h2>10. Algorithm choice</h2>

@@ -10,14 +10,21 @@ separate from their sources. This repository exists to avoid that. The rules bel
 whole point of it — follow them before doing anything else.
 
 **Build status (2026-09-03).** `rfenv/` has L0 (`scenario.py`) and L1 (`truth.py`) built, with
-23 passing tests under `tests/`. Next in `docs/project/ENVIRONMENT_SPEC.md` §Build order:
+25 passing tests under `tests/`. Next in `docs/project/ENVIRONMENT_SPEC.md` §Build order:
 `receiver.py`, then `env.py`, then `render.py` + `metrics.py`, then `validate.py`. **The four
 validation gates in `docs/project/EVALUATION.md` §6 have not been run yet** — no scheduler
 number may be quoted until they have.
 
 The three questions L2 was blocked on are all answered: **D28** (what counts as intercepting an
 emitter), **D29** (what the reward may read), **D31** (a dwell's reward is the sum of its slots').
-`receiver.py` is unblocked and has no open dependency.
+
+**Third consistency audit run 2026-09-03** (`DECISIONS.md` §Consistency audit — 2026-09-03).
+The decision spine D1–D31 holds with no contradictions. It found and fixed one implementation
+mismatch (**D32** — the sampler could draw the same physical emitter twice) and withdrew two
+figures whose measurement convention was never recorded: **`Pd = 0.822`** and **gate 1's
+86.19%/71.14%**. Both are relabelled, not silently corrected. **`receiver.py` needs D33 decided**
+(which cell population `Pd` averages over) before it can emit a ROC; **D34** ratifies the base
+observation vector `env.py` builds to. Neither blocks starting.
 
 ## What is authoritative here
 
