@@ -106,6 +106,15 @@ must always be reported together** (D14).
 | **Average intercept rate** | Distinct emitter-intercepts per second of episode. | higher better |
 | **Average reward / cost** | The scheduler's own accumulated reward, reported as a scalar. Comparable only within a reward family; never used to rank across different rewards (D7). | — |
 
+**Rewards are judged from outside, and they read what they like** (D29). A reward function is a
+training-time construct — training is offline and the policy is frozen before deployment — so it
+may read truth-side state (`Z`, per-emitter own levels, `first_e`). Only the *observation* carries
+the deployability constraint. Note that D28 puts the first two metrics on opposite sides of that
+line: **censored intercept time requires `Y = 1`, interception ratio does not**, so no single
+reward is aligned with both, and the D7 comparison has to resolve a Pareto front rather than a
+scalar. **No reward can move P<sub>d</sub> or P<sub>fa</sub>** (§3, D15, D21) — penalising false
+alarms prices a wasted dwell, it does not improve the receiver.
+
 ### Two traps, both measured on real data (D14)
 
 1. **Per-dwell hit rate is misleading.** A camper that parks on the busiest band scores 85–90%

@@ -119,6 +119,15 @@ placeholder, which is precisely the part this spec replaces.
 - `reward`: pluggable (D7). Candidates are trained separately and judged on the scheduler-level
   metrics below. Default first candidate: +1 per true hit, with censored intercept time doing the
   discovery-pricing at evaluation (D5, D14).
+  **The reward may read truth-side state; the observation may not** (D29). Training is offline
+  and the policy is frozen before deployment, so the reward is a training-time construct that is
+  discarded at inference — only the observation ships, and only it carries the deployability
+  constraint. D28 makes this a live choice rather than a formality: `first_e` requires `Y = 1`,
+  so censored intercept time is `Y`-conditioned while interception ratio stays threshold-free,
+  and no single reward is aligned with both. The three D7 candidates are therefore +1 per true
+  hit (`Z`), +1 per declared hit (`Y`), and +1 per first intercept of an emitter (D28's three
+  clauses). **No reward can move P<sub>d</sub> or P<sub>fa</sub>** — those are frozen receiver
+  properties (D15, D21); a false-alarm penalty prices a wasted dwell, nothing more.
 - `info` dict: truth-side quantities for the evaluator only (per-emitter first-intercept slots
   under D28, cell occupancy) — never fed to the agent.
 - `reset(seed, options={scenario})` takes either a deterministic replay or a sampled scenario

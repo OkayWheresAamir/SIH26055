@@ -460,7 +460,8 @@ needs per-emitter attribution from observations inherits a deinterleaving proble
 needing it.
 
 **Open for the RL lane:** what the scheduler observes beyond binary hit/miss — pulse count in
-the dwell? peak amplitude? nothing? Richer observations help learning but move away from the
+the dwell? peak amplitude? **AoA or pulse width, both of which are measured PDW fields we
+currently discard (D30)?** nothing? Richer observations help learning but move away from the
 PS's minimal hit/miss framing. To be decided when Lane E starts, not now.
 
 ---
@@ -813,6 +814,177 @@ after the gates, not before.
 **Consequence.** `EVALUATION.md` §1 now carries the three-clause `first_e` definition.
 `receiver.py` implements it; nothing in `truth.py` changes — `detectable_interval` already
 judges on `c.peak_dbm`, the emitter's own array.
+
+---
+
+## D29 — The reward may read truth; the observation may not. And D28 splits the metrics across that line
+
+**Status:** `SETTLED` (2026-09-03) — not a new decision. Records the answer to a question the
+implementation lane raised ("should reward count declared hits `Y` or true hits `Z`?"), which
+D7 and the offline-training workflow already settle, plus a consequence of D28 that does
+change the candidate set.
+
+**The workflow this rests on.** Train offline in the simulator, freeze the policy, evaluate.
+`PROJECT_ARCHITECTURE.md` §10 (`Develop RL scheduler → Freeze final system → Final held-out
+evaluation`) and `EVALUATION.md` §7 both describe only this. **There is no online learning after
+deployment anywhere in the architecture**, and nothing in the PS asks for it — *"trained based on
+hits and misses"* names the learning signal, not when learning happens.
+
+**Consequence, and the misreading to avoid.** It is tempting to argue that the reward must be
+restricted to what a fielded receiver could compute. It must not. The two are different objects:
+
+- **The observation is the policy's input path.** It ships. It must contain only what a deployed
+  receiver has — the agent's own scan history and nothing else (D19, D20).
+- **The reward is a training-time construct and is discarded at deployment.** Nothing evaluates
+  it at inference. It may read `Z`, per-emitter own levels, `first_e`, or any other simulator
+  state. This is ordinary privileged-information training; asymmetric actor-critic is the named
+  case.
+
+The restriction would only bite if we ever fine-tuned online, which we do not.
+
+**What D28 changes.** D28 requires `Y(t) = 1` for an intercept to be credited to an emitter, so
+`first_e` — and therefore **censored mean intercept time** — is `Y`-conditioned. Interception
+ratio stays threshold-free (D28: *"interception ratio is the threshold-free opportunity metric,
+intercept time is the detection metric"*). **The two headline metrics now sit on opposite sides
+of the `Y`/`Z` line, so no single reward is aligned with both.** This is D14's tension appearing
+in the reward's information source, not just its shape.
+
+**Why this is not settled by "the agent cannot control Pd" (D21).** D21 is about the *aggregate*
+Pd being scheduler-independent. Per-cell detection probability is not uniform: under the L2
+model, `P(Y=1 | cell) = Φ((S − γ)/σ)`, which with the frozen `σ = 3 dB` runs 0.500 at `S = γ`,
+0.841 at `γ+3`, 0.977 at `γ+6`, 0.999 at `γ+9`. The recorded aggregate 0.822 is a mixture over
+that curve. So:
+
+- a `Z`-reward values every detectable cell equally;
+- a `Y`-reward weights cells by loudness, and — the part that matters — teaches the agent that a
+  marginal emitter needs **repeated looks** before it yields a declaration. Under D28 that is
+  exactly what lowers its `first_e`. A `Z`-reward never teaches it.
+
+**A false-alarm penalty is not a Pfa improvement.** Pfa is receiver-level and frozen; no reward
+can move it (D15, D21, `EVALUATION.md` §3). At the operating point the false-alarm channel is
+also small: `Pfa = 1.35e−3` is the Gaussian 3σ tail (`1 − Φ(3) = 1.3499e−3`, computed
+2026-09-03), so an all-empty band earns ~0.81 spurious reward over 600 slots. What an FA penalty
+actually prices is a wasted dwell — name it that.
+
+**Decision.** No change to the default: **candidate 1 stays `+1` per true hit** (`Z`, D5), as
+`ENVIRONMENT_SPEC.md` §L3 already states. D28 promotes the alternatives from variants to
+principled D7 candidates with a predicted trade, which is what makes them worth running:
+
+| # | Reward | Reads | Predicted to favour |
+|---|---|---|---|
+| 1 | `+1` per true hit (D5 cell-level `Z`) | truth | interception ratio |
+| 2 | `+1` per declared hit (`Y`) | receiver only | censored intercept time |
+| 3 | `+1` per **first** intercept of an emitter (D28's three clauses) | truth | censored intercept time, coverage |
+
+Candidate 3 is the discovery weighting D5 flagged as *"still open inside this"*; D28 gives it a
+precise definition it did not have before. Running several is D7 as written, not a departure
+from it — the judging metrics are PS-mandated and reward-independent, so they rank rewards from
+outside without circularity.
+
+**Two constraints on that comparison, and one genuinely open question.**
+
+1. Keep the set to the three above. Every candidate scored on the same 47 scenarios is another
+   draw; best-of-many is partly selection noise. D8's single-use held-out set is the backstop.
+2. `EVALUATION.md` §4 already bars ranking across reward families by accumulated reward.
+3. **Open, and not decided here:** the selection rule when candidates Pareto-dominate the
+   baselines but not each other. D14 measured the two objectives in direct tension, so "whichever
+   scores most" has no referent. A scalarisation, a lexicographic rule, or reporting the front —
+   to be fixed **before** training, so the choice is not made after seeing results. Not blocking:
+   `receiver.py` and `env.py` do not depend on it.
+
+**Evidence.** Reasoned from D5, D7, D14, D21, D26, D28 and the architecture's own stage order.
+The `Φ((S−γ)/σ)` curve is the L2 model definition, not a measurement. `Pd = 0.822` is quoted from
+`EVALUATION.md` §3 (measured 2026-09-01); not re-run for this entry.
+
+---
+
+## D30 — AoA is a measured PDW field we discard; proposal to reconsider it for the observation
+
+**Status:** `PROPOSED` (2026-09-03) — **awaiting a human decision.** Changes the observation
+vector, so it is gated by `CLAUDE.md`. D19 assigns observation contents to the RL lane; this
+entry supplies the measurements that lane needs, and takes no decision.
+
+**The situation.** Turing PDWs carry five fields — `metadata/feature_names` is `['ToA',
+'Frequency', 'PulseWidth', 'AoA', 'Amplitude']`. `rfenv/scenario.py` reads columns 0, 1 and 4
+and silently drops **`PulseWidth` and `AoA`**. No decision anywhere records that choice; it is
+an omission, not a ruling. This entry exists so it becomes one either way.
+
+**Why dropping it is defensible.** Three real reasons: the PS calls interception *"a two
+dimensional search problem"* (frequency × time), so the **action** space is correctly angle-free
+— this receiver tunes, it does not steer, and AoA can never be something a dwell is spent on.
+L1's grid is `(band, slot) → S/C/Z` combined by `max`; AoA is per-emitter, so a shared cell has
+several bearings and `max` is meaningless on them. And D19 explicitly steers away from
+per-emitter attribution: *"any future design that needs per-emitter attribution from
+observations inherits a deinterleaving problem. Avoid needing it."*
+
+**Why it is nevertheless worth reconsidering — the information gap, measured 2026-09-03.**
+
+To an agent seeing only binary hit/miss, a dwell that finds a **new** emitter and one that
+re-finds a **known** emitter are indistinguishable. That ambiguity is the camper pathology of
+D14, stated in information terms. Its size, walking 600 slots at truth level (D28 clauses 1–2,
+noise draw skipped — this is an information question, not a detection one):
+
+| scenario | policy | novel dwells | redundant | redundant / hits |
+|---|---|---|---|---|
+| `config_2` | round-robin | 16 | 104 | 86.7% |
+| `config_2` | camper (band 6) | 5 | 486 | **99.0%** |
+| `config_921` | round-robin | 51 | 220 | 81.2% |
+| `config_921` | camper (band 1) | 7 | 590 | **98.8%** |
+
+The camper's dwells are ~99% redundant and *every one of them looks like a hit*. Nothing in the
+current observation vector (per-band hit rate, visit density, staleness) separates the two
+columns.
+
+**AoA does separate them.** Assigning each pulse to the emitter with the nearest median bearing,
+scored against the true `labels` column, per config over all bands carrying more than one
+emitter:
+
+| scenario | multi-emitter bands | pulses | attribution accuracy |
+|---|---|---|---|
+| `config_2` | 11 | 1,272,772 | **96.7%** |
+| `config_59` | 3 | 74,776 | **99.3%** |
+| `config_921` | 21 | 4,321,146 | **86.1%** |
+| `config_81` | 0 | — | n/a (no band holds two emitters) |
+
+Bearings are well separated relative to their spread — in `config_2` band 18, five emitters sit
+at −130.2° (σ 8.9), −114.2° (5.4), −61.9° (6.2), −43.2° (1.1) and −29.6° (1.7).
+
+**Why this matters *more* after D29, not less.** D29 rules that the reward may read truth freely
+while the observation may not. Its candidate 3 is *"+1 per first intercept of an emitter"* — a
+novelty reward. But novelty is a truth-side quantity: the agent is trained to value something it
+**cannot perceive at inference**, because binary hit/miss cannot distinguish new from seen. The
+policy would have to approximate novelty with staleness, which is a proxy for *time since
+looked*, not for *have I already got everyone here*. AoA is the observable that makes D29's
+candidate 3 actionable rather than merely scorable.
+
+**Honest limits — three, and none of them small.**
+
+1. **The accuracy above is a ceiling, not an achievable figure.** Medians were computed over the
+   whole episode from the true labels. A deployed agent clusters bearings online with no labels
+   and does worse, by an unmeasured amount.
+2. **AoA discriminates seen-vs-unseen; it does not find anything.** It cannot say where an
+   unobserved emitter is. Its exploration value is negative information — *"this band is
+   exhausted, leave"* — which is real but is not a search heuristic.
+3. **It degrades exactly where the data is hardest.** 18 of 32 `config_2` transmitters have
+   `speed_km_s ≠ 0`, so bearings drift (label 23's AoA σ is 122.6° — it crosses the circle), and
+   close pairs are unresolvable (`config_2` band 6 holds emitters 0.8° apart against σ ≈ 0.5°).
+   Accuracy falls 96.7% → 86.1% from 19 emitters to 99, i.e. worst in the crowded scenarios where
+   the scheduling problem is hardest.
+
+**Cost if adopted.** L1 gains an angular dimension it does not have (per-cell bearing lists, not
+a `max`), and the observation vector — currently a fixed 36×3+1 — needs a fixed-width encoding
+of a variable-length bearing set, i.e. binning or online clustering. Neither is free. `PulseWidth`
+is dropped for the same non-reason and is also a standard deinterleaving feature; the same
+decision covers it.
+
+**What is being asked.** Either record *"AoA and PulseWidth stay out, and here is why"*, or
+*"they enter the observation, at this cost."* Not blocking: `receiver.py` and `env.py` do not
+depend on the answer, and the four validation gates do not touch the observation vector at all.
+
+**Evidence.** Measured 2026-09-03 against `data/turing/stare/train_stare/*.h5` (`config_2`,
+`config_59`, `config_81`, `config_921`) via throwaway scripts; the redundancy walk uses
+`rfenv.truth` at the frozen γ = −111. Field list confirmed against `metadata/feature_names`.
+Column-drop confirmed by reading `rfenv/scenario.py`.
 
 ---
 
