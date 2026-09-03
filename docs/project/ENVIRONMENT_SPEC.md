@@ -1,9 +1,10 @@
 # RF Environment — Consolidated Specification
 
 **What this is.** The single buildable specification of the RF environment, consolidating every
-decision in `docs/project/DECISIONS.md` (referenced as D1–D31) into one coherent design. A planning
+decision in `docs/project/DECISIONS.md` (referenced as D1–D34) into one coherent design. A planning
 session should be able to read this file plus `DECISIONS.md` and start building without
-re-deriving anything. Written 2026-09-01; L0/L1 corrected 2026-09-01 after D23–D27.
+re-deriving anything. Written 2026-09-01; L0/L1 corrected 2026-09-01 after D23–D27, and again 2026-09-03 after the
+third consistency audit (D32–D34).
 
 **Design stance:** three layers, each simple enough to explain in a sentence. Complexity lives
 in *calibration and validation*, not in the architecture.
@@ -56,13 +57,17 @@ the validation gates run on) or **samples** a scenario as a draw of N emitter co
 the pool of 3,443 (what RL trains on). Because TSRD placed emitters independently with no
 emitter–emitter interaction, a recombination is as physically valid as an original config — it
 is the same generative process TSRD used, one level up, with nothing invented and nothing
-fitted. `N` is drawn from the empirical per-config count of detectable emitters (1 to 82).
+fitted. `N` is drawn from the empirical per-config count of detectable emitters (1 to 82), and the draw
+is over **emitters, not contributions** — an emitter detected in both runs offers two
+realisations and exactly one is used, so no scenario contains the same physical emitter twice
+(D32).
 
 **Not built, and not deferred either (D25):** a physics signal model generating `S` from power,
 range and beam pattern. Its antenna pattern and power scale are published nowhere and would have
 to be **fitted to the same recordings the primary validation gate scores** — turning that gate
-from a prediction into a fit. The recording-derived grid keeps it a prediction (86.19% accuracy
-on held-out data, D24).
+from a prediction into a fit. The recording-derived grid keeps it a prediction rather than a fit — accuracy in the
+mid-80s on held-out data (D24; the exact figure is pending `validate.py`, see `EVALUATION.md`
+gate 1).
 
 ## L1 — Truth layer
 
@@ -75,8 +80,11 @@ on held-out data, D24).
 - **γ is frozen with the environment before any agent runs** (D15). It is **not** calibrated to
   the recorded ~35% dwell rate — that procedure was confounded and is retracted (D23). γ is a
   swept receiver parameter; the default operating point is `γ = N₀ + 3σ = −111 dB` with
-  `σ = 3 dB` (chosen, not measured), giving **Pd = 0.822, Pfa = 1.35e−3, sensitivity −107.2 dB**
-  measured over the 47 train configs. The full sweep (ROC) is the receiver characterisation.
+  `σ = 3 dB` (chosen, not measured), giving **Pfa = 1.35e−3** and **sensitivity −107.2 dB** —
+  both analytic in γ and σ, both re-run 2026-09-03. **Pd at that point is not yet fixed: which
+  cell population it averages over is `PROPOSED` as D33** (candidates measured at 0.819, 0.837
+  and 0.851; the previously quoted 0.822 is withdrawn). `receiver.py` needs D33 decided to emit
+  a ROC. The full sweep (ROC) is the receiver characterisation.
 - The recorded **35.70%** non-empty dwell rate is now a **pipeline self-consistency test**:
   build the grid from the scan recording, replay the schedule that produced it, threshold
   nothing. Measured 35.403% replayed against 35.700% recorded.
@@ -115,7 +123,8 @@ placeholder, which is precisely the part this spec replaces.
 
 - `action_space = Discrete(36)`
 - `observation_space`: dimension 36×3 + 1 — per-band empirical hit rate, per-band visit
-  density, per-band staleness, plus normalised episode time. These three quantities are derived
+  density, per-band staleness, plus normalised episode time. **Recorded as D34** (`PROPOSED`) —
+  this choice lived only in this spec until the 2026-09-03 audit; build to it meanwhile. These three quantities are derived
   from the PS's own figures of merit (they are what a scheduler needs to estimate detection
   probability, intercept rate and staleness respectively), and are built **only** from the
   agent's own scan history — no prior emitter intelligence (D19, D20). The RL lane may extend
@@ -204,6 +213,7 @@ does, the environment is re-validated from gate 1 and every baseline re-run (D25
 ## Build order (for the planning session)
 
 1. `scenario.py` — L0: emitter contributions, pool, replay and sampled scenarios. ✅ built
+   (sampler corrected 2026-09-03, D32)
 2. `truth.py` — L1: the `Z`/`S`/`C` grid, detectable intervals. ✅ built
 3. `receiver.py` — L2: dwell mechanics, the noise draw, `Y`.
 4. `env.py` — L3: gymnasium wrapper.

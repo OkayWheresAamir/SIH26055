@@ -59,9 +59,15 @@ NOISE_FLOOR_DBM = -120.0
 # Chosen, not measured. This is our receiver's design parameter.
 NOISE_SIGMA_DB = 3.0
 
-# Default operating point: 3 sigma above the floor -> Pfa = 1.35e-3.
-# Measured over the 47 train configs at this gamma: Pd = 0.822, sensitivity
-# (level at which Pd = 0.9) = -107.2 dB. The full sweep is the deliverable (D15).
+# Default operating point: 3 sigma above the floor -> Pfa = 1.35e-3 exactly
+# (it is 1 - Phi(3)), sensitivity (the level at which Pd = 0.9) = gamma + 1.2816*sigma
+# = -107.2 dB. Both re-run 2026-09-03. The full sweep is the deliverable (D15).
+#
+# Pd at this point is NOT settled: it depends on which cell population it averages
+# over, which was never specified. Measured 2026-09-03 -- 0.819 over stare-replay
+# cells, 0.837 over scan-replay cells, 0.851 over only the cells Turing's reference
+# sweep looks at. The previously recorded 0.822 is withdrawn. See D33 (PROPOSED);
+# `receiver.py` needs it decided, and the chosen population joins this freeze list.
 GAMMA_DBM = NOISE_FLOOR_DBM + 3.0 * NOISE_SIGMA_DB  # -111.0
 
 # --- Data layout --------------------------------------------------------------

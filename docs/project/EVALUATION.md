@@ -81,15 +81,27 @@ chosen operating point. **Identical for every scheduler** (D15, D21).
 | **P<sub>fa</sub>** | `P(Y=1 | Z=0)` — declared a hit given the cell was truly empty. |
 | **Sensitivity** | The signal level at which P<sub>d</sub> reaches a stated value (e.g. 0.9) at the operating P<sub>fa</sub>. Quoted *with* both, never alone. |
 
-Only cells the receiver actually looked at contribute — these are per-look conditional
-probabilities, not properties of the whole grid.
+These are per-look conditional probabilities, not properties of the whole grid.
+
+**Which cells they are averaged over is a decision, and it is `PROPOSED` — see D33.** "Cells the
+receiver actually looked at" cannot be the answer as written: different schedulers look at
+different cells, and per-cell detection probability is not uniform (`Φ((S−γ)/σ)`, D29), so that
+population would make P<sub>d</sub> scheduler-dependent and contradict D21. The reference
+population must be fixed and scheduler-independent. Until D33 is decided, no P<sub>d</sub> figure
+below is final.
 
 **Conditioned on `Z`, not on `(S ≥ γ)`** (D26). Referencing P<sub>d</sub> to a second copy of
 `S` thresholded at the same γ is degenerate — it forces `P_d ≥ 0.5` for every γ and the curve
 can never sweep. Against threshold-free `Z` it does: measured over the 47 train configs,
-P<sub>d</sub> falls 0.894 → 0.681 as γ goes −120 → −100 dB. At the default operating point
-`γ = N₀ + 3σ = −111 dB`: **P<sub>d</sub> = 0.822, P<sub>fa</sub> = 1.35e−3, sensitivity
-−107.2 dB.**
+P<sub>d</sub> falls as γ rises. At the default operating point `γ = N₀ + 3σ = −111 dB`:
+**P<sub>fa</sub> = 1.35e−3** (exact — it is `1 − Φ(3)`) and **sensitivity −107.2 dB**
+(= `γ + 1.2816σ`); both re-run 2026-09-03 and confirmed.
+
+**P<sub>d</sub> is not final and the previously quoted 0.822 is withdrawn** (audit 2026-09-03).
+Re-running the ROC from `rfenv` at γ = −111 gives **0.819** over stare-replay cells, **0.837**
+over scan-replay cells and **0.851** over only the cells Turing's reference sweep looks at. The
+figure depends entirely on the population, which was never stated — hence D33. The sweep's
+*shape* is unaffected and the ROC remains the deliverable (D15); only the quoted point moves.
 
 ---
 
@@ -159,7 +171,7 @@ that pair — approach round-robin's intercept time while multiplying its interc
 
 | # | Gate | Why it matters |
 |---|---|---|
-| **1** | **Out-of-sample prediction.** Build truth from **stare only**, replay Turing's scan schedule, compare predicted detections against the **actual scan recordings** — data never used in construction (D17). Measured 2026-09-01: **accuracy 86.19%, precision 87.87%, recall 71.14%, MCC 0.694, per-band r = 0.940** at γ = −110 against a 35.70% base rate. Known limitation, not a defect: band 0 (250 MHz) is 59.12% occupied in the recordings and 0.00% predicted, because stare cannot see below 500 MHz (D10). | The only gate that is a genuine prediction rather than a fit. If one gate is run, run this one. This is also why no physics signal model is fitted to these same recordings (D25). |
+| **1** | **Out-of-sample prediction.** Build truth from **stare only**, replay Turing's scan schedule, compare predicted detections against the **actual scan recordings** — data never used in construction (D17). **Pre-gate measurement, convention unrecorded — not yet a gate result.** A 2026-09-01 scratch script reported accuracy 86.19%, precision 87.87%, recall 71.14%, MCC 0.694, per-band r = 0.940 at γ = −110 (note: *not* the frozen γ = −111). Re-run from `rfenv` on 2026-09-03 across four comparison conventions, none reproduces those figures exactly; the range is **accuracy 83.5–86.0%, precision 88.5–89.5%, recall 68.2–69.5%, MCC 0.66–0.69, per-band r ≈ 0.93** against a 35.70% base rate, at the frozen γ. Directionally the gate passes. **`validate.py` must define the convention in code, and whatever it returns becomes the number.** Known limitation, not a defect: band 0 (250 MHz) is 59.12% occupied in the recordings and 0.00% predicted, because stare cannot see below 500 MHz (D10). | The only gate that is a genuine prediction rather than a fit. If one gate is run, run this one. This is also why no physics signal model is fitted to these same recordings (D25). |
 | **2** | **Per-band structure.** Band-level interception ratios match the recordings, not just the aggregate. The ~35% dwell rate is no longer a γ calibration (D23) — it is a pipeline self-consistency test: grid built from the scan recording, replayed on the schedule that produced it, thresholded not at all. Measured **35.403% replayed against 35.700% recorded.** | An aggregate can match while the structure is wrong. |
 | **3** | **Theory.** A controlled periodic case matches Köksal's closed-form intercept time and probability of intercept (`docs/reference/scheduling/optimumsearch.pdf` ch. 3.2, 6.1). | Independent of the dataset entirely. |
 | **4** | **Extremes.** `config_81` (2 emitters) and `config_921` (99) both behave sensibly. | Catches failures that averages hide. |
@@ -197,7 +209,7 @@ distribution (D25).
 Evaluation is only possible if the environment logs these (see `ENVIRONMENT_SPEC.md` §Outputs):
 
 1. **Episode log** — per slot: time, band chosen, dwell length, declared hit `Y`, true occupancy
-   `O`, pulse count, peak level.
+   `Z`, pulse count, peak level.
 2. **Emitter table** — per emitter: detectable activity interval (D27), first/last intercept
    slot, intercept count, bands seen in. *(Everything in §4 is computable from artefacts 1 and 2 alone.)*
 3. **Waterfall render** — the 36×600 grid as a frequency-vs-time heatmap with the scheduler's
