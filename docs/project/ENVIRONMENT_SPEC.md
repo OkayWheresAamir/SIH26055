@@ -152,8 +152,14 @@ placeholder, which is precisely the part this spec replaces.
   (`EVALUATION.md` §4), so per-dwell scoring would be the only per-dwell quantity in the project.
   Implementation: a wide-band action returns one `step()` with `reward = r[t] + r[t+1]` and
   advances the clock by two slots.
-- `info` dict: truth-side quantities for the evaluator only (per-emitter first-intercept slots
-  under D28, cell occupancy) — never fed to the agent.
+- `info` dict: truth-side quantities for the evaluator only — never fed to the agent. It must
+  carry **the whole per-emitter track, not just first-intercept slots**: first *and last*
+  intercept, intercept count, and bands seen in, which is `EVALUATION.md` §8 artefact 2.
+  First sightings alone are not enough and the per-slot episode log cannot make up the
+  difference — it carries no emitter attribution. Measured under round-robin, 92.8% of
+  `config_2`'s intercept events and 94.6% of `config_921`'s are re-sightings. Accumulating
+  them in L3 keeps D28's three-clause rule in one place; the alternative was re-deriving it
+  in `metrics.py` from the logged `measured_dbm`.
 - `reset(seed, options={scenario})` takes either a deterministic replay or a sampled scenario
   (D25). Validation always uses replays; training uses samples. Seeding fixes both the
   scenario draw and the receiver's noise, so a seed reproduces an episode exactly.

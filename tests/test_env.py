@@ -271,3 +271,41 @@ def test_sampled_scenarios_come_from_the_pool_and_vary():
 def test_needs_a_scenario_or_a_pool():
     with pytest.raises(ValueError):
         ScanEnv()
+
+
+def test_the_emitter_table_carries_more_than_first_sightings():
+    """`EVALUATION.md` §8 artefact 2, which `first_e` alone cannot supply.
+
+    Measured under round-robin: 92.8% of config_2's intercept events and 94.6% of
+    config_921's are re-sightings rather than first sightings, and the per-slot
+    episode log has no emitter attribution to recover them from. So the env keeps
+    the whole track; the alternative was re-deriving D28's three clauses inside
+    metrics.py, putting one rule in two places.
+    """
+    env = ScanEnv(scenario=Scenario.replay("config_921", "stare"))
+    info = episode(env, ROUND_ROBIN)
+
+    table = env.emitter_table()
+    assert len(table) == len(env.detectable)          # one row per emitter in E
+    assert info["emitter_table"] == table             # and it reaches the evaluator
+
+    seen = [r for r in table if r["intercept_count"] > 0]
+    assert seen, "round-robin should intercept something in config_921"
+    assert sum(r["intercept_count"] for r in seen) > len(seen)   # re-sightings kept
+    for r in seen:
+        assert r["on_slot"] <= r["first_intercept_slot"] <= r["last_intercept_slot"]
+        assert r["bands_seen_in"] and all(0 <= b < K.N_BANDS for b in r["bands_seen_in"])
+        assert r["uid"].endswith(f"/{r['emitter']}") or "/" in r["uid"]
+
+    # an emitter never intercepted is present and scored as a miss, not dropped
+    for r in table:
+        if r["intercept_count"] == 0:
+            assert r["first_intercept_slot"] is None and r["bands_seen_in"] == []
+
+
+def test_first_intercept_still_reads_as_before():
+    """The property is a view over the tracks, so nothing downstream shifted."""
+    env = ScanEnv(scenario=Scenario.replay("config_2", "stare"))
+    episode(env, ROUND_ROBIN)
+    assert env.first_intercept == {e: t["first"] for e, t in env.tracks.items()}
+    assert all(env.detectable[e][0] <= s for e, s in env.first_intercept.items())

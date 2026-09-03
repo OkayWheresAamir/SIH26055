@@ -199,7 +199,7 @@ class ScanEnv(gym.Env):
             int(i): self.grid.detectable_interval(int(i), self.gamma)
             for i in self.grid.detectable_emitters(self.gamma)
         }
-        self.first_intercept: dict[int, int] = {}
+        self.tracks: dict[int, dict] = {}
         self.pulses_intercepted = 0
         self.total_reward = 0.0
         self.n_steps = 0
@@ -221,13 +221,29 @@ class ScanEnv(gym.Env):
 
         dwell = self.receiver.dwell(self.grid, action, self.t)
 
-        # first_e per D28. Slots inside a dwell arrive in order, so the first
-        # sighting recorded for an emitter is its earliest.
+        # Per-emitter tracks, per D28. Slots inside a dwell arrive in order, so
+        # the first sighting recorded for an emitter is its earliest.
+        #
+        # Every intercept is kept, not only the first. `first` alone answers
+        # censored intercept time, but EVALUATION.md §8 artefact 2 also wants last
+        # intercept, count and bands-seen-in, and none of those survives in the
+        # per-slot episode log -- the log carries no emitter attribution. The
+        # alternative was to re-derive them in `metrics.py` from `measured_dbm`,
+        # which would put D28's three-clause rule in two places. Measured: under
+        # round-robin, 92.8% of config_2's intercept events and 94.6% of
+        # config_921's are not first sightings, so this is most of the signal.
         newly: set[int] = set()
         for emitter, slot in dwell.intercepts:
-            if emitter not in self.first_intercept:
-                self.first_intercept[emitter] = slot
+            track = self.tracks.get(emitter)
+            if track is None:
+                self.tracks[emitter] = {
+                    "first": slot, "last": slot, "count": 1, "bands": {dwell.band},
+                }
                 newly.add(emitter)
+            else:
+                track["last"] = slot
+                track["count"] += 1
+                track["bands"].add(dwell.band)
 
         reward = float(self._reward_fn(dwell, newly))
 
@@ -246,6 +262,34 @@ class ScanEnv(gym.Env):
         # There is no state beyond slot 600 to bootstrap a value from.
         terminated = self.t >= N_SLOTS
         return self._observation(), reward, terminated, False, self._info(dwell, newly)
+
+    @property
+    def first_intercept(self) -> dict[int, int]:
+        """`first_e` per emitter -- the censored-intercept-time numerator (D28)."""
+        return {e: t["first"] for e, t in self.tracks.items()}
+
+    def emitter_table(self) -> list[dict]:
+        """Artefact 2 of `EVALUATION.md` §8: one row per detectable emitter.
+
+        The shape of a real ESM intercept log, and -- with the per-slot episode
+        log -- everything §4 needs. `E` is the detectable set (D27), so an emitter
+        that was never findable is absent rather than scored as a miss.
+        """
+        rows = []
+        for emitter, (on_e, off_e) in sorted(self.detectable.items()):
+            track = self.tracks.get(emitter)
+            contribution = self.grid.contributions[emitter]
+            rows.append({
+                "emitter": emitter,
+                "uid": contribution.uid,
+                "on_slot": on_e,
+                "off_slot": off_e,
+                "first_intercept_slot": track["first"] if track else None,
+                "last_intercept_slot": track["last"] if track else None,
+                "intercept_count": track["count"] if track else 0,
+                "bands_seen_in": sorted(track["bands"]) if track else [],
+            })
+        return rows
 
     # ----------------------------------------------------------- observation --
 
@@ -298,7 +342,7 @@ class ScanEnv(gym.Env):
             "slot": self.t,
             "time_s": self.t * SLOT_S,
             "n_detectable": len(self.detectable),
-            "n_intercepted": len(self.first_intercept),
+            "n_intercepted": len(self.tracks),
             "pulses_intercepted": self.pulses_intercepted,
             "total_pulses": self.grid.total_pulses,
             "total_reward": self.total_reward,
@@ -313,8 +357,9 @@ class ScanEnv(gym.Env):
                 "newly_intercepted": sorted(newly or ()),
             })
         if self.t >= N_SLOTS:
-            info["first_intercept"] = dict(self.first_intercept)
+            info["first_intercept"] = self.first_intercept
             info["detectable"] = dict(self.detectable)
+            info["emitter_table"] = self.emitter_table()
         return info
 
     def _append_log(self, dwell: DwellResult) -> None:
@@ -357,8 +402,8 @@ class ScanEnv(gym.Env):
         n_e = len(self.detectable)
         delays = []
         for e, (on_e, _) in self.detectable.items():
-            first = self.first_intercept.get(e)
-            delays.append((N_SLOTS if first is None else first) - on_e)
+            track = self.tracks.get(e)
+            delays.append((N_SLOTS if track is None else track["first"]) - on_e)
 
         return {
             "scenario": self.scenario.name,
@@ -370,11 +415,11 @@ class ScanEnv(gym.Env):
             "censored_mean_intercept_time_s": (
                 float(np.mean(delays)) * SLOT_S if delays else float("nan")
             ),
-            "emitter_coverage": len(self.first_intercept) / n_e if n_e else float("nan"),
-            "avg_intercept_rate_per_s": len(self.first_intercept) / EPISODE_S,
+            "emitter_coverage": len(self.tracks) / n_e if n_e else float("nan"),
+            "avg_intercept_rate_per_s": len(self.tracks) / EPISODE_S,
             "total_reward": self.total_reward,
             "n_detectable": n_e,
-            "n_intercepted": len(self.first_intercept),
+            "n_intercepted": len(self.tracks),
             # Steps, not slots: an episode is always 600 slots but 300-600
             # decisions, depending how many wide bands were chosen (D31).
             "n_steps": self.n_steps,
