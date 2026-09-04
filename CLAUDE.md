@@ -10,14 +10,25 @@ separate from their sources. This repository exists to avoid that. The rules bel
 whole point of it — follow them before doing anything else.
 
 **Build status (2026-09-04).** `rfenv/` has L0 (`scenario.py`), L1 (`truth.py`), L2
-(`receiver.py`), L3 (`env.py`) and the artefact layer (`metrics.py`, `render.py`) built, with
-**110 passing tests** under `tests/`. Next and last in `docs/project/ENVIRONMENT_SPEC.md`
-§Build order: `validate.py`. Gate 1's comparison convention is fixed in advance by **D37**;
-**gates 2, 3 and 4 still need their pass criteria — D39, `OPEN`, and the last thing owed
-before `validate.py` can be written.** They are fixed *before* the first run, not after: a
-threshold chosen once the measurement is visible is not a gate.
-**The four validation gates in `docs/project/EVALUATION.md` §6 have not been run yet** — no
-scheduler number may be quoted until they have.
+(`receiver.py`), L3 (`env.py`), the artefact layer (`metrics.py`, `render.py`) and
+`validate.py` all built, with **130 passing tests** under `tests/`. **`ENVIRONMENT_SPEC.md`
+§Build order is complete.**
+
+**The four validation gates ran for the first time on 2026-09-04** (`python -m rfenv.validate`,
+47 train configs, seed 0, artefacts in `runs/validation/`): **gates 2, 3 and 4 PASS; gate 1 is
+MEASURED** — D37 fixed its convention and deliberately left its threshold undecided. Every
+criterion was written into `rfenv/validate.py::GATES` *before* the run and is asserted against
+D39 by a test, because a threshold chosen once the measurement is visible is not a gate. Numbers
+in `EVALUATION.md` §6. **Scheduler comparison is now unblocked; the baseline ladder
+(`EVALUATION.md` §5) is the next thing owed** — and its baselines 2 and 3 are still the same
+policy (flagged in D36).
+
+Two decisions came out of that first run. **D40** — Köksal's `P₁₂(T)` assumes successive receiver
+periods are independent, which is false for a deterministic periodic pair, so gate 3 reports it
+and never gates on it. **D41** — the recorded non-empty dwell rate is **35.403%**, not the
+withdrawn 35.700%; that 0.3 pp "slot quantisation residual" was a band-blind comparison, and
+under one convention the pipeline round-trips exactly. D41 is the fourth instance of the same
+failure mode, caught on `validate.py`'s first run — which is the machinery working.
 
 **A scan replay is not a scheduler-comparison scenario (D36, 2026-09-04).** A scan recording
 holds only the pulses Turing's own sweeping receiver was tuned to, so a grid built from one

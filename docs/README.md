@@ -24,7 +24,7 @@ These are ours. They are kept current; if a chat changes a decision, it changes 
 | `PROJECT_ARCHITECTURE.md` | The human team's working architecture. Direction, not immutable. |
 | `ENVIRONMENT_SPEC.md` | Consolidated three-layer spec: scenario pipeline → truth → receiver → agent interface, plus build order. |
 | `EVALUATION.md` | **Single authority on metrics, baselines, validation gates and protocol.** |
-| `DECISIONS.md` | D1–D39 with status, evidence and three consistency audits. Read before proposing anything. |
+| `DECISIONS.md` | D1–D41 with status, evidence and three consistency audits. Read before proposing anything. |
 | `RESEARCH_MAP.md` | Every document in `reference/` classified: what it establishes, what it does not, its authority level. |
 | `RL_LANE_HANDOFF.pdf` (+ `.html` source) | Onboarding handoff for the RL lane: role split for three people, what is frozen, what is theirs to decide, what to learn. **Derived from the four files above — where they disagree, they win.** |
 
@@ -64,10 +64,13 @@ layer of `ENVIRONMENT_SPEC.md`; `tests/` mirrors it.
 | `rfenv/env.py` | L3 — gymnasium interface, the three reward candidates | built |
 | `rfenv/metrics.py` | episode log, emitter table, run header, `metrics.json` — §4 scored from the artefacts, not from the env | built |
 | `rfenv/render.py` | waterfall, ROC, per-band bar. The only module importing matplotlib | built |
-| `rfenv/validate.py` | gates 1–4 as a runnable script | not built |
+| `rfenv/validate.py` | gates 1–4 as a runnable script; the pass criteria live in its `GATES` dict | built |
 
-**No validation gate has been run yet.** `EVALUATION.md` §7 forbids quoting a scheduler number
-before they pass.
+**All four gates ran for the first time on 2026-09-04** (`python -m rfenv.validate`, 47 train
+configs, seed 0): gates 2, 3 and 4 **PASS**, gate 1 is **MEASURED** — D37 fixed its convention and
+left its threshold undecided. Criteria were fixed in code before the run and are asserted against
+D39 by a test. `EVALUATION.md` §6 has the numbers; scheduler comparison is unblocked, and the
+baseline ladder is the next thing owed.
 
 ## `teammate-work/`
 

@@ -1464,9 +1464,11 @@ shared keys. Sourced: `EVALUATION.md` §4, §8; D31.
 
 ## D39 — gates 2, 3 and 4 still need pass criteria, and they must be fixed before the first run
 
-**Status:** `OPEN` (2026-09-04) — **the last thing owed before `validate.py` can be written.**
-Recorded here rather than left in a chat log because it is the exact failure the third audit
-named as this repository's standing risk.
+**Status:** `SETTLED` (2026-09-04) — **resolved in place; see §Resolution at the end of this
+decision.** Criteria were fixed and written into `rfenv/validate.py::GATES` **before** the first
+run, and `tests/test_validate.py::test_the_criteria_match_what_D39_records` asserts the code and
+this record cannot drift apart. Recorded here rather than left in a chat log because it is the
+exact failure the third audit named as this repository's standing risk.
 
 **The problem.** `EVALUATION.md` §6 states four gates. Gate 1's comparison convention is now
 fixed by **D37**. The other three are not testable as written:
@@ -1508,6 +1510,202 @@ it.)*
 **Evidence.** Sourced: `EVALUATION.md` §6, the 2026-09-03 consistency audit's closing note, and
 a docsearch hit on `optimumsearch.pdf` p.19 (unverified against the page). Reasoned from D20,
 D36 and D37. No new measurement — deliberately, for the reason in the constraint above.
+
+### Resolution (2026-09-04)
+
+The criteria below were decided and committed to code **before** `validate.py` was run for the
+first time. They live in `rfenv/validate.py::GATES`, not in a config file and not as CLI flags:
+a threshold you can pass on the command line is a threshold you can tune after seeing the number.
+
+**Gate 2 — per-band structure.**
+
+| | criterion | why this number |
+|---|---|---|
+| **2a** aggregate | `\|replayed − recorded\| ≤ 0.5 pp` | Both sides count the same 502 dwells per config, so there is **no sampling noise** and the tolerance is a mechanism bound, not a standard error. Every dwell boundary is an exact multiple of the 50 ms slot, so the only ways the two sides can disagree are the dwell truncated at 30 s and slot bucketing at the edges. 0.5 pp ≈ 2.5 dwells per config out of 502. |
+| **2b** per band | `max over 36 bands \|replayed − recorded\| ≤ 1.0 pp` | 1.0 pp ≈ 6 dwells out of the 611–658 each band receives across the 47 configs (measured this session from `dwell_schedule()`: 502 dwells per episode, 13–14 per band). |
+| **2c** direction | `replayed ≤ recorded` | `_bucket` floors a ToA into a slot and `bands_covering` uses the same ±500 MHz window as the recording check, so bucketing can drop a pulse at a boundary but cannot invent one. A predicted *sign*, which is stronger than a magnitude. |
+
+**Gate 2's scope was also corrected.** `EVALUATION.md` §6's headline said "band-level
+*interception ratios* match the recordings" while its own body described the *non-empty dwell
+rate* self-consistency test. Those are different metrics, and the interception-ratio reading is
+disqualified by **D36**: on a scan replay the reference sweep scores 0.9999 by construction, so
+that clause would have measured nothing. Gate 2 is the dwell-rate test its body already
+described; §6's wording now matches.
+
+**Gate 3 — theory.** Controlled case fixed in advance, by stated rules rather than by outcome:
+band 0 (native dwell 100 ms = 2 slots — a 1-slot dwell makes the discrete overlap
+all-or-nothing and inflates the clock's error tenfold, measured 0.0365 against 0.0027); one band
+only, so α is unambiguous; `τ_emit = 0.50 s`, `T_emit = 3.00 s`, giving `α = T_emit/T_rcv =
+60/43` in slots — a large Farey denominator, so no synchronisation, and `T₀(P = 0.9) = 24.9 s`
+fits inside the 30 s horizon; emitter level `γ + 5σ`, so the per-look miss probability is
+`Φ(−5) = 2.9e−7` and the detector contributes nothing to a timing check.
+
+| | criterion | why this number |
+|---|---|---|
+| **3a** `P₁₂(T₁)` | `\|env − discrete reference\| ≤ 0.01` | The reference is `validate._koksal_discrete_p12`, an independent pure-numpy model of the same two pulse trains that imports nothing from L1/L2 — asserted by a test. 0.01 = the clock term for this case (0.0027) plus ~3.7× margin for the phase sweep being 60 offsets rather than continuous. |
+| **3b** Eq. (3.8) | `max first intercept over phase ≥ T_emit·T_rcv/(τ_emit+τ_rcv) = 10.75 s` | Read off the primary, body p.18. A lower bound on the **maximum** intercept time, so the check is one-sided. |
+| **3c** | reported, **not** gated | The clock's own bias against continuous theory, and the `P₁₂(T)` divergence — see **D40**. |
+
+Splitting 3a from 3c is what makes the tolerance derivable at all. Held directly to the
+continuous closed form, gate 3 would measure the clock and the environment at once and neither
+number would mean anything alone.
+
+**Gate 3's framing risk, discharged.** The caveat this decision raised now travels with the
+result instead of living in a chat log: `validate.gate3()` carries it in its docstring and in
+`notes`, and `tests/test_validate.py::test_gate3_is_framed_as_an_environment_check_not_a_scheduler_claim`
+asserts it is still there. Köksal's pre-knowledge is the analyst's, never the agent's; D20 is
+untouched; no output of gate 3 is a scheduler result.
+
+**Gate 4 — extremes.** Twelve structural assertions, no tolerances: five per config (`first_e ≥
+on_e` per D28; every §4 metric inside its definitional range; no NaN or ∞, since censoring is
+mandatory; 600 slots and 300–600 steps per D35; the artefacts reproducing
+`env.episode_metrics()` per D38) plus two orderings over the pair (`config_81` has ≥ 1 detectable
+emitter; `config_921` exceeds it in both detectable emitters and illuminations). Each restates a
+decision or a metric definition — they hold or the code is wrong. Stare replays, driven by
+`constants.dwell_schedule()`; **no baseline policy is implemented**, since the ladder comes after
+the freeze.
+
+**Deliberately excluded from gate 4:** "coverage falls as emitter count rises". D28 scores each
+emitter on **its own** level, so an emitter's detectability does not depend on how crowded the
+scenario is and the ordering does not follow from the design. Asserting it would have been a
+threshold read off the answer. It is reported as a diagnostic instead.
+
+**Gate 1 stays MEASURED.** D37 fixed the convention and explicitly left the threshold undecided
+("whatever `validate.py` returns under it becomes the number"). This sat in the crack between
+D37 and D39 and was surfaced while writing the module. Inventing a pass threshold here would be
+the precise failure the gate machinery exists to prevent, so `validate.py` prints `MEASURED` for
+gate 1, it cannot fail, and a test asserts that nobody adds a threshold without reopening D37.
+
+**First run, 2026-09-04**, `python -m rfenv.validate`, 47 train configs, seed 0, γ = −111:
+
+| gate | status | result |
+|---|---|---|
+| 1 out-of-sample prediction | **MEASURED** | accuracy 0.8585, precision 0.8819, recall 0.6932, MCC 0.6854, per-band r 0.935, base rate 0.3540, over 23,594 dwells (TP 5790 / FP 775 / TN 14466 / FN 2563) |
+| 2 per-band structure | **PASS** | aggregate \|Δ\| **0.000 pp**, max band \|Δ\| **0.000 pp** — replayed 0.35403 against recorded 0.35403 |
+| 3 theory (Köksal) | **PASS** | `P₁₂(T₁)` env 0.18333 vs reference 0.18333, \|Δ\| **0.0000**; Eq. (3.8) max first intercept 12.90 s ≥ 10.75 s |
+| 4 extremes | **PASS** | 12/12 assertions |
+
+Gate 1's figures land inside the audit's 2026-09-03 re-run range (accuracy 83.5–86.0%, recall
+68.2–69.5%, MCC 0.66–0.69, r ≈ 0.93), and band 0 behaves exactly as D10 predicts: 58.97%
+occupied in the recordings, 0.00% predicted. Operating point re-measured in the same run and
+matching D33 exactly: Pd 0.85058, Pfa 1.3499e−3, sensitivity −107.155 dB over 11,710 occupied
+reference-sweep cells.
+
+**Evidence.** Sourced: `EVALUATION.md` §6, the 2026-09-03 consistency audit's closing note, and
+`docs/reference/scheduling/optimumsearch.pdf` opened at body pp.18, 23 and 72 (PDF pp.33, 38 and
+87 — the thesis carries 15 pages of front matter). Reasoned from D20, D36 and D37. The gate-3
+sizing figures were computed from a standalone numpy model of the two pulse trains, deliberately
+not from the environment. All four gate results measured 2026-09-04 by `python -m rfenv.validate`.
+
+---
+
+## D40 — Köksal's `P₁₂(T)` does not apply to a deterministic periodic pair, and is not gated
+
+**Status:** `SETTLED` (2026-09-04) — found while sizing gate 3, before writing it. Evaluation
+semantics, so it was gated by `CLAUDE.md`; nothing in D1–D39 covers it.
+
+**The finding.** Table 6-1 of `docs/reference/scheduling/optimumsearch.pdf` (body p.72, PDF
+p.87 — read visually from the rendered page, not from a text extraction) gives three things:
+a single-period coincidence probability `P₁₂(T₁)` in four cases, a multi-period form
+
+> `P₁₂(T) = 1 − [1 − P₁₂(T₁)]^(T/T₁)`
+
+and an observation time `T₀ = T₁ · ln(1−P₀₁)/ln[1−P₁₂(T₁)]`. **The multi-period form compounds
+the first-period probability as though successive receiver periods were independent Bernoulli
+trials.** Body p.71 states the assumption in Köksal's own words: Hatcher derived these "by using
+the pulse train model introduced in Sec. 2.2 **and assuming that the starting time instants of
+the pulse trains are independent**."
+
+**Why it fails here.** For two *strictly periodic* trains at a fixed phase, successive periods
+are not independent at all — the relative phase drifts deterministically and sweeps the phase
+space systematically, so coverage is far faster than an independence model allows.
+
+**Measured**, over four candidate controlled cases, exact enumeration of every whole-slot phase:
+
+| case (τ_rcv/T_rcv, τ_emit/T_emit) | `P₁₂(T₁)` closed | `P₁₂(T₁)` discrete | Köksal `P₁₂(30 s)` | **actual P(by 30 s)** |
+|---|---|---|---|---|
+| 0.10 / 2.15, 0.50 / 3.00 | 0.18062 | 0.18333 | 0.938 | **1.0000** |
+| 0.05 / 2.15, 0.50 / 3.00 | 0.16395 | 0.16667 | 0.918 | **1.0000** |
+| 0.05 / 2.15, 1.00 / 5.00 | 0.16349 | 0.20000 | 0.917 | **1.0000** |
+| 0.10 / 2.15, 0.30 / 4.00 | 0.09477 | 0.08750 | 0.751 | **1.0000** |
+
+The single-period form reproduces to ~0.003; the multi-period form is off by 6 to 25 points,
+always in the same direction. Confirmed through the full environment stack in the first gate-3
+run: Köksal 0.9379 against the environment's 1.0000.
+
+**Decision.** Gate 3 gates on **`P₁₂(T₁)` and Eq. (3.8) only**. `P₁₂(T)` is computed, printed
+and stored in `gate3.json` as a reported divergence with its cause, and is never a pass
+criterion. **Gating on it would fail a correct environment** — which is the whole reason this is
+a decision and not a footnote.
+
+**Why this is consistent with Köksal rather than a rejection of him.** His ch. 3 is the
+deterministic treatment (Diophantine approximation and Farey series) and yields *finite
+guaranteed* intercept times for exactly this case; ch. 6 exists because he wants a probabilistic
+alternative where ch. 3's optimisation fails. Applying ch. 6's independence model to a
+deterministic pair is our error to avoid, not his.
+
+**Third row is why the controlled case uses a wide band.** With `τ_rcv` equal to one 50 ms slot
+the discrete overlap becomes all-or-nothing and the clock's error jumps to 0.0365. Band 0's
+100 ms dwell keeps it at 0.0027, an order of magnitude below the 0.01 gate-3 allows for the
+environment itself.
+
+**Also noted, not acted on.** §3.2.3's step 1 says "calculate α as in (2.3)", but (2.3) on body
+p.12 is `duty cycle = τ_rcv / T_rcv`. The thesis's own cross-reference is wrong. A further reason
+gate 3 does not build on the Farey path, which would in any case require implementing (3.13) and
+(3.14) — a small number-theory project for a check that Eq. (3.8) already covers one-sidedly.
+
+**Evidence.** Sourced: `optimumsearch.pdf` body pp.18, 71, 72 (PDF pp.33, 86, 87), opened at the
+page. Measured 2026-09-04: the four-case table from a standalone numpy model importing nothing
+from `rfenv`; the environment figure from `python -m rfenv.validate --gate 3`.
+
+---
+
+## D41 — the recorded non-empty dwell rate is 35.403%, not 35.700%; the gap was a band-blind comparison
+
+**Status:** `SETTLED` (2026-09-04) — found by gate 2 on its first run. **A published figure is
+withdrawn**, so it is recorded rather than silently corrected.
+
+**The finding.** D23 §3 and `EVALUATION.md` §6 record the pipeline self-consistency test as
+"**35.403% replayed against 35.700% recorded**, the 0.3 pp residual being slot quantisation."
+Gate 2 measures both sides at **35.403%** — they agree **exactly**, to 0.000 pp in the aggregate
+and 0.000 pp on every one of the 36 bands.
+
+**The cause, and it is not slot quantisation.** The recorded side of
+`tests/test_truth.py::test_pipeline_reproduces_the_recorded_dwell_rate` **ignored frequency**: it
+asked whether the recording held *any* pulse during the dwell, not whether it held one inside the
+tuned band's ±500 MHz window. The replayed side reads `grid[band, slots]` and is band-aware by
+construction, so the two sides were never like-for-like. Since 99.985% of scan pulses fall inside
+the active dwell's window (D3), the two conventions differ by only ~0.3 pp — small enough to look
+like a quantisation residual and be explained away as one.
+
+**Why the band-aware convention is the correct one, independently of this result.** **D37**
+already fixed it for gate 1: the observation is "whether the **scan recording** actually contains
+a pulse **in that band window** during that dwell." Comparing a band-aware replayed side against
+a band-blind recorded side is not a comparison. D37 also requires gates 1 and 2 to be counted the
+same way so their numbers can be read side by side, which the old form prevented.
+
+**Checked, not assumed.** Six conventions were measured this session before concluding the figure
+does not reproduce: per dwell pooled (0.35403), mean of per-config rates (0.35403), excluding the
+truncated final dwell (0.35403 — in fact `dwell_schedule()` truncates none), whole sweeps only
+(0.36352), per slot looked at (0.41525), and per dwell via grid `Z` rather than `C` (0.35403).
+None returns 35.700%.
+
+**Consequence.** **35.700% is withdrawn.** The self-consistency test is now stated as *replayed
+and recorded agree exactly at 35.403%*, which is a **stronger** claim than the one withdrawn: the
+pipeline round-trips with no residual to explain. D23's conclusion is unaffected — γ is still not
+calibrated against this rate, and the test still says nothing about detection. `test_truth.py` is
+corrected to the band-aware convention and its tolerance tightened from 0.5 pp to 0.01 pp;
+`EVALUATION.md` §6 and `ENVIRONMENT_SPEC.md` §L1 are updated.
+
+**This is the fourth instance of one failure mode** — after gate 1's 86.19% (audit finding 1),
+`Pd = 0.822` (audit finding 2) and D23's own withdrawn γ calibration: *a headline number produced
+by a script whose comparison convention was never written down*. The 2026-09-03 audit called
+`validate.py` the structural fix and this is it working as intended, on its first run, against a
+number that had already survived one audit pass marked "exact".
+
+**Evidence.** Measured 2026-09-04 by `python -m rfenv.validate --gate 2` over all 47 train scan
+configs, 23,594 dwells; the six alternative conventions measured in the same session. Reasoned
+from D3, D23 and D37.
 
 ---
 

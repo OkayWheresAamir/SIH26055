@@ -1,10 +1,11 @@
 # RF Environment — Consolidated Specification
 
 **What this is.** The single buildable specification of the RF environment, consolidating every
-decision in `docs/project/DECISIONS.md` (referenced as D1–D34) into one coherent design. A planning
+decision in `docs/project/DECISIONS.md` (referenced as D1–D41) into one coherent design. A planning
 session should be able to read this file plus `DECISIONS.md` and start building without
-re-deriving anything. Written 2026-09-01; L0/L1 corrected 2026-09-01 after D23–D27, and again 2026-09-03 after the
-third consistency audit (D32–D34).
+re-deriving anything. Written 2026-09-01; L0/L1 corrected 2026-09-01 after D23–D27, again 2026-09-03
+after the third consistency audit (D32–D34), and again 2026-09-04 when the validation gates first
+ran (D39–D41).
 
 **Design stance:** three layers, each simple enough to explain in a sentence. Complexity lives
 in *calibration and validation*, not in the architecture.
@@ -65,9 +66,9 @@ realisations and exactly one is used, so no scenario contains the same physical 
 **Not built, and not deferred either (D25):** a physics signal model generating `S` from power,
 range and beam pattern. Its antenna pattern and power scale are published nowhere and would have
 to be **fitted to the same recordings the primary validation gate scores** — turning that gate
-from a prediction into a fit. The recording-derived grid keeps it a prediction rather than a fit — accuracy in the
-mid-80s on held-out data (D24; the exact figure is pending `validate.py`, see `EVALUATION.md`
-gate 1).
+from a prediction into a fit. The recording-derived grid keeps it a prediction rather than a fit —
+**measured 2026-09-04 by gate 1 at accuracy 0.8585, MCC 0.6854** over 23,594 dwells of data never
+used in construction (D17, D37; `EVALUATION.md` §6).
 
 ## L1 — Truth layer
 
@@ -89,9 +90,11 @@ gate 1).
   `rfenv.receiver` on 2026-09-03 over all 47 train scan replays: Pd 0.8506, Pfa 1.350e−3,
   sensitivity −107.16 dB, 11,710 occupied cells. The full sweep (ROC) is the receiver
   characterisation.
-- The recorded **35.70%** non-empty dwell rate is now a **pipeline self-consistency test**:
-  build the grid from the scan recording, replay the schedule that produced it, threshold
-  nothing. Measured 35.403% replayed against 35.700% recorded.
+- The recorded non-empty dwell rate is now a **pipeline self-consistency test**: build the grid
+  from the scan recording, replay the schedule that produced it, threshold nothing. **Measured
+  2026-09-04 by gate 2: replayed and recorded agree exactly at 35.403%** — 0.000 pp aggregate and
+  0.000 pp on every band. The previously recorded "35.403% replayed against 35.700% recorded" is
+  withdrawn: the 0.3 pp residual was a band-blind recorded side, not slot quantisation (D41).
 
 ## L2 — Receiver layer
 
@@ -247,12 +250,20 @@ does, the environment is re-validated from gate 1 and every baseline re-run (D25
    claim rather than an aspiration; the artefact set gained a run header (D38).
    `render.py` owns the waterfall, the ROC and the per-band bar, and is the only
    module that imports matplotlib.
-6. `validate.py` — gates 1–4 as a runnable script. Gate 1's comparison convention
-   is fixed in advance by D37; **gates 2, 3 and 4 still need their pass criteria
-   (D39, `OPEN`)**, fixed *before* the first run and not after.
+6. `validate.py` — gates 1–4 as a runnable script. ✅ built (2026-09-04). The pass
+   criteria live in `validate.py::GATES`, fixed *before* the first run and asserted
+   against D39 by a test, so a threshold cannot be retuned after a bad result — the
+   structural fix the 2026-09-03 audit asked for. Gate 1's convention is D37's; gates
+   2, 3 and 4 are D39's resolution. Gate 3 needed **D40** (Köksal's `P₁₂(T)` assumes
+   independent successive periods and does not apply to a deterministic periodic pair —
+   reported, never gated), and gate 2's first run produced **D41** (the recorded dwell
+   rate is 35.403%, not the withdrawn 35.700%). **All four have now run: three PASS,
+   gate 1 MEASURED** (`EVALUATION.md` §6).
 
-Five small modules mirroring the layers; baselines (random, round-robin, Turing sweep, greedy
-camper, Apfeld) live outside the environment and consume only L3 + episode logs.
+Six small modules mirroring the layers; baselines (random, round-robin, Turing sweep, greedy
+camper, Apfeld) live outside the environment and consume only L3 + episode logs. `validate.py`
+implements no policy of its own: gates 3 and 4 drive the environment with
+`constants.dwell_schedule()`, which is Turing's own frozen schedule.
 
 ---
 
