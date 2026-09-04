@@ -23,6 +23,23 @@ in `EVALUATION.md` §6. **Scheduler comparison is now unblocked; the baseline la
 (`EVALUATION.md` §5) is the next thing owed** — and its baselines 2 and 3 are still the same
 policy (flagged in D36).
 
+**The environment was frozen on 2026-09-04 (D42).** `rfenv/constants.py` is closed — band
+geometry, slot clock, dwell schedule, `N₀`, `σ`, `γ`, `PD_POPULATION` — and
+`tests/test_freeze.py` enforces it with per-value literals plus a digest tripwire. Until that
+file existed the suite read every constant symbolically and would have stayed green through a
+change to γ or the band geometry. **Environment and pre-RL work is closed**; it reopens only on
+evidence of an actual bug, and if anything on the list moves the environment is re-validated from
+gate 1 and every baseline re-run (D25). Not frozen, deliberately: reward candidates and
+observation extensions (D29, D30, D34) and the per-episode draw.
+
+**D42 also records what the gates cannot detect** — read it before quoting a gate figure. Gate 2's
+0.000 pp is algebraically forced and passes with a wrong band half-width; gate 3's reference is
+co-parameterised with the environment; **no gate covers the ±500 MHz half-width**, whose sole
+evidence is D3's 99.9851% in-band measurement (re-run 2026-09-04). Gate 1 is the only one whose two
+sides use different data. No Turing *performance* result was reproduced because none exists — the
+TSRD paper is a deinterleaving benchmark; what was reproduced is Turing's receiver *configuration*,
+exactly, asserted against every file by `scenario.load_receiver`.
+
 Two decisions came out of that first run. **D40** — Köksal's `P₁₂(T)` assumes successive receiver
 periods are independent, which is false for a deterministic periodic pair, so gate 3 reports it
 and never gates on it. **D41** — the recorded non-empty dwell rate is **35.403%**, not the

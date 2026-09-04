@@ -1,7 +1,7 @@
 # RF Environment — Consolidated Specification
 
 **What this is.** The single buildable specification of the RF environment, consolidating every
-decision in `docs/project/DECISIONS.md` (referenced as D1–D41) into one coherent design. A planning
+decision in `docs/project/DECISIONS.md` (referenced as D1–D42) into one coherent design. A planning
 session should be able to read this file plus `DECISIONS.md` and start building without
 re-deriving anything. Written 2026-09-01; L0/L1 corrected 2026-09-01 after D23–D27, again 2026-09-03
 after the third consistency audit (D32–D34), and again 2026-09-04 when the validation gates first
@@ -229,8 +229,9 @@ definitions across documents is how they drift apart.
 
 ## Freeze list
 
-When the four gates in `docs/project/EVALUATION.md` pass, these freeze and stop being open
-questions — and they live in `rfenv/constants.py`, so the freeze list is a literal file: band
+**Frozen 2026-09-04 (D42)** — the gates passed, the freeze is taken, and
+`tests/test_freeze.py` pins every value with a digest tripwire over the whole list. These are no
+longer open questions — and they live in `rfenv/constants.py`, so the freeze list is a literal file: band
 geometry, the slot clock, native dwell lengths, the truth-construction rule, `N₀`, `σ`, γ, the
 metric definitions, and the scenario sampling distribution. **Free to vary per episode:** only
 the draw — which emitters, and the seed. **Stays open for the RL lane:** reward candidates and

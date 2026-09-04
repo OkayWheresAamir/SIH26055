@@ -1709,6 +1709,88 @@ from D3, D23 and D37.
 
 ---
 
+## D42 — the environment is frozen
+
+**Status:** `SETTLED` (2026-09-04) — **the freeze that `EVALUATION.md` §6 mandates on gate pass.**
+Environment and pre-RL work is closed from here; it reopens only on evidence of an actual bug.
+
+**What triggered it.** The four validation gates ran for the first time on 2026-09-04 and the
+three gated checks passed (D39 §Resolution). `EVALUATION.md` §6: *"On pass, **freeze** everything
+in `rfenv/constants.py`."* This records that the freeze is taken rather than merely due.
+
+**What is frozen.** Everything in `rfenv/constants.py`: band geometry (36 centres, ±500 MHz
+half-width), the slot clock (50 ms, 600 slots, 30 s), the native dwell schedule (seven 100 ms,
+twenty-nine 50 ms, 2.15 s sweep), `N₀ = −120 dB`, `σ = 3 dB`, `γ = −111 dB`, `PD_POPULATION =
+reference_sweep`, the split names the held-out guard keys off, and the truth-construction rule
+and metric definitions that depend on them.
+
+**How the freeze is enforced, which it previously was not.** Every other test in the suite reads
+the constants *symbolically* (`K.GAMMA_DBM`, `K.SLOT_S`, …). That is correct for behaviour tests,
+but it meant **the whole suite would have stayed green if someone changed γ, the slot clock or the
+band geometry** — every expectation would move with the value and nothing would notice.
+`rfenv/constants.py` called itself "the freeze list, literally" and had no literal.
+`tests/test_freeze.py` is now that literal: nine tests pinning each value plus a SHA-256 digest
+over the whole list as a single tripwire. Verified by injection this session — a γ change and a
+band-half-width change both trip it.
+
+**What is *not* frozen**, deliberately: reward candidates and observation-vector extensions stay
+the RL lane's (D29, D30, D34), and the per-episode draw — which emitters, and the seed — is free
+by construction (D25). **D29 item 3 (the reward-candidate selection rule) is explicitly outside
+this freeze**: it is an RL-lane reward/Pareto decision, it touches nothing on the list, and the
+freeze did not wait on it.
+
+**Re-validation trigger.** D25's rule stands: if anything on the list moves, the environment is
+re-validated from gate 1 and every baseline is re-run. `tests/test_freeze.py` says so in its own
+failure message, so the rule is attached to the thing it governs rather than living only here.
+
+### Validation limitations, recorded at freeze time
+
+The gates passed, but they are not equally strong, and a reader should know which is which before
+quoting one. Established by fault injection this session — each defect was *injected* and the gate
+observed:
+
+| Gate | What it genuinely tests | What it cannot detect |
+|---|---|---|
+| **1** out-of-sample prediction | **The only gate whose two sides use different data** (stare-built prediction vs the scan ToA stream). MCC 0.6854 over 23,594 dwells against a 0.3540 base rate is real evidence. | Band geometry — both sides apply the same half-width. Injected ±250: MCC *rose* to 0.5123 from 0.4988 on the same two configs. |
+| **2** per-band structure | Slot-clock, dwell-schedule and bucketing consistency. Injected an off-by-one slot shift: **FAIL at −5.44 pp**, as it should. | **Its 0.000 pp is algebraically forced.** Dwell boundaries are exact slot multiples, so `s0 ≤ floor(t/Δ) < s1` ⟺ `start ≤ t < end`, and both sides share the band predicate — the two sides are the same function of the same input. Injected ±250 half-width on both sides with the cache rebuilt: **PASS at 0.000 pp**, with the rate moving 0.354 → 0.138. It is a consistency check, not a validity check. |
+| **3** theory (Köksal) | Environment machinery — contribution → grid → receiver → D28 crediting → `first_intercept`. Injected an emitter 2σ *below* γ: **FAIL**, correctly. | Parameters. The reference is genuinely independent of L1/L2 (a test enforces it) but is **co-parameterised** — `gate3()` feeds both sides from the same `_G3_*` constants. Injected τ_emit 0.50 → 0.25: both moved to 0.100, **PASS**. Also: phase resolution is 1/60 = 0.0167, *above* the 0.01 tolerance, so 3a is exact-agreement-or-fail and the stated "3.7× margin" buys nothing. And 3b (Eq. 3.8) is a one-sided bound cleared with 20% headroom. |
+| **4** extremes | Structural invariants and the full artefact round-trip at 1 and 72 detectable emitters. | Nothing beyond its twelve assertions; it is a smoke test by design. |
+
+**The band half-width is the load-bearing assumption, and no gate covers it.** It is ±500 MHz, so
+adjacent bands overlap by half. The TSRD paper says the receiver sweeps *"in 500 MHz steps and
+500 MHz bandwidth"* — a disjoint tiling — and **we deliberately do not reproduce the paper here**:
+the files disagree and `CLAUDE.md`'s authority table says the files win. Its sole evidence is D3's
+measurement, **re-run this session: 99.9851% of 4,393,233 train scan pulses fall within ±500 MHz
+of the dwell centre active at their ToA** (655 outside), against 50.92% for a disjoint ±250
+tiling. That measurement is sound; it is simply not re-checked by any gate, which is why the
+constant is pinned in `test_freeze.py` with this reasoning attached to it.
+
+**No Turing performance result was reproduced, because none exists.** Checked at freeze time
+rather than assumed: a full-text sweep of all six pages of the TSRD paper finds one line touching
+this task (*"scan receiver model which sweeps the frequency"*, p.4) and no intercept, detection or
+scheduling figures. `RESEARCH_MAP.md` already records it — *"Nothing about scheduling,
+interception, or reward. It is a deinterleaving dataset paper."* Its §III evaluation framework is
+the deinterleaving challenge's (V-measure), which D12 puts out of scope. **What was reproduced is
+Turing's receiver *configuration*, exactly**: dwell centres and dwell times are asserted against
+every HDF5 file by `scenario.load_receiver`, which raises on mismatch (verified this session on
+both fields), sweep period `sum(dwell_times_s)` = 2.150000 s matches `SWEEP_S`, and
+`collection_time_s` = 30.0 matches `EPISODE_S`. There is no stronger comparison available: the
+recordings contain already-detected pulses, not a declared-detection stream, so no independent
+reference exists for the receiver's *output*. **A check was not invented to fill that gap.**
+
+**Pre-RL readiness evidence**, measured this session on the sampled-scenario path — which is what
+RL trains on and which **no gate exercises**: 40 sampled episodes clean (no NaN, no truncation,
+600-slot log every time, all metrics in range); observation stays inside its declared `[0, 1]` box;
+same seed reproduces exactly and a different seed differs; all three reward candidates run;
+the held-out guard fires on a `test_` path; throughput 36,140 steps/s (~4,300 episodes/min).
+
+**Evidence.** Measured 2026-09-04: the gate results by `python -m rfenv.validate`; the fault
+injections, the 99.9851% in-band figure, the receiver-configuration assertions and the
+sampled-path checks by scripts run this session. Sourced: `EVALUATION.md` §6, `RESEARCH_MAP.md`,
+TSRD paper p.4 and §III. Reasoned from D3, D8, D12, D25, D29, D30, D34 and D39.
+
+---
+
 ## Consistency audit — 2026-08-30
 
 Requested by the team: a check that the decisions form one coherent story. Result: **two real

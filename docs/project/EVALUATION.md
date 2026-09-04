@@ -194,6 +194,15 @@ On pass, **freeze** everything in `rfenv/constants.py`: band geometry, slot cloc
 lengths, truth pipeline, `N₀`, `σ`, γ, metric definitions, and the scenario sampling
 distribution (D25).
 
+**The freeze was taken on 2026-09-04 (D42).** It is enforced by `tests/test_freeze.py`, which pins
+every value as a literal plus a SHA-256 digest over the whole list — until it existed the suite
+read the constants symbolically and would have stayed green through a change to γ or the band
+geometry. **D42 also records what the gates cannot detect**, established by fault injection: gate
+2's 0.000 pp is algebraically forced and passes with a wrong band half-width, gate 3's reference is
+co-parameterised with the environment, and **no gate covers the ±500 MHz half-width** — its sole
+evidence is D3's 99.9851% in-band measurement. Read D42 before quoting any gate figure as
+stronger than it is.
+
 ---
 
 ## 7. Protocol

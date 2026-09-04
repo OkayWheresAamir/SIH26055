@@ -24,7 +24,7 @@ These are ours. They are kept current; if a chat changes a decision, it changes 
 | `PROJECT_ARCHITECTURE.md` | The human team's working architecture. Direction, not immutable. |
 | `ENVIRONMENT_SPEC.md` | Consolidated three-layer spec: scenario pipeline → truth → receiver → agent interface, plus build order. |
 | `EVALUATION.md` | **Single authority on metrics, baselines, validation gates and protocol.** |
-| `DECISIONS.md` | D1–D41 with status, evidence and three consistency audits. Read before proposing anything. |
+| `DECISIONS.md` | D1–D42 with status, evidence and three consistency audits. **D42 freezes the environment and records what the gates cannot detect.** Read before proposing anything. |
 | `RESEARCH_MAP.md` | Every document in `reference/` classified: what it establishes, what it does not, its authority level. |
 | `RL_LANE_HANDOFF.pdf` (+ `.html` source) | Onboarding handoff for the RL lane: role split for three people, what is frozen, what is theirs to decide, what to learn. **Derived from the four files above — where they disagree, they win.** |
 
@@ -71,6 +71,10 @@ configs, seed 0): gates 2, 3 and 4 **PASS**, gate 1 is **MEASURED** — D37 fixe
 left its threshold undecided. Criteria were fixed in code before the run and are asserted against
 D39 by a test. `EVALUATION.md` §6 has the numbers; scheduler comparison is unblocked, and the
 baseline ladder is the next thing owed.
+
+**The environment was frozen on 2026-09-04 (D42)** and `tests/test_freeze.py` enforces it. Nothing
+in `rfenv/constants.py` may move because a result came out badly; if one does, the environment is
+re-validated from gate 1 and every baseline re-run (D25). Environment and pre-RL work is closed.
 
 ## `teammate-work/`
 
