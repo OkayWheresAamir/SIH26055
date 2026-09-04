@@ -81,10 +81,14 @@ gate 1).
   the recorded ~35% dwell rate — that procedure was confounded and is retracted (D23). γ is a
   swept receiver parameter; the default operating point is `γ = N₀ + 3σ = −111 dB` with
   `σ = 3 dB` (chosen, not measured), giving **Pfa = 1.35e−3** and **sensitivity −107.2 dB** —
-  both analytic in γ and σ, both re-run 2026-09-03. **Pd at that point is not yet fixed: which
-  cell population it averages over is `PROPOSED` as D33** (candidates measured at 0.819, 0.837
-  and 0.851; the previously quoted 0.822 is withdrawn). `receiver.py` needs D33 decided to emit
-  a ROC. The full sweep (ROC) is the receiver characterisation.
+  both analytic in γ and σ, both re-run 2026-09-03. **Pd = 0.851**, averaged over the
+  reference-sweep population — the occupied cells Turing's own schedule looks at (D33, `SETTLED`;
+  `PD_POPULATION` in `rfenv/constants.py`). The population is on the freeze list because the
+  figure depends on it entirely: 0.819 over stare-replay cells, 0.837 over scan-replay cells, and
+  the previously quoted 0.822 matched none of them and is withdrawn. Re-measured from
+  `rfenv.receiver` on 2026-09-03 over all 47 train scan replays: Pd 0.8506, Pfa 1.350e−3,
+  sensitivity −107.16 dB, 11,710 occupied cells. The full sweep (ROC) is the receiver
+  characterisation.
 - The recorded **35.70%** non-empty dwell rate is now a **pipeline self-consistency test**:
   build the grid from the scan recording, replay the schedule that produced it, threshold
   nothing. Measured 35.403% replayed against 35.700% recorded.
@@ -123,8 +127,10 @@ placeholder, which is precisely the part this spec replaces.
 
 - `action_space = Discrete(36)`
 - `observation_space`: dimension 36×3 + 1 — per-band empirical hit rate, per-band visit
-  density, per-band staleness, plus normalised episode time. **Recorded as D34** (`PROPOSED`) —
-  this choice lived only in this spec until the 2026-09-03 audit; build to it meanwhile. These three quantities are derived
+  density, per-band staleness, plus normalised episode time. **Recorded as D34** (`SETTLED`) —
+  the choice lived only in this spec until the 2026-09-03 audit found it ungated while its
+  proposed extension (D30) correctly was. Ratified as-is; it is not on the freeze list, so it
+  stays the RL lane's to extend. These three quantities are derived
   from the PS's own figures of merit (they are what a scheduler needs to estimate detection
   probability, intercept rate and staleness respectively), and are built **only** from the
   agent's own scan history — no prior emitter intelligence (D19, D20). The RL lane may extend

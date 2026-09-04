@@ -911,9 +911,31 @@ is a mixture over the per-cell curve". The argument does not depend on the value
 
 ## D30 — AoA is a measured PDW field we discard; proposal to reconsider it for the observation
 
-**Status:** `PROPOSED` (2026-09-03) — **awaiting a human decision.** Changes the observation
-vector, so it is gated by `CLAUDE.md`. D19 assigns observation contents to the RL lane; this
-entry supplies the measurements that lane needs, and takes no decision.
+**Status:** `OPEN` (2026-09-04) — **owned by the RL lane, and off the pre-RL critical path.**
+Re-scoped 2026-09-04 from "awaiting a human decision": the question is real and the measurements
+below stand, but it cannot be answered well yet and it does not block anything before the freeze.
+
+**Why it is not a pre-freeze decision.** The observation vector is **not on the freeze list**
+(`ENVIRONMENT_SPEC.md` §Freeze list), the four validation gates do not read it, and D19 already
+assigns observation contents to the RL lane. So adding AoA later costs a retrain of the policy's
+input layer — not a re-validation of the environment, and not a re-run of the baselines.
+
+**Why it should not be closed either way now.** Both answers would be speculation. Closing it
+"out" asserts the 109-vector is sufficient before any agent has run. Closing it "in" pays a real
+cost — L1 gains an angular dimension, breaking the `max`-composition model, and the observation
+needs a fixed-width encoding of a variable-length bearing set — on the strength of an attribution
+figure that is a **ceiling**, computed from true labels and whole-episode medians, and that
+already falls 96.7% → 86.1% from 19 emitters to 99, i.e. worst where scheduling is hardest.
+
+**The trigger that decides it.** A trained agent, or Apfeld, failing to explore in a way that
+per-band hit rate, visit density and staleness demonstrably cannot fix — most plausibly showing
+up as a policy that camps despite a novelty-shaped reward (D29 candidate 3, whose target is
+truth-side and therefore imperceptible to the current vector). That is measurable once the
+baselines and one trained policy exist, and meaningless before. `PulseWidth` rides on the same
+decision.
+
+**Consequence for the pre-RL lane:** none. `receiver.py`, `env.py`, `render.py`, `metrics.py`,
+`validate.py` and the baselines are all unaffected.
 
 **The situation.** Turing PDWs carry five fields — `metadata/feature_names` is `['ToA',
 'Frequency', 'PulseWidth', 'AoA', 'Amplitude']`. `rfenv/scenario.py` reads columns 0, 1 and 4
@@ -1183,9 +1205,18 @@ D26 and D29. Re-measured from `rfenv.receiver` when L2 landed (2026-09-03) — s
 
 ## D34 — the base observation vector, recorded
 
-**Status:** `PROPOSED` (2026-09-03) — **awaiting a human decision.** Records a choice that was
-already made in `ENVIRONMENT_SPEC.md` §L3 but never written down as a decision. Build to it
-meanwhile; approval ratifies what the spec already says rather than changing it.
+**Status:** `SETTLED` (2026-09-04) — **ratified in the implementation lane, not escalated.**
+Records a choice already made in `ENVIRONMENT_SPEC.md` §L3, built in `rfenv/env.py` and covered
+by `tests/test_env.py`. The human retains a one-line veto; nothing downstream assumes otherwise.
+
+**Why this did not need escalating, when D30 does.** `CLAUDE.md` gates decisions that shape the
+agent interface because they are expensive to reverse. This one is not: the observation vector is
+**explicitly absent from the freeze list** (`ENVIRONMENT_SPEC.md` §Freeze list — *"Stays open for
+the RL lane: reward candidates and observation extensions"*), and the four gates never touch it.
+So ratifying costs nothing and un-ratifying costs a retrain rather than a re-validation. There is
+also no live alternative to weigh: every quantity this vector excludes is either D30's separate
+question or already excluded by D12 and D19. Recording a built, tested, spec-carried choice with
+no competing option is bookkeeping, not architecture.
 
 **Why this entry exists.** `ENVIRONMENT_SPEC.md` §L3 fixes `observation_space` at **36×3 + 1 =
 109**: per-band empirical hit rate, per-band visit density, per-band staleness, plus normalised
