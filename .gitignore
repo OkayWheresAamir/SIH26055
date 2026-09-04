@@ -13,3 +13,7 @@ data/
 
 # Personal Claude Code instructions — never shared
 CLAUDE.local.md
+
+# Evaluation artefacts — episode logs, waterfalls, metrics.json. Derived from
+# the environment and rebuilt by re-running it; this repo stays clean of them.
+runs/
