@@ -44,6 +44,7 @@ what each one does and does not establish.
 | Folder | Contents |
 |---|---|
 | `dataset/` | The TSRD paper — how the Turing data was generated. Primary source on dataset semantics; the HF dataset card is only a summary of it and is wrong in two places. |
+| `PPT/` | Past SIH winning decks and two pitch guides. **Pitch material, not project material** — `docsearch` keeps it in a separate `presentation` collection so it cannot surface in a technical answer. Seven of the ten decks are image-only and must be read visually. |
 | `scheduling/` | The core literature: Köksal (intercept theory), **Apfeld et al.** (adaptive SNR-based search — our strong baseline), Gul & Erer (RPCA/TPSR), Dutertre (dynamic scan scheduling), alert–confirm dwell optimisation, plus two teammate summaries. |
 | `deinterleaving/` | Pulse-separation literature. **Out of scope** (D12/D19); kept for reference only. |
 | `background/` | Domain grounding, EW landscape, strategy notes, a crash course. Useful for the write-up; low authority for design. |
@@ -75,10 +76,27 @@ text, which is corroboration. Our environment is built fresh.
 
 ---
 
+## Searching all of this — `docsearch/`
+
+The 366 pages of PDF in here are invisible to `grep`. `docsearch` extracts them and returns a
+`file.pdf:p.7` citation with every hit, so the protocol's "Relevant section/page" is cheap
+instead of effortful.
+
+```bash
+.venv/bin/python -m docsearch "alert confirm dwell time" -k 8
+.venv/bin/python -m docsearch "how was the dataset generated" --primary
+.venv/bin/python -m docsearch.corpus --blind-spots     # the 8 PDFs with no text layer
+```
+
+Measured recall@10 is 100% over 22 verified questions; it answers `no strong match` rather than
+ranking the least-bad page. See `docsearch/README.md`.
+
 ## Conventions
 
 - **Cite the primary.** A summary of a source is not a second source. Where a summary and its
-  primary are both here, the research map says so explicitly.
+  primary are both here, the research map says so explicitly. `docsearch --primary` restricts
+  to external sources — worth using, since our own summaries outrank the papers they summarise
+  in about an eighth of primary-source queries.
 - **The files beat the documents.** For any fact about the data, `data/turing/**/*.h5` wins —
   including against the dataset's own README.
 - **Paths are repo-root-relative** in all cross-references, e.g.

@@ -47,6 +47,18 @@ how we work, `reference/` is external material, `teammate-work/` is cross-check 
 `rfenv/` is the environment, one module per layer of `ENVIRONMENT_SPEC.md`. Its module
 docstrings carry the reasoning; the decisions themselves live in `DECISIONS.md`.
 
+**Search `docs/` before re-reading it.** 366 pages of PDF are invisible to `grep`;
+`docsearch` makes them searchable and returns a `file.pdf:p.7` citation with every hit, which
+is the "Relevant section/page" the protocol asks for:
+
+```bash
+.venv/bin/python -m docsearch "alert confirm dwell time" -k 8
+.venv/bin/python -m docsearch "how was the dataset generated" --primary   # skip our summaries
+```
+
+It answers `no strong match` when the corpus cannot support a claim, and lists the eight
+image-only PDFs it cannot read (`--blind-spots`). See `docsearch/README.md`.
+
 Read `docs/project/PROJECT_ARCHITECTURE.md` and `docs/protocol/CLAUDE_CODE_RESEARCH_PROTOCOL.md` before
 designing anything.
 

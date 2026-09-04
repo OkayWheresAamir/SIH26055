@@ -1,0 +1,198 @@
+{
+  "_about": [
+    "Gold set for docsearch retrieval evaluation.",
+    "",
+    "Every `answer_paths` entry was verified by running the query and reading the returned",
+    "passage on 2026-09-04 — not assumed from a filename. `kind` records which authority the",
+    "question is asking about, because it changes what a correct answer is:",
+    "  primary  — the question is about what an external source says, so a project-authored",
+    "             summary of that source is NOT a correct answer (CLAUDE.md: a summary of a",
+    "             source is not a second source).",
+    "  project  — the question is about what this project decided, so the project doc is the",
+    "             correct answer and the reference papers are not.",
+    "",
+    "`negatives` are queries the corpus genuinely cannot answer. They exist to calibrate the",
+    "no-strong-match cut: the threshold goes where positive and negative scores separate."
+  ],
+
+  "positives": [
+    {
+      "id": "sensitivity-dbm",
+      "question": "what is the sensitivity_dbm field and is it a detection threshold",
+      "kind": "project",
+      "answer_paths": ["docs/project/DECISIONS.md"],
+      "note": "D9 — closed 2026-08-29; states it is not a threshold and why."
+    },
+    {
+      "id": "held-out-rule",
+      "question": "held out test split rule fixed in advance",
+      "kind": "project",
+      "answer_paths": ["docs/project/DECISIONS.md"],
+      "note": "D8 — 45 pairs, rule fixed before fetching."
+    },
+    {
+      "id": "ps-requirement",
+      "question": "what does the problem statement require the scan strategy to do",
+      "kind": "project",
+      "answer_paths": ["docs/project/SIH26055_PROBLEM_STATEMENT.md"],
+      "note": "The requirement itself. Known weak spot: short doc, common terms."
+    },
+    {
+      "id": "reward-definition",
+      "question": "how is the reward defined for the scheduler",
+      "kind": "project",
+      "answer_paths": ["docs/project/EVALUATION.md", "docs/project/RL_LANE_HANDOFF.pdf", "docs/project/DECISIONS.md"],
+      "note": "EVALUATION.md is the single authority on metrics; the handoff restates it."
+    },
+    {
+      "id": "validation-gates",
+      "question": "what are the environment validation gates and has any been run",
+      "kind": "project",
+      "answer_paths": ["docs/project/EVALUATION.md", "docs/project/DECISIONS.md", "docs/README.md"],
+      "note": "EVALUATION.md §7 forbids quoting a scheduler number before the gates pass."
+    },
+    {
+      "id": "scan-stare-independent",
+      "question": "are the scan and stare recordings nested or independent runs",
+      "kind": "project",
+      "answer_paths": ["docs/project/DECISIONS.md"],
+      "note": "D10 / D24 — independent simulation runs."
+    },
+
+    {
+      "id": "turing-generation",
+      "question": "how was the Turing synthetic radar dataset generated",
+      "kind": "primary",
+      "answer_paths": ["docs/reference/dataset/TSRD_dataset_paper_arXiv_2602.03856.pdf"],
+      "note": "TSRD paper §II 'GENERATING THE DATASET' — verified on p.2."
+    },
+    {
+      "id": "emitter-scan-beamwidth",
+      "question": "emitter scan pattern and beamwidth parameters in the dataset",
+      "kind": "primary",
+      "answer_paths": ["docs/reference/dataset/TSRD_dataset_paper_arXiv_2602.03856.pdf"],
+      "note": "TSRD paper p.4 — emitter parameterisation."
+    },
+    {
+      "id": "farey-diophantine",
+      "question": "Farey series Diophantine approximation for maximum intercept time",
+      "kind": "primary",
+      "answer_paths": ["docs/reference/scheduling/optimumsearch.pdf"],
+      "note": "Köksal ch. 3.2 — verified p.5, p.34."
+    },
+    {
+      "id": "minmax-intercept",
+      "question": "minimise the maximum intercept time over a fixed sweep period",
+      "kind": "primary",
+      "answer_paths": ["docs/reference/scheduling/optimumsearch.pdf"],
+      "note": "Köksal ch. 3.3 — min-max optimisation over sweep period."
+    },
+    {
+      "id": "alert-confirm",
+      "question": "two stage alert confirm detection threshold and false alarm",
+      "kind": "primary",
+      "answer_paths": ["docs/reference/scheduling/Dwell_Time_Optimization_of_Alert-Confirm_Detection.pdf"],
+      "note": "JEES 2019 — verified pp.1-3."
+    },
+    {
+      "id": "rpca-lowrank",
+      "question": "low rank and sparse decomposition of the spectrum matrix",
+      "kind": "primary",
+      "answer_paths": ["docs/reference/scheduling/118700Q.pdf"],
+      "note": "Gul & Erer RPCA/TPSR — verified p.3."
+    },
+    {
+      "id": "adaptive-snr-search",
+      "question": "adaptive receiver search strategy using SNR estimates",
+      "kind": "primary",
+      "answer_paths": ["docs/reference/scheduling/paperSSPD (1).pdf"],
+      "note": "Apfeld et al. — the strong baseline named in docs/README.md."
+    },
+    {
+      "id": "dynamic-scan-scheduling",
+      "question": "dynamic scan scheduling with revisit intervals",
+      "kind": "primary",
+      "answer_paths": ["docs/reference/scheduling/Dynamic Scan Scheduling.pdf"],
+      "note": "Dutertre — verified p.8."
+    },
+    {
+      "id": "freq-agile-interception",
+      "question": "interception model for random scanning against frequency agile radar",
+      "kind": "primary",
+      "answer_paths": ["docs/reference/Interception_Model_of_Random_Scanning_Strategies_Against_Frequency-Agile_Radar_in_Electronic_Support_copy.pdf"],
+      "note": "Verified p.1, p.8. Added 2026-09-04, still unclassified in RESEARCH_MAP."
+    },
+    {
+      "id": "cprit",
+      "question": "combined PRI transform for pulse train extraction",
+      "kind": "primary",
+      "answer_paths": ["docs/reference/CPRIT(Combined PRI Transform).pdf"],
+      "note": "Verified p.4. Added 2026-09-04, unclassified."
+    },
+    {
+      "id": "vita49",
+      "question": "VITA 49 packet format for digitised RF",
+      "kind": "primary",
+      "answer_paths": ["docs/reference/The_VITA_49_Analog_RF-Digital_Interface.pdf"],
+      "note": "Verified pp.6, 9, 10. Added 2026-09-04, unclassified."
+    },
+    {
+      "id": "deinterleaving",
+      "question": "pulse separation and deinterleaving of interleaved radar pulse trains",
+      "kind": "primary",
+      "answer_paths": ["docs/reference/deinterleaving/Radar_Signal_Deinterleaving_in_Electronic_Warfare_.pdf"],
+      "note": "Out of scope per D12/D19, but must still be findable."
+    },
+    {
+      "id": "shr-sweep",
+      "question": "superheterodyne receiver sweeping across frequency windows",
+      "kind": "primary",
+      "answer_paths": [
+        "docs/reference/Interception_Model_of_Random_Scanning_Strategies_Against_Frequency-Agile_Radar_in_Electronic_Support_copy.pdf",
+        "docs/reference/scheduling/optimumsearch.pdf"
+      ],
+      "note": "Corpus says 'superheterodyne' / 'SHR'; 'superhet' appears nowhere."
+    },
+    {
+      "id": "aditi-context",
+      "question": "iDEX ADITI cognitive electronic warfare challenge",
+      "kind": "primary",
+      "answer_paths": [
+        "docs/reference/problem-context/iDEX ADITI 4.0 (Go to Page 12).pdf",
+        "docs/reference/problem-context/ADITI 4.0 YT TRANSCRIPT.pdf"
+      ],
+      "note": "The sibling Army problem that grounds the intent reading."
+    }
+  ],
+
+  "presentation_positives": [
+    {
+      "id": "ppt-structure",
+      "question": "what slides should an SIH pitch deck contain",
+      "kind": "primary",
+      "answer_paths": [
+        "docs/reference/PPT/SIH_2026_Playbook_TechDoodles_Final.pdf",
+        "docs/reference/PPT/README.md"
+      ],
+      "note": "Playbook p.11 'Pitch Deck Structure That Wins'. Searched with --collection presentation."
+    },
+    {
+      "id": "ppt-judging",
+      "question": "how do judges evaluate problem statement difficulty",
+      "kind": "primary",
+      "answer_paths": ["docs/reference/PPT/SIH 2026 - Easy vs Difficult Problem Statements.pdf"],
+      "note": "One of only 3 text-bearing decks; the other 7 are image-only."
+    }
+  ],
+
+  "negatives": [
+    "how do I fix a leaking tap",
+    "best recipe for sourdough bread",
+    "what is the capital of Portugal",
+    "how to train a golden retriever puppy",
+    "symptoms of vitamin D deficiency",
+    "how do I renew a UK passport",
+    "what is the offside rule in football",
+    "cheapest flights to Reykjavik in winter"
+  ]
+}
