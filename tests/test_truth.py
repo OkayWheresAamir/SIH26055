@@ -138,10 +138,19 @@ def test_pipeline_reproduces_the_recorded_dwell_rate():
     """The self-consistency check that replaces the old gamma calibration (D23).
 
     Build the grid from the *scan* recording, replay the schedule that produced
-    it, and count non-empty dwells with no threshold. It must return what the raw
-    file says: 35.70% across the 47 train configs. This is a plumbing test -- band
-    assignment, slot clock and dwell schedule all have to be right for it to pass --
-    not evidence about detection, which is why gamma is no longer fitted to it.
+    it, and count non-empty dwells with no threshold. This is a plumbing test --
+    band assignment, slot clock and dwell schedule all have to be right for it to
+    pass -- not evidence about detection, which is why gamma is no longer fitted
+    to it. `rfenv/validate.py` gate 2 is the authority on the figure; this is the
+    fast unit-level version of the same check.
+
+    **A pulse counts only if it is inside the tuned band's window** (D37, D41). The
+    earlier form of this test ignored frequency and asked merely whether the
+    recording held *any* pulse during the dwell, which is not like-for-like: the
+    replayed side reads `grid[band, slots]` and is band-aware by construction. That
+    mismatch, not slot quantisation, is the whole of the 0.297 pp residual once
+    recorded as "35.403% replayed against 35.700% recorded" -- 35.700% is withdrawn
+    (D41). Compared the same way on both sides, the pipeline round-trips **exactly**.
     """
     pred_hits = pred_total = actual_hits = 0
     for config_id in list_configs("scan", "train"):
@@ -150,19 +159,25 @@ def test_pipeline_reproduces_the_recorded_dwell_rate():
         pred_hits += h
         pred_total += n
         with h5py.File(recording_path(config_id, "scan"), "r") as fh:
-            toa = np.sort(fh["data"][:, 0].astype(np.float64) / 1e6)
-        for start, end, _ in K.dwell_schedule():
-            lo = np.searchsorted(toa, start, "left")
-            hi = np.searchsorted(toa, end, "left")
+            raw = fh["data"][:, :2]
+        toa, freq = raw[:, 0].astype(np.float64) / 1e6, raw[:, 1].astype(np.float64)
+        per_band = [
+            np.sort(toa[np.abs(freq - centre) <= K.BAND_HALFWIDTH_MHZ])
+            for centre in K.BAND_CENTRES_MHZ
+        ]
+        for start, end, band in K.dwell_schedule():
+            t = per_band[int(band)]
+            lo = np.searchsorted(t, start, "left")
+            hi = np.searchsorted(t, end, "left")
             actual_hits += hi > lo
 
     assert pred_total == 23594
     recorded = 100 * actual_hits / pred_total
     replayed = 100 * pred_hits / pred_total
-    assert recorded == pytest.approx(35.70, abs=0.05)
-    # Residual is slot-boundary quantisation: a 50 ms dwell starting mid-slot spans
-    # two 50 ms slots, so the replay sees a little more than the dwell did.
-    assert replayed == pytest.approx(recorded, abs=0.5)
+    # Every dwell boundary is an exact multiple of the 50 ms slot, so there is no
+    # quantisation left to absorb: the two sides count the same dwells the same way.
+    assert replayed == pytest.approx(recorded, abs=0.01)
+    assert recorded == pytest.approx(35.403, abs=0.05)
 
 
 def test_stare_grid_cannot_see_below_500_mhz():
