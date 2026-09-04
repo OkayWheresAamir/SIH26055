@@ -11,7 +11,7 @@ whole point of it — follow them before doing anything else.
 
 **Build status (2026-09-04).** `rfenv/` has L0 (`scenario.py`), L1 (`truth.py`), L2
 (`receiver.py`), L3 (`env.py`), the artefact layer (`metrics.py`, `render.py`) and
-`validate.py` all built, with **130 passing tests** under `tests/`. **`ENVIRONMENT_SPEC.md`
+`validate.py` all built, with **139 passing tests** under `tests/`. **`ENVIRONMENT_SPEC.md`
 §Build order is complete.**
 
 **The four validation gates ran for the first time on 2026-09-04** (`python -m rfenv.validate`,
