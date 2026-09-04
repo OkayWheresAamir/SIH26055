@@ -59,6 +59,16 @@ is the "Relevant section/page" the protocol asks for:
 It answers `no strong match` when the corpus cannot support a claim, and lists the eight
 image-only PDFs it cannot read (`--blind-spots`). See `docsearch/README.md`.
 
+**When to search and when to open the file.** Search when you do not already know which
+document holds the answer, and whenever the answer is likely in a PDF — those are unreachable
+any other way. Read the file directly when you know which one it is and it is markdown;
+`DECISIONS.md`, `ENVIRONMENT_SPEC.md` and `EVALUATION.md` are authoritative and greppable, so
+go straight to them. **Either way, open the primary at the cited page before relying on a
+number or an equation** — search locates a page, it does not read mathematics off it
+(`T_rcv` extracts as `rcv \n T`). Prefer `--primary` when the question is what an external
+source claims: our own records in `RESEARCH_MAP.md` and `DECISIONS.md` outrank the papers they
+summarise in roughly a fifth of such queries.
+
 Read `docs/project/PROJECT_ARCHITECTURE.md` and `docs/protocol/CLAUDE_CODE_RESEARCH_PROTOCOL.md` before
 designing anything.
 
