@@ -6,6 +6,12 @@
 > questions this map had listed as open. Every PDF below was opened and read with `pypdf` in that session; none was
 > classified from its filename. Where a document's filename and its contents disagree, the
 > contents decide.
+>
+> **Updated 2026-09-01** (eight documents) and **2026-09-04** (six more, including Teissier 2026,
+> which this map had listed as wanted and absent). The 2026-09-04 additions were read with
+> `pymupdf`, same rule: opened, not inferred. All 35 PDFs in `docs/` are now classified.
+> `docsearch` (see `docsearch/README.md`) searches them and returns `file.pdf:p.7` citations —
+> use it to check anything below against its page.
 
 ## How to read the Authority column
 
@@ -33,10 +39,12 @@ that primary is not in this repository.
 - `docs/reference/background/TECHNICAL DIFFERENTIATION STRATEGY.pdf` §3, §4, §12 — a checklist of environment features. **LATER**, proposal only.
 
 ### Environment validation
-- `docs/reference/scheduling/optimumsearch.pdf` ch. 2, 3, 6 — intercept-time and probability-of-intercept theory. This is the only document in the repository with derivable equations we could check an environment against. **NOW.**
+- `docs/reference/scheduling/optimumsearch.pdf` ch. 2, 3, 6 — intercept-time and probability-of-intercept theory. Derivable equations we can check an environment against. **NOW.**
+- `docs/reference/Interception_Model_...copy.pdf` §III–VI — **Teissier et al. 2026 (added 2026-09-04).** Intercept time and pulse interception ratio for a *randomly scanning* multichannel SHR against *frequency-agile* emitters with rotating antennas, validated in simulation. The second source of checkable equations, and the first covering frequency agility. **NOW.**
 
 ### Baselines
 - `docs/reference/scheduling/paperSSPD (1).pdf` — **Apfeld et al. 2016. The strong non-learning baseline.** Adaptive band selection with autocorrelation-based scan-period estimation. Reimplementable from §II. **NOW.**
+- `docs/reference/Interception_Model_...copy.pdf` §VII — Teissier's minimax-optimised random scan under parameter uncertainty. A *known-parameter* upper reference, not a cold-start method; useful as the "what if you knew the emitters" line on a comparison plot. **LATER.**
 - `docs/reference/scheduling/optimumsearch.pdf` — periodic/probabilistic search strategies; Clarkson's strategy as the reference point. **NOW.**
 - `docs/reference/scheduling/118700Q.pdf` §4 — "simple periodic search strategy" used as the bootstrap policy. **NOW.**
 - `docs/reference/background/TECHNICAL DIFFERENTIATION STRATEGY.pdf` §2 — random / round-robin / fixed-priority / recency list. **LATER.**
@@ -75,6 +83,18 @@ that primary is not in this repository.
 - **D29's selection rule** — how to choose among the three reward candidates when they
   Pareto-dominate the baselines but not each other. Must be fixed **before** training, so the
   choice is not made after seeing results. Not blocking the environment build.
+- **CPRIT / deinterleaving as a scheduler input — raised 2026-09-04, conflicts with D12 and D19.**
+  `CPRIT(Combined PRI Transform).pdf` and `CPRITworkflow.pdf` propose a PRI-transform module
+  between the receiver and the RL agent, on the argument that hit/miss bits alone cannot
+  represent a frequency-agile, staggered-PRI emitter. Both are Authority C (proposed strategy),
+  which is not new evidence, so **D12/D19 stand** and nothing has been built toward this. Its
+  real cost is an added per-emitter attribution channel in the observation — the same class of
+  change as D30, and larger. **A human decision, and not a blocking one.**
+- **Is Teissier's PIR our interception ratio? — raised 2026-09-04.** The definitions look close
+  but were not compared term by term this session. `EVALUATION.md` is the single authority on
+  metrics; if they coincide, Teissier gives us a closed-form check on a metric we already
+  report, which would be worth having. **Needs someone to read both definitions side by side.**
+  Until then, treat them as different quantities that share a name.
 
 > Closed since the 2026-08-28 list: **D4** (accepted by the team 2026-09-01 — the
 > continuous-signal environment with derived binary occupancy) and **D5's sub-question** (do all
@@ -85,7 +105,11 @@ that primary is not in this repository.
 - *"Approaches to intercept a periodic scan receiver optimally should be outlined"* (PS). Most likely the scan-on-scan problem. A written deliverable, owed to the evaluators; Köksal ch. 3 is the source. Needs someone with the domain reading to write it.
 
 **Worth obtaining, not blocking:**
-- Teissier et al. (2026), *Interception Model of Random Scanning Strategies Against Frequency-Agile Radar in Electronic Support* — derives POI, intercept time and pulse interception ratio against exactly the emitter pair the PS names. Named in `Electronic Support Scan Scheduling (1).pdf`; not in this repository.
+- ~~Teissier et al. (2026)~~ — **OBTAINED 2026-09-04.** Now
+  `docs/reference/Interception_Model_of_Random_Scanning_Strategies_Against_Frequency-Agile_Radar_in_Electronic_Support_copy.pdf`
+  and classified below (VALIDATION / BASELINE, Authority B). The claims previously carried here
+  on the strength of a citation in `Electronic Support Scan Scheduling (1).pdf` can now be read
+  at the primary.
 - Clarkson (2005), *Optimal Periodic Sensor Scheduling in Electronic Support* — the dwell-time-allocation primary. Not in this repository.
 
 ### Closed since 2026-08-28
@@ -105,7 +129,8 @@ that primary is not in this repository.
 | `GPT BACKDOOR PAPER KHARKIV CONFRENCE.pdf` | KhNUPS 2025 conference proceedings (888 pp) | **No.** Every claim it makes about that conference is unverified here. |
 | `data/turing/README.md` | The TSRD dataset + the Turing challenge GitHub repo | **The data is present.** The card is not. Prefer the files. |
 | `me 2.0.pdf` | `paperSSPD (1).pdf` — the Apfeld paper | **Yes.** Cite the paper. Its §17 and §18 are the author's own and may be cited as such. |
-| `Electronic Support Scan Scheduling (1).pdf` | Five papers; two are here (`118700Q.pdf`, `paperSSPD (1).pdf`), three are not | **Partly.** Clarkson 2005 and Teissier 2026 are unverified. |
+| `Electronic Support Scan Scheduling (1).pdf` | Five papers; **three** are here (`118700Q.pdf`, `paperSSPD (1).pdf`, and Teissier 2026 as of 2026-09-04), two are not | **Mostly.** Only Clarkson 2005 and Hatcher 1976 remain unverified. |
+| `CPRIT(Combined PRI Transform).pdf` p.4 | `Radar_Signal_Deinterleaving_in_Electronic_Warfare_.pdf` — Nuhoglu & Cirpan | **Yes.** Cite the paper. Its pages 5+ are the author's own proposal and may be cited as such. |
 
 `118700Q.pdf` also cites `optimumsearch.pdf` as its reference [1] (Köksal 2010). Both primaries are
 in this repository, so the RPCA paper's account of periodic search can be checked against the thesis
@@ -687,6 +712,86 @@ bearing on our design.
 **Role:** BACKGROUND / intent. **Authority:** D (teammate note, unsourced). Describes an Indian
 tactical ESM system (COMINT+ELINT passive sensors, 1.5 MHz–40 GHz). Colour for the operational
 picture and PPT; not a design input.
+
+---
+
+## Documents added 2026-09-04 — compact records
+
+Six additions, each opened and read this session with `pymupdf`; none classified from its
+filename. **One is a significant acquisition** (Teissier, previously listed as wanted and
+absent). **Two propose reopening a settled scope decision** and are flagged, not absorbed.
+
+### `Interception_Model_of_Random_Scanning_Strategies_Against_Frequency-Agile_Radar_in_Electronic_Support_copy.pdf` — Teissier, Toumi & Khenchaf, IEEE TAES, published 2026-02-03
+**Role:** VALIDATION / BASELINE. **Authority:** B (peer-reviewed, IEEE TAES, DOI
+10.1109/TAES.2026.3660987; DGA/AID funded). **This is the paper the "worth obtaining" list
+named and did not have.** It derives intercept time (IT) and **pulse interception ratio (PIR)**
+for a *randomly scanning multichannel superheterodyne receiver* against *frequency-agile
+emitters with rotating directional antennas* — the emitter class the PS names, and closer to our
+setup than anything else in the repository. It also gives a minimax scheme for optimising a
+random scan against multiple known emitters under parameter uncertainty, and validates the model
+in a simulated EW environment. The authors position it explicitly as *"a theoretical baseline and
+design tool for adaptive scanning strategies"* — i.e. as the thing an RL scheduler should be
+measured against.
+
+- **Why it matters to us:** it is the second document in the repository (with `optimumsearch.pdf`)
+  carrying derivable equations an environment can be checked against, and the first whose emitter
+  model includes frequency agility. **NOW** for validation; **NOW** for the baseline list.
+- **What it does NOT establish:** it assumes *known* emitter parameters and constant dwell per
+  band. Our problem is the cold-start case (D20), so its optimisation is a bound and a baseline,
+  not our method.
+- **Unverified / needs a human read:** whether its PIR is the same quantity as our interception
+  ratio in `EVALUATION.md` §4. The names coincide and the definitions look close, but I have not
+  checked them term by term, and `EVALUATION.md` is the single authority on metrics — **do not
+  align the two without that check.** Flagged as an open question below.
+
+### `The_VITA_49_Analog_RF-Digital_Interface.pdf` — Cooklev, Normoyle & Clendenen, *IEEE Circuits and Systems Magazine*, Q4 2012
+**Role:** BACKGROUND / FUTURE (deployment). **Authority:** B (peer-reviewed tutorial). Describes
+the VITA 49 / VRT packet protocol carrying digitised signal data plus context metadata (RF centre
+frequency, bandwidth, IF, sample rate, gain, timestamps) between a radio's analog RF and digital
+subsections. **REFERENCE ONLY for the current milestone** — it is about a real hardware interface,
+and our receiver is simulated. Its value is the deployment-path argument for the write-up: it is
+the standard a real ES receiver would use to hand our scheduler its observations.
+
+### `Hardware Integration (2).pdf` — teammate note
+**Role:** BACKGROUND / FUTURE (deployment). **Authority:** C (a proposed design, unsourced).
+Sets out the receiver chain (antenna → RF front-end → downconversion → ADC → DSP → VITA-49) and a
+control loop (observations → smart scheduler → `TUNE(frequency, bandwidth, dwell_time)` → receiver
+API → retune), then maps our prototype onto it: the virtual receiver stands in for the hardware,
+the receiver interface for VITA-49. **Useful, and consistent with our L2/L3 split** — it is the
+same boundary `ENVIRONMENT_SPEC.md` draws, arrived at independently. Good PPT material for the
+"how does this reach real hardware" question. Not a design input; nothing here changes the
+environment. Cite the VITA 49 paper, not this, for anything about the standard itself.
+
+### `CPRIT(Combined PRI Transform).pdf` — teammate explainer + proposal
+**Role:** BACKGROUND, and **UNRESOLVED** for its proposal. **Authority:** D for the explanatory
+half; **C** for the proposal. Pages 1–3 are an EW primer (zero-prior-intelligence scanning,
+COMINT vs ELINT, interleaved vs deinterleaved pulses) — sound, and useful for onboarding and the
+deck. Page 4 paraphrases `docs/reference/deinterleaving/Radar_Signal_Deinterleaving_in_Electronic_Warfare_.pdf`,
+**which is in this repository — cite the primary, not this.** Pages 5+ are the author's own
+proposal: fuse CPRIT as a feature extractor beneath the RL scheduler, on the argument that an
+agent seeing only hit/miss bits cannot understand a frequency-agile, staggered-PRI emitter.
+
+### `CPRITworkflow.pdf` — one-page workflow diagram
+**Role:** **UNRESOLVED** (a proposal). **Authority:** C. Places a "CPRIT MODULE" (phase
+clustering, fused test statistics) between the narrow-IBW receiver and the RL agent, running
+during a "strategic micro-dwell" and outputting true PRI / low-false-alarm tracks.
+
+> **⚠ These two conflict with a settled decision, and are recorded here rather than acted on.**
+> **D12** (`SETTLED` 2026-08-29) says clustering is not the deliverable; **D19** (`CLOSED`
+> 2026-08-30) says deinterleaving is not required. Both CPRIT documents propose making PRI-based
+> deinterleaving a core module of the scheduler. Per `CLAUDE_CODE_RESEARCH_PROTOCOL.md` a
+> proposal at Authority C is a *candidate design, not new evidence*, and `CLAUDE.md` says a
+> `SETTLED`/`CLOSED` decision does not reopen without new evidence. **The conflict is surfaced,
+> not merged.** Reopening D12/D19 is a human call — and note the cost is real: it would add a
+> per-emitter attribution channel to the observation, which is the D30 question at a larger
+> scale. Listed under Unresolved.
+
+### `docs/reference/PPT/` — past SIH winning decks and two pitch guides
+**Role:** BACKGROUND (presentation). **Authority:** D. Ten decks plus a scraped repository readme;
+material for building our own deck, not for the design. **Seven of the ten have no text layer**
+(slide exports as images) and must be read visually; only the TechDoodles playbook, the
+easy-vs-difficult guide and the Cattle-Race deck carry text. `docsearch` isolates this folder in a
+separate `presentation` collection so it cannot surface in a technical query.
 
 ---
 
