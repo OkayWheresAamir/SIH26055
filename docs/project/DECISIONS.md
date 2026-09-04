@@ -1462,6 +1462,55 @@ shared keys. Sourced: `EVALUATION.md` §4, §8; D31.
 
 ---
 
+## D39 — gates 2, 3 and 4 still need pass criteria, and they must be fixed before the first run
+
+**Status:** `OPEN` (2026-09-04) — **the last thing owed before `validate.py` can be written.**
+Recorded here rather than left in a chat log because it is the exact failure the third audit
+named as this repository's standing risk.
+
+**The problem.** `EVALUATION.md` §6 states four gates. Gate 1's comparison convention is now
+fixed by **D37**. The other three are not testable as written:
+
+| Gate | As written | What is missing |
+|---|---|---|
+| **2** | "Band-level interception ratios match the recordings, not just the aggregate." | *Match* by what measure, and how close is close enough. A per-band correlation, a per-band absolute error bound, and a rank agreement are three different tests that can disagree. |
+| **3** | "A controlled periodic case matches Köksal's closed-form intercept time and probability of intercept." | Which controlled case (emitter period, dwell schedule, γ), which closed form, and what tolerance. |
+| **4** | "`config_81` (2 emitters) and `config_921` (99) both behave sensibly." | *Sensibly* is not a predicate. Needs concrete assertions. |
+
+**The constraint that makes this urgent, not tidy-up.** A pass threshold chosen *after* seeing
+the measurement is not a gate — it is a post-hoc description of whatever the code did. The
+2026-09-03 audit's closing note says so directly: "until a gate is a runnable check, its number
+is a claim", and both of its findings 1 and 2 were headline numbers produced by scratch scripts
+whose conventions were never written down. **So the criteria are decided first, and
+`validate.py` reports pass or fail against them.** Where a threshold genuinely cannot be set
+without knowing the scale, the honest form is a criterion justified by something other than the
+measurement it judges — the base rate, a published figure, or a stated engineering requirement.
+
+**Gate 3 carries a framing risk worth naming now.** Köksal's setup assumes the opposite of ours
+on the one axis the problem statement cares about most: *"it is assumed that a pre-knowledge
+about radars to be intercepted is available. Otherwise, there can not be any search strategy
+that guarantee finite intercept times."* **D20** starts every episode with zero prior emitter
+knowledge, which is the problem statement's own title condition. These do not actually conflict
+— gate 3 checks that the **environment** reproduces an analytic result for a known periodic
+case, where the pre-knowledge is the analyst's and never the agent's — but the distinction is
+easy to lose, and "our system matches Köksal" would be a claim the architecture does not
+support. State it as an environment check, never as a scheduler result.
+
+*(That quotation is from a `docsearch` snippet of `docs/reference/scheduling/optimumsearch.pdf`
+p.19 and has **not** been verified by opening the page. `EVALUATION.md` §6 cites ch. 3.2 and 6.1
+for the closed forms, which may or may not be p.19. The next session must open the primary at
+the cited pages before writing gate 3 — search locates a page, it does not read mathematics off
+it.)*
+
+**What is not open.** Gate 1 (D37), the comparison scenario set (D36), the artefact contract
+(D38), γ and the population (D23, D33). Only the three criteria above.
+
+**Evidence.** Sourced: `EVALUATION.md` §6, the 2026-09-03 consistency audit's closing note, and
+a docsearch hit on `optimumsearch.pdf` p.19 (unverified against the page). Reasoned from D20,
+D36 and D37. No new measurement — deliberately, for the reason in the constraint above.
+
+---
+
 ## Consistency audit — 2026-08-30
 
 Requested by the team: a check that the decisions form one coherent story. Result: **two real

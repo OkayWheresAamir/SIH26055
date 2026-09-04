@@ -248,8 +248,8 @@ does, the environment is re-validated from gate 1 and every baseline re-run (D25
    `render.py` owns the waterfall, the ROC and the per-band bar, and is the only
    module that imports matplotlib.
 6. `validate.py` — gates 1–4 as a runnable script. Gate 1's comparison convention
-   is fixed in advance by D37; gates 2 and 4 still need their pass criteria fixed
-   *before* the first run.
+   is fixed in advance by D37; **gates 2, 3 and 4 still need their pass criteria
+   (D39, `OPEN`)**, fixed *before* the first run and not after.
 
 Five small modules mirroring the layers; baselines (random, round-robin, Turing sweep, greedy
 camper, Apfeld) live outside the environment and consume only L3 + episode logs.

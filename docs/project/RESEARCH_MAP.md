@@ -68,18 +68,12 @@ that primary is not in this repository.
 > `docs/project/DECISIONS.md`; this list holds only what genuinely remains.
 
 **Needs a human decision (not more research):**
-- **D30** — do `AoA` and `PulseWidth` enter the observation vector? They are measured PDW fields
-  `rfenv/scenario.py` currently discards. Bearing-based attribution was measured at 96.7%
-  (`config_2`) and 86.1% (`config_921`), and it is the only observable that separates a dwell
-  finding a *new* emitter from one re-finding a known emitter — which is D14's camper pathology in
-  information terms, and what would make D29's candidate 3 actionable rather than merely scorable.
-  Costs L1 an angular dimension and the observation a fixed-width bearing encoding. **Not
-  blocking** `receiver.py` or `env.py`, and the four gates do not touch the observation vector.
-- **D33** — which cell population P<sub>d</sub> is averaged over. Three candidates measured
-  (0.819 / 0.837 / 0.851 at the frozen γ); the previously quoted 0.822 is withdrawn.
-  **`receiver.py` needs this to emit a ROC at all.**
-- **D34** — ratify the base observation vector (36×3+1), which `ENVIRONMENT_SPEC.md` §L3 already
-  fixes but which was never recorded as a decision. Build to it meanwhile.
+- **D39** — pass criteria for gates 2, 3 and 4. **The last thing owed before `validate.py` can
+  be written**, and it must be settled *before* the first run: a threshold chosen after seeing
+  the measurement is not a gate. Gate 1's convention is already fixed (D37). Gate 3 additionally
+  needs Köksal's closed forms read off `docs/reference/scheduling/optimumsearch.pdf` at the
+  cited ch. 3.2 / 6.1 — the PDF is text-readable, so `docsearch` can locate the pages, but the
+  equations must be read from the page itself.
 - **D29's selection rule** — how to choose among the three reward candidates when they
   Pareto-dominate the baselines but not each other. Must be fixed **before** training, so the
   choice is not made after seeing results. Not blocking the environment build.
@@ -96,10 +90,24 @@ that primary is not in this repository.
   report, which would be worth having. **Needs someone to read both definitions side by side.**
   Until then, treat them as different quantities that share a name.
 
-> Closed since the 2026-08-28 list: **D4** (accepted by the team 2026-09-01 — the
-> continuous-signal environment with derived binary occupancy) and **D5's sub-question** (do all
-> hits score equally, or is first-interception worth more — it became D7 candidate 3, given a
-> precise three-clause definition by D28 and recorded in D29).
+**Owned by the RL lane, off the pre-freeze path:**
+- **D30** — do `AoA` and `PulseWidth` enter the observation vector? They are measured PDW fields
+  `rfenv/scenario.py` currently discards. Bearing-based attribution was measured at 96.7%
+  (`config_2`) and 86.1% (`config_921`), and it is the only observable that separates a dwell
+  finding a *new* emitter from one re-finding a known emitter — D14's camper pathology in
+  information terms, and what would make D29's candidate 3 actionable rather than merely
+  scorable. **Re-scoped 2026-09-04** from "awaiting a human decision": the observation vector is
+  not on the freeze list and the four gates never read it, so adding AoA later costs a policy
+  retrain, not a re-validation. Decided by a trained agent failing to explore in a way the
+  current vector demonstrably cannot fix — measurable once baselines exist, meaningless before.
+
+> Closed since the 2026-08-28 list: **D4** (accepted 2026-09-01 — the continuous-signal
+> environment with derived binary occupancy), **D5's sub-question** (do all hits score equally,
+> or is first-interception worth more — it became D7 candidate 3, given a precise three-clause
+> definition by D28 and recorded in D29), **D33** (`SETTLED` 2026-09-03 — P<sub>d</sub> is
+> averaged over the reference-sweep population, 0.851 at the frozen γ; `PD_POPULATION` is on the
+> freeze list) and **D34** (`SETTLED` 2026-09-04 — the 36×3+1 observation vector, ratified in
+> the implementation lane).
 
 **Needs domain review:**
 - *"Approaches to intercept a periodic scan receiver optimally should be outlined"* (PS). Most likely the scan-on-scan problem. A written deliverable, owed to the evaluators; Köksal ch. 3 is the source. Needs someone with the domain reading to write it.

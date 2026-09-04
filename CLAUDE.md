@@ -13,7 +13,9 @@ whole point of it — follow them before doing anything else.
 (`receiver.py`), L3 (`env.py`) and the artefact layer (`metrics.py`, `render.py`) built, with
 **110 passing tests** under `tests/`. Next and last in `docs/project/ENVIRONMENT_SPEC.md`
 §Build order: `validate.py`. Gate 1's comparison convention is fixed in advance by **D37**;
-gates 2 and 4 still need their pass criteria fixed *before* the first run, not after.
+**gates 2, 3 and 4 still need their pass criteria — D39, `OPEN`, and the last thing owed
+before `validate.py` can be written.** They are fixed *before* the first run, not after: a
+threshold chosen once the measurement is visible is not a gate.
 **The four validation gates in `docs/project/EVALUATION.md` §6 have not been run yet** — no
 scheduler number may be quoted until they have.
 
