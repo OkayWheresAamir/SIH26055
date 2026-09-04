@@ -190,6 +190,7 @@ class ScanEnv(gym.Env):
         self._slots_looked = np.zeros(N_BANDS, dtype=np.int64)
         self._hits = np.zeros(N_BANDS, dtype=np.int64)
         self._last_slot = np.full(N_BANDS, -1, dtype=np.int64)
+        self._last_hit_slot = np.full(N_BANDS, -1, dtype=np.int64)
 
         # Evaluator-side episode state. E is the coverage denominator: emitters
         # with a non-empty detectable interval, not every transmitter in the
@@ -250,6 +251,9 @@ class ScanEnv(gym.Env):
         self._slots_looked[action] += dwell.n_slots
         self._hits[action] += int(dwell.Y.sum())
         self._last_slot[action] = dwell.slot0 + dwell.n_slots - 1
+        hit_slots = np.flatnonzero(dwell.Y)
+        if hit_slots.size:
+            self._last_hit_slot[action] = dwell.slot0 + int(hit_slots[-1])
         self.pulses_intercepted += dwell.pulses
         self.total_reward += reward
         self.n_steps += 1
@@ -382,6 +386,7 @@ class ScanEnv(gym.Env):
                 "pulses": int(dwell.C[i]),
                 "level_dbm": float(dwell.level_dbm[i]),
                 "measured_dbm": float(dwell.measured_dbm[i]),
+                "last_hit_slot": int(self._last_hit_slot[dwell.band]),
             })
 
     # --------------------------------------------------------------- summary --
