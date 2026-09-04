@@ -1,0 +1,25 @@
+# SIH26055 — direct dependencies only. Transitive ones are left to pip.
+#
+#     python -m venv .venv && .venv/bin/pip install -r requirements.txt
+#
+# Lower bounds, not pins: nothing here is version-sensitive, and the versions
+# below are what the suite was last run against (2026-09-04, 110 tests passing).
+# The freeze list is `rfenv/constants.py`, not this file — no result depends on
+# a library version.
+
+# The environment (rfenv/), L0–L3.
+numpy>=2.0            # 2.5.2
+h5py>=3.10            # 3.16.0 — reading the Turing HDF5 recordings
+gymnasium>=1.0        # 1.3.0  — the L3 agent interface
+
+# Artefacts. matplotlib is imported by `rfenv/render.py` and by nothing else, so
+# the environment, its metrics and the whole test suite bar tests/test_render.py
+# run without a plotting stack installed.
+matplotlib>=3.8       # 3.11.1
+
+# docsearch/. Lazily imported in `docsearch/corpus.py` — only needed to rebuild
+# the index (`python -m docsearch.corpus --rebuild`), not to query it.
+pymupdf>=1.24         # 1.28.2
+
+# Tests.
+pytest>=8.0           # 9.1.1
