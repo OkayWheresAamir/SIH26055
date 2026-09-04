@@ -197,19 +197,25 @@ The environment's per-episode output is designed to be *checked by eye against t
 in the formats real spectrum-surveillance systems actually use (waterfall display + intercept
 log):
 
-1. **Episode log** (one CSV/parquet per run): per slot — time, band chosen, dwell length,
-   declared hit, true occupancy, pulse count, peak level; per emitter — first seen, last seen,
-   intercept count, bands seen in.
-2. **Waterfall render** (one PNG/HTML per run): the 36×600 occupancy grid as a
+1. **Episode log** (`episode_log.csv`, one per run): per slot — time, band chosen, dwell length,
+   declared hit, true occupancy, pulse count, peak level.
+2. **Waterfall render** (`.png`, one per run): the 36×600 occupancy grid as a
    frequency-vs-time heatmap with the scheduler's path drawn over it and hits marked. This is
    the standard ESM operator view, and — crucially — the same picture can be drawn directly
    from the raw Turing recording, so environment and data are compared visually with no
-   interpretation in between.
-3. **Emitter track table**: per-emitter intercept summary (emitter, band(s), first/last
-   intercept, count) — the shape of a real ESM intercept log.
-4. **`metrics.json`**: the three metric families below, one file per evaluation run.
+   interpretation in between. Drawn from a **stare** replay for that comparison; a scan
+   replay's content lies along Turing's own sweep and reads as a scheduler success that is not
+   one (D36).
+3. **Emitter track table** (`emitter_table.csv`): per-emitter intercept summary (emitter,
+   band(s), first/last intercept, count) — the shape of a real ESM intercept log.
+4. **Run header** (`run.json`): the episode's scalars — scenario, scheduler, seed, reward, γ, σ,
+   total illuminations, total reward. The two of those that §4 needs and neither table can hold
+   are why it exists (D38).
+5. **`metrics.json`**: the three metric families below, one file per evaluation run.
 
-A validation script reproduces all four gates from these artefacts alone.
+A validation script reproduces all four gates from these artefacts alone — which is a testable
+claim, not a hope: `metrics.py` scores §4 by reading the files back, and a test asserts it
+matches what the environment said in memory.
 
 ## Metrics and gates — see `docs/project/EVALUATION.md`
 
@@ -235,8 +241,15 @@ does, the environment is re-validated from gate 1 and every baseline re-run (D25
 2. `truth.py` — L1: the `Z`/`S`/`C` grid, detectable intervals. ✅ built
 3. `receiver.py` — L2: dwell mechanics, the noise draw, `Y`. ✅ built
 4. `env.py` — L3: gymnasium wrapper. ✅ built
-5. `render.py` + `metrics.py` — outputs above.
-6. `validate.py` — gates 1–4 as a runnable script.
+5. `metrics.py` + `render.py` — outputs above. ✅ built (2026-09-04). `metrics.py`
+   scores `EVALUATION.md` §4 **from the artefacts on disk**, never from live env
+   state, so §6's "reproduces the gates from these artefacts alone" is a tested
+   claim rather than an aspiration; the artefact set gained a run header (D38).
+   `render.py` owns the waterfall, the ROC and the per-band bar, and is the only
+   module that imports matplotlib.
+6. `validate.py` — gates 1–4 as a runnable script. Gate 1's comparison convention
+   is fixed in advance by D37; gates 2 and 4 still need their pass criteria fixed
+   *before* the first run.
 
 Five small modules mirroring the layers; baselines (random, round-robin, Turing sweep, greedy
 camper, Apfeld) live outside the environment and consume only L3 + episode logs.

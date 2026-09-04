@@ -1279,6 +1279,189 @@ are measured, and are asserted in `tests/test_env.py::test_step_count_varies_wit
 
 ---
 
+## D36 — a scan replay is not a scheduler-comparison scenario: it carries the reference sweep's own footprint
+
+**Status:** `SETTLED` (2026-09-04) — **accepted by the team.** Evaluation semantics, so it was
+gated by `CLAUDE.md`. Found while building `metrics.py`; nothing in D1–D35 covers it.
+
+**The finding.** A Turing **scan** recording contains only the pulses its sweeping receiver was
+tuned to at their ToA — that is D3's own headline measurement (99.985% of 4,393,233 train scan
+pulses fall inside the active dwell's window), read the other way round. So a truth grid built
+from a scan recording has its content sitting where that one fixed schedule looked, and any
+scheduler that sweeps is handed the answer.
+
+**Measured this session**, `config_2`, one seed, both replays of the same config:
+
+| policy | scan replay | | | stare replay | | |
+|---|---|---|---|---|---|---|
+| | ratio | coverage | cTTI | ratio | coverage | cTTI |
+| Turing reference sweep | **0.9999** | 1.000 | **0.00 s** | 0.0677 | 0.842 | 4.57 s |
+| camper (band 6) | 0.1740 | 0.250 | 17.75 s | 0.0548 | 0.263 | 15.36 s |
+| random | 0.0076 | 0.300 | 19.63 s | 0.0685 | 0.895 | 4.36 s |
+
+A censored mean intercept time of **0.00 s** is the tell: every emitter is found in the first
+slot it is detectable, because it only became detectable when the sweep arrived.
+
+**Noticed while measuring this, and owed to whoever writes the baselines: `EVALUATION.md` §5's
+baselines 2 and 3 are the same policy** unless one is deliberately changed. "Round-robin" —
+step to the next band in order, each for its native dwell — *is* Turing's reference sweep, and
+it reproduced the sweep's row above to four decimal places on both replays because it is not a
+second measurement. They need to differ by something stated (a uniform dwell length, a different
+starting phase, or a shuffled band order), or the ladder has six rungs and not seven. Not fixed
+here: baselines are outside the environment and are not this session's scope.
+
+**The mechanism, measured over all 47 train configs.** Comparing each contribution's cells
+against the band `dwell_schedule()` is tuned to at that slot:
+
+| | contributions | cells | mean cells each | on the swept band | within one band |
+|---|---|---|---|---|---|
+| scan-derived | 1,739 | 86,206 | 49.6 | **45.29%** | **99.42%** |
+| stare-derived | 1,704 | 1,089,251 | 639.2 | 3.40% | 9.97% |
+
+The reference sweep occupies one band per slot, so the no-bias base rate is 1/36 = 2.78%.
+Stare sits at 3.40% — the small excess is the seven wide-dwell bands, where the sweep spends
+double the airtime and the emitters are densest (D31). Scan sits at 45.29%, a **16× enrichment**,
+and 99.42% within one band. The gap between 45% and 100% is the band overlap, not leakage: a
+pulse falls in two adjacent ±500 MHz windows (D3) and the sweep is tuned to one of them, so
+about half of a scan contribution's cells are the swept band and about half its overlapping
+neighbour. **A scan-derived contribution is the emitter as seen through Turing's schedule**, not
+the emitter.
+
+At grid level: occupied cells are enriched at swept positions **14.5×** on a `config_2` scan
+replay and **1.23×** on the stare replay. It is visible without any statistic — the waterfall of
+a raw scan recording draws the sweep's sawtooth in signal (`rfenv/render.py`).
+
+**Decision.** The scheduler comparison (`EVALUATION.md` §5) runs on the **47 stare replays plus
+sampled scenarios. Never on scan replays.** Scan replays keep their existing roles, where the
+imprint is not a contaminant but the mechanism being tested: gate 1 predicts the scan recording
+*from stare* and never builds truth from scan at all, and gate 2's self-consistency check
+(35.403% replayed against 35.700% recorded, D23) works precisely *because* the grid and the
+schedule share an origin.
+
+**What this does not change.** D25's pool, D24, D17's conclusion and D32 all stand — both runs
+still feed the emitter pool, and no contribution is discarded. Nothing on the freeze list moves.
+
+**The residual, stated rather than removed.** A *sampled* scenario draws one realisation per
+emitter (D32) from a pool that is 1,739 scan and 1,704 stare contributions, so it inherits a
+diluted version of the same imprint. Measured over 30 sampled scenarios at the default `n` draw
+(seed 0): **53.4%** of the emitters drawn are scan-derived, but only **11.8%** of their cells,
+because a scan contribution carries 49.6 cells against stare's 639.2. Composed grid enrichment
+is **2.40×** on average (range 1.19–19.77; the tail is a low-`n` draw dominated by one scan
+contribution).
+
+**Why that residual is accepted rather than engineered away.** The obvious fix — sample only
+stare-derived contributions — costs more than it buys. Stare's `freq_range_mhz` starts at
+500 MHz, so **band 0 would be permanently empty in every training scenario** (D10), which is
+exactly the known gate-1 limitation imported into the training distribution; it would also drop
+the 383 emitters seen in only one run, and it moves the scenario sampling distribution, which is
+on the freeze list (D25). A 2.40× residual on the training set is a smaller problem than a
+structurally absent band. **Recorded so the RL lane knows it is there**, and it is a fair thing
+for a reviewer to ask about.
+
+**Consequence.** `EVALUATION.md` §5 now names the comparison set; §8 warns about reading a scan
+waterfall; `ENVIRONMENT_SPEC.md` §Outputs says which replay the visual comparison is drawn from.
+`rfenv/render.py` and `tests/test_metrics.py` carry the warning where it is easiest to trip over.
+
+**Evidence.** Measured 2026-09-04 from `rfenv.scenario`, `rfenv.truth`, `rfenv.env` and
+`rfenv.constants.dwell_schedule()` over `data/turing/*/train_*`, at the frozen γ = −111 dB.
+Reasoned from D3 (the 99.985% in-band figure), D10, D24, D25 and D31.
+
+---
+
+## D37 — gate 1 is scored per dwell, against the raw scan ToA stream
+
+**Status:** `SETTLED` (2026-09-04) — **accepted by the team.** Fixes the convention
+`EVALUATION.md` §6 explicitly deferred to `validate.py`, **before** `validate.py` is written and
+therefore before any number is seen.
+
+**Why this needed deciding at all.** The 2026-09-03 audit found gate 1's headline figures
+(accuracy 86.19%, precision 87.87%, recall 71.14%, MCC 0.694, r = 0.940) irreproducible: they
+came from a scratch script at γ = −110, not the frozen γ = −111, whose comparison convention was
+never written down. Four defensible conventions rebuilt from `rfenv` spanned **accuracy
+83.5–86.0%**. The audit's own conclusion was that this — a headline number from a script whose
+convention was not recorded — is *the* failure mode this repository exists to prevent, and that
+the structural fix is to define the convention in code.
+
+**Decision: per dwell, against the raw scan ToA stream.** For each dwell in
+`dwell_schedule()`, the environment (truth built from **stare only**, D17) predicts whether that
+dwell declares a detection; the observation is whether the **scan recording** actually contains
+a pulse in that band window during that dwell. Score the 2×2 table over all dwells of all 47
+train configs.
+
+**Why, against the three alternatives.**
+
+1. **Per dwell, not per cell.** A dwell is the unit a receiver produces a declaration for, and
+   §2 defines the metric as "the environment's predicted detection matches the recorded scan
+   data" — a detection is per look. Scoring all 36×600 cells instead would put ~97% of the
+   denominator on cells the scan recording could never have observed (the sweep visits 2.78% of
+   them, D36), making most of the score unfalsifiable by construction.
+2. **Against the raw ToA stream, not against a scan-built grid.** Grid-versus-grid is tidier —
+   both sides pass through identical band-assignment and slot-clock code — but that is precisely
+   what disqualifies it. It would compare our pipeline against our pipeline, and gate 1's whole
+   claim is that it is *"the only gate that is a genuine prediction rather than a fit"*
+   (`EVALUATION.md` §6). Every construction step inserted between the prediction and the data
+   weakens that claim.
+3. **Not "report the range."** Publishing 83.5–86.0% would be honest about convention
+   sensitivity and useless as a gate: it leaves the project with no gate-1 number and invites a
+   reader to quote the flattering end.
+4. It is the accounting the **pipeline self-consistency test already uses** — the recorded
+   non-empty *dwell* rate, 35.403% replayed against 35.700% recorded (D23) — so gate 1 and gate
+   2 are counted the same way and their numbers can be read side by side.
+
+**What is fixed, and what is still open.** This settles *what is compared*. It does not settle
+gate 2's and gate 4's pass criteria, which are still owed and must likewise be fixed before the
+first run rather than after.
+
+**Standing limitation, unchanged.** Band 0 (250 MHz) is 59.12% occupied in the recordings and
+0.00% predicted, because stare cannot see below 500 MHz (D10, D24). Stated, not patched, and the
+per-band bar plot shows it rather than hiding it.
+
+**Evidence.** Sourced: `EVALUATION.md` §2, §6 and the 2026-09-03 audit finding 1. Reasoned from
+D3, D10, D17, D23, D24 and D36. **No new measurement — deliberately.** The convention is fixed
+before the gate runs, so that the number `validate.py` returns is a result and not a selection.
+
+---
+
+## D38 — the artefact set gains a run header; §4 was not computable from two tables
+
+**Status:** `SETTLED` (2026-09-04) — implementation correction inside `EVALUATION.md` §8, taken
+while building `metrics.py`. Recorded rather than silently patched because it changes an artefact
+contract `validate.py` will be written against.
+
+**The gap.** §8 asserted that "everything in §4 is computable from artefacts 1 and 2 alone" — the
+per-slot episode log and the per-emitter table. It is not, by two of §4's five rows:
+
+- **Interception ratio's denominator.** The numerator is in the log (illuminations inside the
+  tuned window, summed over slots); the denominator is the scenario's *total* illuminations,
+  which is grid-level and appears in neither table. Measured on a `config_2` stare replay under
+  round-robin, the two differ by a factor of about 15 — the numerator alone would silently
+  become a different metric.
+- **Average reward / cost.** In neither table. Reward is per slot (D31), but candidate 3 pays out
+  on set membership over a whole dwell, so there is no honest per-slot column for it.
+
+**Decision.** A third artefact, `run.json`: scenario, scheduler, seed, reward name, γ, σ,
+episode length, slot and band counts, **total illuminations**, **total reward**, `|E|` and step
+count. Both missing quantities are scalars, so a scalar header is the right shape — widening the
+600-row log to carry a constant would be worse.
+
+**A second job it does.** `|E|` and the step count are recoverable from the tables, and are
+stored anyway: `metrics.read_run()` checks the header against the row counts, so a truncated or
+half-written artefact set raises rather than scoring low. A run that silently scores low looks
+like a result, which is the failure this repository is organised around.
+
+**Consequence.** `EVALUATION.md` §8 now lists five artefacts and states that §4 is computable
+from 1–3. `ENVIRONMENT_SPEC.md` §Outputs matches. `metrics.py` scores §4 by reading the files
+back rather than from live environment state, and
+`tests/test_metrics.py::test_the_artefacts_reproduce_the_environments_own_numbers` asserts that
+result is identical to `env.episode_metrics()` — which is what makes §6's "reproduces all four
+gates from these artefacts alone" a checked claim instead of an intention.
+
+**Evidence.** Measured 2026-09-04: the artefacts written by `rfenv.metrics` for `config_2` stare
+replays under round-robin and a camper reproduce `ScanEnv.episode_metrics()` exactly on all eight
+shared keys. Sourced: `EVALUATION.md` §4, §8; D31.
+
+---
+
 ## Consistency audit — 2026-08-30
 
 Requested by the team: a check that the decisions form one coherent story. Result: **two real

@@ -144,7 +144,13 @@ it.** A single scalar hides the entire problem.
 
 ## 5. Baseline ladder
 
-Every scheduler runs on identical scenarios and seeds, at the same frozen γ (D13).
+Every scheduler runs on identical scenarios and seeds, at the same frozen γ (D13) — and on the
+**stare replays plus sampled scenarios, never on scan replays** (D36). A scan recording contains
+only the pulses Turing's own sweeping receiver was tuned to, so a grid built from one hands any
+sweeping scheduler its answer: measured, interception ratio 0.9999 and censored intercept time
+0.00 s for the reference sweep on `config_2` scan, against 0.0677 and 4.57 s for the same sweep
+on the same config's stare replay. Scan replays keep their role in gates 1 and 2, where that
+imprint is the point.
 
 | # | Baseline | Purpose |
 |---|---|---|
@@ -172,7 +178,7 @@ that pair — approach round-robin's intercept time while multiplying its interc
 
 | # | Gate | Why it matters |
 |---|---|---|
-| **1** | **Out-of-sample prediction.** Build truth from **stare only**, replay Turing's scan schedule, compare predicted detections against the **actual scan recordings** — data never used in construction (D17). **Pre-gate measurement, convention unrecorded — not yet a gate result.** A 2026-09-01 scratch script reported accuracy 86.19%, precision 87.87%, recall 71.14%, MCC 0.694, per-band r = 0.940 at γ = −110 (note: *not* the frozen γ = −111). Re-run from `rfenv` on 2026-09-03 across four comparison conventions, none reproduces those figures exactly; the range is **accuracy 83.5–86.0%, precision 88.5–89.5%, recall 68.2–69.5%, MCC 0.66–0.69, per-band r ≈ 0.93** against a 35.70% base rate, at the frozen γ. Directionally the gate passes. **`validate.py` must define the convention in code, and whatever it returns becomes the number.** Known limitation, not a defect: band 0 (250 MHz) is 59.12% occupied in the recordings and 0.00% predicted, because stare cannot see below 500 MHz (D10). | The only gate that is a genuine prediction rather than a fit. If one gate is run, run this one. This is also why no physics signal model is fitted to these same recordings (D25). |
+| **1** | **Out-of-sample prediction.** Build truth from **stare only**, replay Turing's scan schedule, compare predicted detections against the **actual scan recordings** — data never used in construction (D17). **Pre-gate measurement, convention unrecorded — not yet a gate result.** A 2026-09-01 scratch script reported accuracy 86.19%, precision 87.87%, recall 71.14%, MCC 0.694, per-band r = 0.940 at γ = −110 (note: *not* the frozen γ = −111). Re-run from `rfenv` on 2026-09-03 across four comparison conventions, none reproduces those figures exactly; the range is **accuracy 83.5–86.0%, precision 88.5–89.5%, recall 68.2–69.5%, MCC 0.66–0.69, per-band r ≈ 0.93** against a 35.70% base rate, at the frozen γ. Directionally the gate passes. **The convention is now fixed in advance by D37 — per dwell, against the raw scan ToA stream — and whatever `validate.py` returns under it becomes the number.** Known limitation, not a defect: band 0 (250 MHz) is 59.12% occupied in the recordings and 0.00% predicted, because stare cannot see below 500 MHz (D10). | The only gate that is a genuine prediction rather than a fit. If one gate is run, run this one. This is also why no physics signal model is fitted to these same recordings (D25). |
 | **2** | **Per-band structure.** Band-level interception ratios match the recordings, not just the aggregate. The ~35% dwell rate is no longer a γ calibration (D23) — it is a pipeline self-consistency test: grid built from the scan recording, replayed on the schedule that produced it, thresholded not at all. Measured **35.403% replayed against 35.700% recorded.** | An aggregate can match while the structure is wrong. |
 | **3** | **Theory.** A controlled periodic case matches Köksal's closed-form intercept time and probability of intercept (`docs/reference/scheduling/optimumsearch.pdf` ch. 3.2, 6.1). | Independent of the dataset entirely. |
 | **4** | **Extremes.** `config_81` (2 emitters) and `config_921` (99) both behave sensibly. | Catches failures that averages hide. |
@@ -210,13 +216,22 @@ distribution (D25).
 Evaluation is only possible if the environment logs these (see `ENVIRONMENT_SPEC.md` §Outputs):
 
 1. **Episode log** — per slot: time, band chosen, dwell length, declared hit `Y`, true occupancy
-   `Z`, pulse count, peak level.
+   `Z`, pulse count, peak level. `rfenv/metrics.py`, `episode_log.csv`.
 2. **Emitter table** — per emitter: detectable activity interval (D27), first/last intercept
-   slot, intercept count, bands seen in. *(Everything in §4 is computable from artefacts 1 and 2 alone.)*
-3. **Waterfall render** — the 36×600 grid as a frequency-vs-time heatmap with the scheduler's
+   slot, intercept count, bands seen in. `emitter_table.csv`.
+3. **Run header** — the episode's scalars: scenario, scheduler, seed, reward, γ, σ, **total
+   illuminations** and **total reward** (D38). Added 2026-09-04: §4 is *not* computable from
+   artefacts 1 and 2 alone, as this section previously claimed. Interception ratio's
+   denominator is grid-level and appears in neither table — the log carries only the numerator —
+   and average reward appears in neither either. Both are scalars, so they belong in a header
+   rather than in a wider log. **Everything in §4 is computable from artefacts 1–3.** `run.json`.
+4. **Waterfall render** — the 36×600 grid as a frequency-vs-time heatmap with the scheduler's
    path and hits overlaid. The same picture drawn from the raw Turing recording should match:
    the standard ESM operator view, and the fastest way to see that the environment is sane.
-4. **`metrics.json`** — the three families, one file per run.
+   `rfenv/render.py`. Note when reading one: a **scan** replay's content lies along Turing's own
+   sweep (D36), so a sweeping scheduler's path tracing the bright cells there means nothing.
+5. **`metrics.json`** — the three families, one file per run, with the operating point stamped
+   on it (§7).
 
 ---
 

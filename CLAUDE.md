@@ -9,11 +9,19 @@ A previous attempt accumulated derived documents and measured claims that became
 separate from their sources. This repository exists to avoid that. The rules below are the
 whole point of it — follow them before doing anything else.
 
-**Build status (2026-09-03).** `rfenv/` has L0 (`scenario.py`), L1 (`truth.py`), L2
-(`receiver.py`) and L3 (`env.py`) built, with 59 passing tests under `tests/`. Next in
-`docs/project/ENVIRONMENT_SPEC.md` §Build order: `render.py` + `metrics.py`, then `validate.py`.
+**Build status (2026-09-04).** `rfenv/` has L0 (`scenario.py`), L1 (`truth.py`), L2
+(`receiver.py`), L3 (`env.py`) and the artefact layer (`metrics.py`, `render.py`) built, with
+**110 passing tests** under `tests/`. Next and last in `docs/project/ENVIRONMENT_SPEC.md`
+§Build order: `validate.py`. Gate 1's comparison convention is fixed in advance by **D37**;
+gates 2 and 4 still need their pass criteria fixed *before* the first run, not after.
 **The four validation gates in `docs/project/EVALUATION.md` §6 have not been run yet** — no
 scheduler number may be quoted until they have.
+
+**A scan replay is not a scheduler-comparison scenario (D36, 2026-09-04).** A scan recording
+holds only the pulses Turing's own sweeping receiver was tuned to, so a grid built from one
+hands any sweeping scheduler its answer — measured, interception ratio 0.9999 and censored
+intercept time 0.00 s. Compare schedulers on **stare replays and sampled scenarios**; scan
+replays stay in gates 1 and 2, where that imprint is the mechanism under test.
 
 The three questions L2 was blocked on are all answered: **D28** (what counts as intercepting an
 emitter), **D29** (what the reward may read), **D31** (a dwell's reward is the sum of its slots').
