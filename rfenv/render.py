@@ -48,6 +48,7 @@ from rfenv.constants import (  # noqa: E402
     GAMMA_DBM,
     N_BANDS,
     NOISE_FLOOR_DBM,
+    SLOT_S,
 )
 
 DPI = 150
@@ -162,6 +163,253 @@ def waterfall(
         subtitle += f", seed {run.header['seed']}, reward {run.header['reward']}"
     ax.set_title(f"{title}\n{subtitle}", fontsize=10)
 
+    return _save(fig, path)
+
+
+# --------------------------------------------------------------------------- #
+# Comparing schedulers (EVALUATION.md §5)
+# --------------------------------------------------------------------------- #
+#
+# Three pictures, and each answers a question the §4 table can state but not
+# show. The timeline shows *how* the 30 s was spent; the discovery curve shows
+# *when* coverage was earned; the Pareto plot shows that no rung is good at both
+# objectives, which is the whole finding of D14. All three take the artefacts, so
+# they draw the same numbers the scorecard is computed from.
+
+HIT_COLOUR = "#ff3b30"
+PATH_COLOUR = "white"
+
+
+def schedule_timeline(
+    runs,
+    grid=None,
+    path: str | Path | None = None,
+    *,
+    title: str | None = None,
+    show_emitters: bool = True,
+    figsize_per_row: float = 2.1,
+):
+    """One row per scheduler: band against time, with dwells, hits and intercepts.
+
+    `runs` is `{label: RunArtefacts}`, drawn in the order given -- normally the
+    ladder's own order, so a reader goes down the figure from random to the
+    reference line. `grid` is the optional `TruthGrid` the runs share; passing it
+    puts the same faint occupancy behind every row, which is what makes the rows
+    comparable rather than merely adjacent.
+
+    **Every row draws the same three things.** The white step line is where the
+    receiver was tuned, one band per slot, so it accounts for the whole episode.
+    The tick under it marks the start of each dwell, which is the only way a
+    two-slot look on a wide band is visible as one decision instead of two -- and
+    the count of ticks is the episode's step count, 300 to 600 (D35). Red dots are
+    declared hits (`Y = 1`), all a real receiver knows; where one sits off the
+    occupancy it is a false alarm and should read as one.
+
+    **The right-hand strip is the emitter view**: one line per detectable emitter
+    over its detectable interval (D27), turning solid at the slot it was first
+    intercepted. Rows that end mostly faint found few emitters, whatever their
+    interception ratio says -- the camper and round-robin are opposite pictures
+    and that is §4's rule about never publishing one metric drawn instead of
+    argued.
+    """
+    from rfenv import metrics as M
+
+    labels = list(runs)
+    n = len(labels)
+    fig, axes = plt.subplots(
+        n, 2 if show_emitters else 1,
+        figsize=(15.0, max(figsize_per_row * n, 2.4)),
+        squeeze=False,
+        gridspec_kw={"width_ratios": [3, 1]} if show_emitters else None,
+        sharex=True,
+    )
+
+    Z = None if grid is None else np.asarray(grid.Z, dtype=bool)
+    for row, label in enumerate(labels):
+        run = runs[label]
+        ax = axes[row][0]
+        if Z is not None:
+            ax.imshow(
+                np.ma.masked_where(~Z, np.ones_like(Z, dtype=float)),
+                origin="lower", aspect="auto", interpolation="nearest",
+                extent=(0.0, EPISODE_S, -0.5, N_BANDS - 0.5),
+                cmap="Greys_r", vmin=0.0, vmax=1.6, alpha=0.55,
+            )
+        ax.set_facecolor("#101010")
+
+        series = M.schedule_series(run)
+        t = series["time_s"]
+        ax.step(t, series["band"], where="post", color=PATH_COLOUR,
+                linewidth=0.8, alpha=0.85)
+        starts = series["dwell_start"]
+        ax.plot(t[starts], series["band"][starts], "|", color="#7fd1ff",
+                markersize=3.5, alpha=0.9)
+        hit = series["hit"]
+        if hit.any():
+            ax.scatter(t[hit] + SLOT_S / 2, series["band"][hit], s=7,
+                       color=HIT_COLOUR, edgecolors="none", zorder=4)
+
+        metrics = M.scheduler_metrics(run)
+        ax.set_ylabel(label, fontsize=8, rotation=0, ha="right", va="center", labelpad=6)
+        ax.set_ylim(-0.5, N_BANDS - 0.5)
+        ax.set_yticks([0, N_BANDS // 2, N_BANDS - 1])
+        ax.set_yticklabels(
+            [f"{BAND_CENTRES_MHZ[b] / 1000:.0f}G" for b in (0, N_BANDS // 2, N_BANDS - 1)],
+            fontsize=7,
+        )
+        ax.text(
+            0.005, 0.94,
+            f"ratio {metrics['interception_ratio']:.3f}   "
+            f"cTTI {metrics['censored_mean_intercept_time_s']:.2f} s   "
+            f"cov {metrics['emitter_coverage']:.3f}   "
+            f"{metrics['n_steps']} looks",
+            transform=ax.transAxes, va="top", ha="left", fontsize=7,
+            color="white",
+            bbox=dict(boxstyle="round,pad=0.25", fc="#000000", ec="none", alpha=0.55),
+        )
+
+        if show_emitters:
+            _emitter_strip(axes[row][1], run)
+
+    axes[-1][0].set_xlabel("time (s)")
+    axes[-1][0].set_xlim(0.0, EPISODE_S)
+    if show_emitters:
+        axes[-1][1].set_xlabel("time (s)")
+    if title:
+        fig.suptitle(title, fontsize=10)
+        fig.subplots_adjust(top=0.94)
+    fig.align_ylabels()
+    return _save(fig, path)
+
+
+def _emitter_strip(ax, run) -> None:
+    """Detectable intervals, faint until first intercept and solid after (D27, D28)."""
+    from rfenv import metrics as M
+
+    rows = M.emitter_activity(run)
+    ax.set_facecolor("#f6f6f6")
+    for y, row in enumerate(rows):
+        on, off = row["on_slot"] * SLOT_S, row["off_slot"] * SLOT_S
+        ax.plot([on, off], [y, y], color="#c8c8c8", linewidth=1.1, solid_capstyle="butt")
+        first = row["first_intercept_slot"]
+        if first is not None:
+            ax.plot([first * SLOT_S, off], [y, y], color="#0a84ff",
+                    linewidth=1.1, solid_capstyle="butt")
+            ax.plot([first * SLOT_S], [y], "o", color=HIT_COLOUR, markersize=2.2)
+    found = sum(1 for r in rows if r["first_intercept_slot"] is not None)
+    ax.set_ylim(-1, max(len(rows), 1))
+    ax.set_yticks([])
+    ax.text(0.98, 0.94, f"{found}/{len(rows)} emitters", transform=ax.transAxes,
+            va="top", ha="right", fontsize=7, color="#333")
+
+
+def discovery_curves(
+    runs,
+    path: str | Path | None = None,
+    *,
+    title: str = "Emitters found against time",
+    figsize: tuple[float, float] = (8.0, 4.6),
+):
+    """Cumulative distinct emitters intercepted, one line per scheduler.
+
+    Coverage is one number; this is the path it took, and it is where censored
+    intercept time becomes visible -- a curve that rises early and flattens is a
+    low mean, a curve that never leaves the floor is 30 s of censoring on every
+    emitter it missed. `|E|`, the detectable set, is the dashed ceiling.
+
+    `runs` is `{label: RunArtefacts}`; every run must be the same scenario and
+    seed, or the ceiling means nothing. The caller owns that -- `compare.py`
+    passes one scenario at a time.
+    """
+    from rfenv import metrics as M
+
+    fig, ax = plt.subplots(figsize=figsize)
+    ceiling = 0
+    for label, run in runs.items():
+        d = M.discovery(run)
+        ax.step(d["time_s"], d["n_found"], where="post", linewidth=1.4, label=label)
+        ceiling = max(ceiling, d["n_detectable"])
+    if ceiling:
+        ax.axhline(ceiling, color="#888", linestyle="--", linewidth=1.0)
+        ax.text(EPISODE_S, ceiling, f"  |E| = {ceiling}", va="center", fontsize=8,
+                color="#666")
+
+    ax.set_xlabel("time (s)")
+    ax.set_ylabel("distinct emitters intercepted")
+    ax.set_xlim(0.0, EPISODE_S)
+    ax.set_ylim(0, ceiling * 1.12 if ceiling else 1)
+    ax.grid(alpha=0.25)
+    ax.legend(fontsize=8, loc="lower right")
+    ax.set_title(title, fontsize=10)
+    return _save(fig, path)
+
+
+def pareto(
+    points,
+    path: str | Path | None = None,
+    *,
+    title: str = "The two PS objectives, against each other",
+    figsize: tuple[float, float] = (9.0, 5.6),
+):
+    """Interception ratio against censored intercept time, one point per scheduler.
+
+    **This is D14's finding as a picture** and the reason §4 forbids publishing
+    either axis alone: the camper sits top-right (captures the pulses, finds
+    nobody) and round-robin bottom-left (finds everybody, captures nothing), and
+    no trivial strategy is in the top-left corner. Up and to the left is better,
+    so the target for an adaptive scheduler is stated by the geometry rather than
+    by a sentence.
+
+    Coverage is drawn as marker area, because §4's rule is that it is always
+    printed beside the two headline metrics -- here it is impossible to read one
+    without it, and it is repeated in the legend so the figure is still readable
+    in grayscale.
+
+    **Names go in the legend, not on the markers.** The interesting rungs cluster
+    in the bottom-left corner -- five of them inside one second and 0.08 of ratio
+    -- and annotating each in place makes that corner illegible, which is the one
+    part of the plot a reader has come for. Each marker carries only its rung
+    number.
+
+    `points` is `{label: {interception_ratio, censored_mean_intercept_time_s,
+    emitter_coverage, rung, reference}}`, normally the per-scheduler aggregate
+    means. `rung` and `reference` are optional; without `rung` the marker is
+    numbered by position.
+
+    Reference lines -- the oracles -- are drawn hollow. They are not competitors
+    (§5) and a filled marker would invite reading them as one.
+    """
+    fig, ax = plt.subplots(figsize=figsize)
+    for i, (label, row) in enumerate(points.items(), 1):
+        reference = bool(row.get("reference", False))
+        coverage = float(row.get("emitter_coverage", 0.0))
+        rung = str(row.get("rung", i))
+        x = row["censored_mean_intercept_time_s"]
+        y = row["interception_ratio"]
+        ax.scatter(
+            x, y, s=60 + 340 * coverage,
+            facecolors="none" if reference else None,
+            edgecolors="#444" if reference else "none",
+            alpha=0.85, zorder=3,
+            label=f"{rung:>2}  {label}   (cov {coverage:.2f})",
+        )
+        ax.annotate(rung, (x, y), ha="center", va="center", fontsize=7,
+                    color="#222" if reference else "white", zorder=4,
+                    fontweight="bold")
+
+    ax.set_xlabel("censored mean intercept time (s)   ->  worse")
+    ax.set_ylabel("interception ratio   ->  better")
+    # Headroom, and room for the legend outside the axes.
+    xs = [r["censored_mean_intercept_time_s"] for r in points.values()] or [1.0]
+    ys = [r["interception_ratio"] for r in points.values()] or [1.0]
+    ax.set_xlim(0.0, max(xs) * 1.12 + 0.5)
+    ax.set_ylim(0.0, max(ys) * 1.12 + 0.02)
+    ax.grid(alpha=0.25)
+    ax.legend(loc="center left", bbox_to_anchor=(1.02, 0.5), fontsize=8,
+              frameon=False, labelspacing=0.9, borderpad=0.0,
+              title="rung (hollow = reference line)", title_fontsize=8)
+    ax.set_title(f"{title}\nbetter is up and to the left; marker area is coverage",
+                 fontsize=10)
     return _save(fig, path)
 
 
