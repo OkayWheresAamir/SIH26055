@@ -1791,6 +1791,228 @@ TSRD paper p.4 and §III. Reasoned from D3, D8, D12, D25, D29, D30, D34 and D39.
 
 ---
 
+## D43 — round-robin is equal-airtime, not Turing's sweep; the ladder now has seven rungs
+
+**Status:** `SETTLED` (2026-09-04). Evaluation semantics, so it was gated by `CLAUDE.md`;
+delegated by the team with the instruction "make them genuinely different but simple, defensible
+benchmark policies."
+
+**What was wrong.** D36 found, while building `metrics.py`, that `EVALUATION.md` §5's rungs 2 and
+3 were **the same policy**. "Round-robin — step to the next band in order, each for its native
+dwell" *is* `constants.dwell_schedule()`, and it reproduced the Turing sweep's row to four decimal
+places on both replays because it was not a second measurement. The ladder had six rungs and
+claimed seven. D36 named three possible separations — a uniform dwell length, a different starting
+phase, or a shuffled band order — and left the choice to whoever wrote the baselines.
+
+**Decision. Rung 2 is round-robin with equal airtime per band.** Two passes over the 36 bands per
+cycle: the seven wide bands, which cost two slots per visit, are visited on the first pass only;
+the twenty-nine narrow bands are visited on both. **Every band gets exactly 2 slots per 72-slot
+(3.60 s) cycle**, against Turing's 1 (narrow) or 2 (wide) per 43-slot (2.15 s) sweep. A narrow
+band's two visits sit ~43 and ~29 slots apart rather than adjacent, so the longer cycle does not
+buy a longer worst-case gap than it has to. Implemented as `baselines.RoundRobin`.
+
+**Why airtime and not phase or order.** A uniform *dwell length* — D36's first suggestion — is not
+expressible: an action is a band and its dwell is frozen at that band's native Turing length
+(D3, D16). The expressible form of the same idea is uniform **airtime**, which is the currency
+anyway (D31, retuning measured under 1 µs). A shuffled order or a phase offset would leave the
+airtime allocation identical to the sweep's and change only the coincidence phase against
+individual emitters — a difference, but not a *strategic* one, and the two rungs would still be
+measuring nearly the same thing.
+
+**The two rungs now differ by a stated mechanism, and it is worth something.** Turing's sweep gives
+the seven wide bands double airtime, and D36 measured that those are the bands where the emitter
+population is densest — so the sweep carries a weak, correct prior about where the emitters are.
+Rung 2 refuses that prior; that is what makes it the open-loop floor the PS names. **Measured over
+57 scenarios × 3 seeds (below): the sweep's weighting is worth +33% interception ratio (0.0805 vs
+0.0605) and 0.44 s of censored intercept time (3.74 s vs 4.18 s) at identical coverage (0.864 vs
+0.865).** That is the ladder working: rung 3 is now telling us something rung 2 does not.
+
+**Evidence.** `python -m rfenv.compare --seeds 3 --sampled 10`, 2026-09-04, 1,539 episodes at the
+frozen γ = −111. The airtime claim itself is asserted against `constants.DWELL_SLOTS` by
+`tests/test_baselines.py::test_round_robin_spends_equal_airtime_on_every_band` and
+`::test_the_turing_sweep_spends_double_on_the_wide_bands`, and the two rungs are pinned as
+distinct policies by `::test_round_robin_and_the_turing_sweep_are_not_the_same_policy` — on the
+600-slot band sequence, not on a metric, because two policies can score alike by luck.
+
+---
+
+## D44 — Apfeld's Algorithm 1 contradicts its own prose; we implement the prose
+
+**Status:** `SETTLED` (2026-09-04). A reading of an external source, recorded because the
+alternative reading is defensible and someone will ask.
+
+**The discrepancy.** `docs/reference/scheduling/paperSSPD (1).pdf` §II (p.2) says:
+
+> "The probability for choosing each tentative frequency is scaled by *y* according to the number
+> of frequencies in the list of tentative RFs until the scaled value reaches a maximum *z*. This is
+> done to avoid dwelling on just very few frequencies with a very high probability."
+
+Algorithm 1, printed immediately below it, reads:
+
+> 1: `r ← random ∈ (0,1)` 2: `if r < min(|tentativeRFs|·y, z) then` 3: `return random band ∈ RFs \ tentativeRFs`
+
+The pseudo-code makes `min(n·y, z)` the probability of choosing a **non**-tentative band. With one
+tentative band that probability is `y`, so the receiver picks that single band with probability
+`1 − y` — dwelling on exactly one frequency with a very high probability, which is the thing the
+sentence says the cap exists to prevent. The prose reading makes `min(n·y, z)` the probability of
+choosing a **tentative** band: it rises with the list and is capped so exploration never dies.
+
+**Decision: follow the prose.** `baselines.Apfeld._algorithm_1` exploits the tentative list with
+probability `min(n·y, z)`.
+
+**Why, beyond the internal contradiction.** Implemented as printed with `y = 1/36`, the rung camps
+on the first band that declares and reaches **11.1% emitter coverage on `config_921` stare**
+(measured this session). Apfeld's own §III-B reports the opposite shape for their adaptive
+strategies — they lose the "radars detected at least once" criterion *only* to Random, and by a
+modest margin. An implementation that reproduces neither the prose nor the reported behaviour is
+the wrong reading of an ambiguous source.
+
+**A second bug of the same kind, and the same fix.** "Once the SNR on a band crosses the detection
+threshold … the receiver stays tuned to that RF band for another *d* dwells" applies to the band
+*entering* the tentative list. Re-arming the stay on every later detection sticks the receiver on
+the first band it finds whenever the scenario is dense enough that every look declares — measured,
+the same 11.1% coverage on `config_921`. Fixed; the comment sits on the line.
+
+**Three adaptations, forced by the environment and not optional.** All are recorded in
+`baselines.Apfeld`'s docstring and repeated here because they qualify every Apfeld number we
+report:
+
+1. **SNR series → binary detection series.** The paper autocorrelates the intercepted SNR
+   (Eq. 2, Eq. 3). Our receiver declares `Y` and nothing else (D26, D28); there is no amplitude in
+   the observation and putting one there would change D34. `f` is therefore the binary declaration
+   series, zero where the receiver was tuned elsewhere — which is how the paper's own `f` behaves
+   (Fig. 1b: *"at (most of) the points in time where the SNR is zero, the receiver is tuned to a
+   different frequency"*).
+2. **Scheduling anchor: last detection, not `SNR_max`.** Binary declarations have no maximum, so
+   Eq. 4's `T_snr = x·SNR_max` collapses with it: a scheduled visit either declares or it does not.
+3. **No tracking-dwell branch.** It needs the receiver to tell search dwells from tracking dwells
+   by waveform; our PDW stream carries no such label and D12 rules out building one. This is
+   therefore the paper's own **"Adaptive, no tracking"** variant, which §III-B finds performs
+   equally well — so the reduction costs the comparison nothing the authors did not already
+   measure.
+
+**Parameters are ours, stated, and not searched.** The paper names `d`, `y`, `z`, `j`, `T_std`,
+`s`, `x`, `i`, `k` and fixes none of them. `baselines.ApfeldParams` carries our values with a
+justification per field that is independent of the score it produces (`d = 2`, `y = 0.1`,
+`z = 0.8`, `j = 3`, `T_std = 1 slot`, `s = 2`). No sweep was run: tuning a baseline against the
+metric it is judged on would make it a weak learned scheduler rather than a benchmark.
+
+**Consequence for the claim.** §5 says "Beating Apfeld is the claim worth making." It remains
+worth making, but it must be stated as **beating our adaptation of Apfeld's no-tracking variant on
+a binary-detection receiver**, at our parameters. That is a fair claim; "beating Apfeld" without
+those words is not.
+
+---
+
+## D45 — Apfeld's own ablation joins the ladder as rung 6a; the period estimate costs more than it buys here
+
+**Status:** `SETTLED` (2026-09-04) for the rung; the measurement is a **finding**, not a decision.
+
+**The rung.** D13 already named it: *"Its own baselines — Random, 'Active RFs',
+adaptive-without-tracking — give us a ladder that maps onto the ablation study we need anyway."*
+`baselines.Apfeld(use_period_estimation=False)` is Apfeld's third strategy, **Active RFs**: the
+tentative list and Algorithm 1, with no autocorrelation and no scheduled revisits. It costs one
+flag and it isolates how much of rung 6 is the period estimate and how much is just "revisit what
+was loud". `EVALUATION.md` §5 gains it as rung **6a**.
+
+**The finding: the period estimate makes things worse on this data.** Measured over 57 scenarios ×
+3 seeds:
+
+| rung | interception ratio | censored intercept time | coverage | beats round-robin on **both** |
+|---|---|---|---|---|
+| 6a Active RFs | 0.132 | 4.32 s | 0.860 | **53.2%** |
+| 6 Apfeld (period estimation) | 0.245 | 14.86 s | 0.367 | 4.1% |
+
+Rung 6 buys 1.9× the interception ratio and pays 3.4× the intercept time, ending with less than
+half the coverage. It is not a Pareto improvement over its own ablation, and against round-robin
+it Pareto-wins 4.1% of episodes against 6a's 53.2%.
+
+**Why, and why this is not evidence the paper is wrong.** Two structural differences, both ours:
+
+- **Our episode is 30 s; theirs is 5 min.** An autocorrelation needs at least two periods of
+  evidence before a lag means anything, and a scheduled revisit only pays off if the episode
+  outlasts several of them. In 600 slots there is often time to estimate a period and no time to
+  profit from it.
+- **Our series is binary** (D44 adaptation 1). The paper's autocorrelation runs on SNR, where the
+  height of a peak carries information about beam geometry; ours runs on declarations, where every
+  detection is a 1 and a false alarm is indistinguishable from a weak one.
+
+So this is a result about **Apfeld's algorithm on a 30 s binary-detection problem**, not a
+refutation of §III-B. Recorded because it is exactly the kind of ablation the write-up needs, and
+because "the published adaptive strategy's clever half did not help here" is a claim we should be
+able to defend with a number.
+
+**Evidence.** `python -m rfenv.compare --seeds 3 --sampled 10`, 2026-09-04, artefacts under
+`runs/baselines/`.
+
+---
+
+## D46 — the baseline ladder, first run: what it measured
+
+**Status:** measured 2026-09-04. A **result**, recorded here so the numbers have a provenance and
+a date; the decisions it depends on are D13, D14, D36, D43, D44 and D45.
+
+**The run.** `python -m rfenv.compare --seeds 3 --sampled 10 --figures`, train split only, 47
+stare replays + 10 sampled scenarios × 3 noise seeds = **1,539 episodes**, at the frozen
+γ = −111 dB, σ = 3 dB, P_fa = 1.3499e−3, reward `hit_z`. Never on scan replays (D36) —
+`compare._check_comparison_scenario` refuses one. Every row is scored by
+`metrics.scheduler_metrics()` **from the artefacts on disk**, the same function and the same path
+for every rung.
+
+| # | scheduler | interception ratio | censored intercept time (s) | emitter coverage |
+|---|---|---|---|---|
+| 1 | random | 0.0669 | 4.16 | 0.858 |
+| 2 | round-robin (equal airtime) | 0.0605 | 4.18 | 0.865 |
+| 3 | Turing reference sweep | 0.0805 | 3.74 | 0.864 |
+| 4 | greedy camper (observation-fed) | 0.2088 | 9.67 | 0.497 |
+| 5 | recency / activity | **0.1104** | **3.20** | **0.897** |
+| 6a | Apfeld: Active RFs | 0.1320 | 4.32 | 0.860 |
+| 6 | Apfeld adaptive (no tracking) | 0.2455 | 14.86 | 0.367 |
+| — | camper, truth-fed (D14's) | 0.5680 | 15.71 | 0.296 |
+| — | pulse-capture oracle | 0.6579 | 8.01 | 0.691 |
+
+Paired per episode against round-robin — same scenario, same seed, same truth grid — the fraction
+of the 171 episodes each rung wins on **both** headline metrics: recency **70.2%**, Active RFs
+53.2%, Turing sweep 51.5%, random 42.1%, Apfeld 4.1%, camper 1.8%.
+
+**Four things this measured that were not known before.**
+
+1. **D14's tension survives the frozen environment**, and it is the *truth-fed* camper that
+   embodies it: ratio 0.568 against round-robin's 0.061, censored intercept time 15.71 s against
+   4.18 s, coverage 0.296 against 0.865. The shape reproduces D14's amendment (57.4% / 23.78 s /
+   30.4%); the intercept times are lower across the board because D27 measures the delay from
+   `on_e` rather than from t = 0, which is a definition change made after D14 and not a
+   disagreement.
+2. **A camper that cannot see truth is a much weaker camper.** Rung 4 probes for three sweeps and
+   camps on the largest *observed hit rate*; it reaches ratio 0.209 against the truth-fed 0.568.
+   Illumination density is truth-side (D29) and binary declarations are a poor proxy for it — the
+   busiest band and the most reliably-occupied band are not the same band. **The 57.4% headline in
+   D14 was never achievable by a deployable scheduler**, and the ladder now says so with two rows
+   instead of one.
+3. **The pulse-capture oracle is a ceiling for one axis only.** It loses censored intercept time to
+   plain round-robin on **80.7%** of episodes (8.01 s against 4.18 s on average). D14 said as much
+   in a parenthesis — "each column has a different optimum, which is itself the point" — and it is
+   now measured. Anyone reading `oracle_pulse` as *the* ceiling will read the whole table wrong,
+   which is why `EVALUATION.md` §5 keeps it under a dash.
+4. **The bar for the RL rung is rung 5, not rung 2.** A one-line index policy — `argmax(hit rate +
+   gap in sweeps)` over two components of the D34 observation — Pareto-dominates the floor on 70%
+   of episodes and beats the Turing sweep on all three reported metrics. Beating round-robin is
+   not the interesting claim any more; beating `recency` is, and beating the deployable camper's
+   ratio (0.209) *while* holding recency's intercept time is the Pareto target.
+
+**Caveats, stated rather than buried.** (a) The reward is `hit_z` throughout and moves only the
+reward column (D7, D29) — no reward was selected. (b) Sampled scenarios inherit D36's 2.40×
+residual scan imprint. (c) Three seeds, not five; spread is in `runs/baselines/summary.json` and
+every mean above is printed with its interquartile range in `comparison.md`. (d) P_d over these 57
+comparison grids is 0.8421, **not** the 0.85058 in `runs/validation` — D33 froze the population
+*rule*, not the set of grids, and the validation figure is over 47 scan-replay grids. Same rule,
+different worlds; neither is quotable without naming its grids.
+
+**Evidence.** `runs/baselines/{summary.json,metrics.json,comparison.md}` and the 1,539 artefact
+sets under it, all written 2026-09-04.
+
+---
+
 ## Consistency audit — 2026-08-30
 
 Requested by the team: a check that the decisions form one coherent story. Result: **two real

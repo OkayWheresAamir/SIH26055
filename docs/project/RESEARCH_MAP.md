@@ -68,15 +68,12 @@ that primary is not in this repository.
 > `docs/project/DECISIONS.md`; this list holds only what genuinely remains.
 
 **Needs a human decision (not more research):**
-- **D39** — pass criteria for gates 2, 3 and 4. **The last thing owed before `validate.py` can
-  be written**, and it must be settled *before* the first run: a threshold chosen after seeing
-  the measurement is not a gate. Gate 1's convention is already fixed (D37). Gate 3 additionally
-  needs Köksal's closed forms read off `docs/reference/scheduling/optimumsearch.pdf` at the
-  cited ch. 3.2 / 6.1 — the PDF is text-readable, so `docsearch` can locate the pages, but the
-  equations must be read from the page itself.
 - **D29's selection rule** — how to choose among the three reward candidates when they
   Pareto-dominate the baselines but not each other. Must be fixed **before** training, so the
-  choice is not made after seeing results. Not blocking the environment build.
+  choice is not made after seeing results. **Now the most urgent open item**: the baseline ladder
+  has run (D46) and has given the rule a concrete Pareto front to be fixed against — rung 5
+  (ratio 0.110, cTTI 3.20 s) and rung 6 (0.246, 14.86 s) are the two corners a reward has to
+  choose between.
 - **CPRIT / deinterleaving as a scheduler input — raised 2026-09-04, conflicts with D12 and D19.**
   `CPRIT(Combined PRI Transform).pdf` and `CPRITworkflow.pdf` propose a PRI-transform module
   between the receiver and the RL agent, on the argument that hit/miss bits alone cannot
@@ -100,14 +97,18 @@ that primary is not in this repository.
   not on the freeze list and the four gates never read it, so adding AoA later costs a policy
   retrain, not a re-validation. Decided by a trained agent failing to explore in a way the
   current vector demonstrably cannot fix — measurable once baselines exist, meaningless before.
+  **The baselines now exist (D46), so this is decidable.** Rung 5 reads three components of the
+  D34 vector and Pareto-dominates the floor on 70.2% of episodes, which is the reference an AoA
+  extension would have to beat.
 
 > Closed since the 2026-08-28 list: **D4** (accepted 2026-09-01 — the continuous-signal
 > environment with derived binary occupancy), **D5's sub-question** (do all hits score equally,
 > or is first-interception worth more — it became D7 candidate 3, given a precise three-clause
 > definition by D28 and recorded in D29), **D33** (`SETTLED` 2026-09-03 — P<sub>d</sub> is
 > averaged over the reference-sweep population, 0.851 at the frozen γ; `PD_POPULATION` is on the
-> freeze list) and **D34** (`SETTLED` 2026-09-04 — the 36×3+1 observation vector, ratified in
-> the implementation lane).
+> freeze list), **D34** (`SETTLED` 2026-09-04 — the 36×3+1 observation vector, ratified in
+> the implementation lane) and **D39** (`SETTLED` 2026-09-04 — gate criteria fixed in
+> `validate.py::GATES` before the first run, and all four gates have since run).
 
 **Needs domain review:**
 - *"Approaches to intercept a periodic scan receiver optimally should be outlined"* (PS). Most likely the scan-on-scan problem. A written deliverable, owed to the evaluators; Köksal ch. 3 is the source. Needs someone with the domain reading to write it.
@@ -584,9 +585,12 @@ stay untouched until the system is frozen. Every use of it should be recorded.
 ### Conflicts/questions
 - **Against Köksal and Clarkson:** window function versus SNR time series. **Resolved in our favour by measurement** — Turing emitters show 53–62 dB of amplitude variation across a revolution with pulses in all 36 phase bins. The SNR model wins for our data. This does not make Köksal useless; his intercept-time theory remains the validation target.
 - **Against the PS:** the PS mandates binary transmission/non-transmission per band-slot. Reconciled by D4 — continuous underneath, thresholded for the interface.
+- **Against itself — found on reimplementation, 2026-09-04.** §II's prose and its printed Algorithm 1 disagree about which branch `min(|tentative|·y, z)` governs. The prose makes it the probability of choosing a *tentative* band ("to avoid dwelling on just very few frequencies with a very high probability"); the pseudo-code returns a *non*-tentative band on that branch, which produces exactly the behaviour the sentence says the cap prevents. **We follow the prose (D44)**; implemented as printed it camps and reaches 11.1% emitter coverage on `config_921`, contradicting the paper's own §III-B results.
 
 ### Decision
 - Adopt its SNR-based illumination model (D4). Reimplement its scheduler as our strong baseline (D13). Do not adopt its one-emitter-per-band assumption.
+- **Reimplemented 2026-09-04** as `rfenv/baselines.Apfeld`, rungs 6 and 6a of `EVALUATION.md` §5. Three adaptations were forced and are recorded in **D44**: binary declaration series in place of the SNR series (D26/D28 — our receiver emits no amplitude), last detection in place of `SNR_max` as the scheduling anchor, and no tracking-dwell branch (the paper's own "Adaptive, no tracking" variant, which §III-B finds performs equally well). Parameters are ours and stated, not searched. **Every Apfeld number we publish must be described as our adaptation, not as the paper's algorithm.**
+- Its "Active RFs" strategy is rung **6a**, the ablation D13 anticipated. Measured (**D45**): the period-estimation half *costs* more than it buys on our 30 s binary-detection episodes — 1.9× the interception ratio for 3.4× the intercept time and less than half the coverage.
 
 ---
 

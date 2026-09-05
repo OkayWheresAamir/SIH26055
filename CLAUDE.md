@@ -10,8 +10,9 @@ separate from their sources. This repository exists to avoid that. The rules bel
 whole point of it — follow them before doing anything else.
 
 **Build status (2026-09-04).** `rfenv/` has L0 (`scenario.py`), L1 (`truth.py`), L2
-(`receiver.py`), L3 (`env.py`), the artefact layer (`metrics.py`, `render.py`) and
-`validate.py` all built, with **139 passing tests** under `tests/`. **`ENVIRONMENT_SPEC.md`
+(`receiver.py`), L3 (`env.py`), the artefact layer (`metrics.py`, `render.py`), `validate.py`
+and now the baseline ladder (`baselines.py`, `compare.py`) all built, with **229 passing tests**
+under `tests/`. **`ENVIRONMENT_SPEC.md`
 §Build order is complete.**
 
 **The four validation gates ran for the first time on 2026-09-04** (`python -m rfenv.validate`,
@@ -19,9 +20,23 @@ whole point of it — follow them before doing anything else.
 MEASURED** — D37 fixed its convention and deliberately left its threshold undecided. Every
 criterion was written into `rfenv/validate.py::GATES` *before* the run and is asserted against
 D39 by a test, because a threshold chosen once the measurement is visible is not a gate. Numbers
-in `EVALUATION.md` §6. **Scheduler comparison is now unblocked; the baseline ladder
-(`EVALUATION.md` §5) is the next thing owed** — and its baselines 2 and 3 are still the same
-policy (flagged in D36).
+in `EVALUATION.md` §6.
+
+**The baseline ladder ran for the first time on 2026-09-04** (`python -m rfenv.compare --seeds 3
+--sampled 10 --figures`): seven schedulers and two truth-reading reference lines over 47 stare
+replays + 10 sampled scenarios × 3 seeds = **1,539 episodes**, artefacts in `runs/baselines/`.
+Table and figures in `EVALUATION.md` §5; recorded as **D46**. Three decisions came out of it.
+**D43** fixed D36's duplicate: rung 2 is now round-robin with **equal airtime per band** (2 slots
+per 72-slot cycle) against Turing's 2:1 weighting, and the two rungs now measure different things
+— the sweep's weighting is worth +33% interception ratio. **D44** — Apfeld's Algorithm 1
+contradicts its own prose; we implement the prose, and every Apfeld number is *our adaptation* of
+the no-tracking variant to a binary-detection receiver. **D45** — Apfeld's own "Active RFs"
+ablation joins as rung 6a, and the period-estimation half measurably *hurts* on 30 s binary
+episodes.
+
+**The bar for RL is rung 5, not round-robin.** A one-line index policy (`argmax(hit rate + gap in
+sweeps)`) Pareto-dominates the floor on **70.2%** of episodes; round-robin is beaten by almost
+everything. **Rung 7 (RL) is the only thing missing from the ladder.**
 
 **The environment was frozen on 2026-09-04 (D42).** `rfenv/constants.py` is closed — band
 geometry, slot clock, dwell schedule, `N₀`, `σ`, `γ`, `PD_POPULATION` — and
@@ -46,6 +61,12 @@ and never gates on it. **D41** — the recorded non-empty dwell rate is **35.403
 withdrawn 35.700%; that 0.3 pp "slot quantisation residual" was a band-blind comparison, and
 under one convention the pipeline round-trips exactly. D41 is the fourth instance of the same
 failure mode, caught on `validate.py`'s first run — which is the machinery working.
+
+**A reference line is not a competitor.** `oracle_pulse` is a ceiling for interception ratio
+**only** — measured, it loses censored intercept time to plain round-robin on 80.7% of episodes.
+And `camper_oracle` (D14's truth-fed camper, ratio 0.568) is not reachable by any deployable
+scheduler: the observation-fed camper gets 0.209, because illumination density is truth-side and
+binary declarations are a poor proxy for it (D46).
 
 **A scan replay is not a scheduler-comparison scenario (D36, 2026-09-04).** A scan recording
 holds only the pulses Turing's own sweeping receiver was tuned to, so a grid built from one
@@ -77,6 +98,7 @@ observation vector `env.py` builds to. Neither blocks starting.
 | `docs/reference/dataset/TSRD_dataset_paper_arXiv_2602.03856.pdf` | How the data was generated. Primary source on dataset semantics; the HF dataset card is only a summary of it. |
 | Everything under `docs/reference/` | Reference material. Classify before use, per the protocol. See `docs/project/RESEARCH_MAP.md`. |
 | `rfenv/constants.py` | **The freeze list, as a file.** Band geometry, slot clock, `N₀`, `σ`, `γ`. Frozen once the gates pass; no result may move it (D25). |
+| `runs/baselines/comparison.md` | The scheduler comparison as run. Gitignored and rebuilt by `python -m rfenv.compare`; the figures it quotes are ratified in `EVALUATION.md` §5. |
 
 `docs/` is organised by authority: `project/` is authored and governs the build, `protocol/` is
 how we work, `reference/` is external material, `teammate-work/` is cross-check only. See

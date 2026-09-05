@@ -261,8 +261,18 @@ does, the environment is re-validated from gate 1 and every baseline re-run (D25
    rate is 35.403%, not the withdrawn 35.700%). **All four have now run: three PASS,
    gate 1 MEASURED** (`EVALUATION.md` §6).
 
-Six small modules mirroring the layers; baselines (random, round-robin, Turing sweep, greedy
-camper, Apfeld) live outside the environment and consume only L3 + episode logs. `validate.py`
+7. `baselines.py` + `compare.py` — `EVALUATION.md` §5's ladder and the runner that scores it.
+   ✅ built (2026-09-04), **after** the freeze (D42), which is the order §7 requires. `baselines.py`
+   holds seven schedulers and two truth-reading reference lines and imports nothing below L3;
+   `compare.py` runs every rung on every scenario at every seed through the same `ScanEnv` and the
+   same `metrics.scheduler_metrics()`, refuses scan replays (D36), and writes `comparison.md`,
+   `metrics.json`, `summary.json` and the comparison figures. Rungs 2 and 3 were one policy until
+   **D43**; Apfeld needed **D44** (its Algorithm 1 contradicts its own prose) and gained its own
+   ablation as rung 6a (**D45**). First run: **D46**.
+
+Eight small modules mirroring the layers. The baselines live outside the environment and consume
+only L3 + the episode artefacts — `baselines.guarded` strips `info` down to what a fielded
+receiver has, so a rung that reaches for `Z` raises rather than scoring well. `validate.py`
 implements no policy of its own: gates 3 and 4 drive the environment with
 `constants.dwell_schedule()`, which is Turing's own frozen schedule.
 
