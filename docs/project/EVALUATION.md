@@ -150,27 +150,101 @@ only the pulses Turing's own sweeping receiver was tuned to, so a grid built fro
 sweeping scheduler its answer: measured, interception ratio 0.9999 and censored intercept time
 0.00 s for the reference sweep on `config_2` scan, against 0.0677 and 4.57 s for the same sweep
 on the same config's stare replay. Scan replays keep their role in gates 1 and 2, where that
-imprint is the point.
+imprint is the point. `rfenv/compare.py` refuses a scan replay rather than trusting the caller.
 
 | # | Baseline | Purpose |
 |---|---|---|
 | 1 | **Random** | Lower bound; also the coverage-heavy extreme. |
-| 2 | **Round-robin** | The open-loop strategy the PS explicitly targets. The floor to beat. |
-| 3 | **Turing reference sweep** | The dataset's own schedule — makes our numbers comparable to the recordings. |
-| 4 | **Greedy static (camper)** | The degenerate exploit. Included *precisely* to show a single metric can be gamed. |
-| 5 | **Recency / activity heuristic** | Simple adaptive benchmark. |
-| 6 | **Apfeld adaptive** | Published non-learning adaptive strategy (`docs/reference/scheduling/paperSSPD (1).pdf` §II). The serious bar. |
-| 7 | **RL scheduler** | Ours. |
-| — | **Pulse-capture oracle** | Ceiling. Not a baseline — a reference line. |
+| 2 | **Round-robin (equal airtime)** | The open-loop strategy the PS explicitly targets. The floor to beat. **Every band gets 2 slots per 72-slot (3.60 s) cycle** — it refuses the sweep's weighting (D43). |
+| 3 | **Turing reference sweep** | The dataset's own schedule — makes our numbers comparable to the recordings. Wide bands get double airtime, 43-slot (2.15 s) cycle. |
+| 4 | **Greedy static (camper)** | The degenerate exploit. Included *precisely* to show a single metric can be gamed. **Observation-fed**: probes three sweeps, camps on the largest observed hit rate. |
+| 5 | **Recency / activity heuristic** | Simple adaptive benchmark: `argmax(hit rate + gap measured in reference sweeps)` over the D34 observation. |
+| 6a | **Apfeld: Active RFs** | Apfeld's own ablation — the tentative list with no period estimation (D13, D45). |
+| 6 | **Apfeld adaptive** | Published non-learning adaptive strategy (`docs/reference/scheduling/paperSSPD (1).pdf` §II), adapted to a binary-detection receiver (D44). The serious bar. |
+| 7 | **RL scheduler** | Ours. **Does not exist yet.** |
+| — | **Greedy static, truth-fed** | Reference line: D14's camper, which knew where the pulses were. Not a scheduler. |
+| — | **Pulse-capture oracle** | Ceiling **for interception ratio only**. Not a baseline — a reference line. |
 
-Beating round-robin is the minimum. **Beating Apfeld is the claim worth making.**
+Rungs 2 and 3 were the same policy until D43: "step to the next band in order, each for its native
+dwell" *is* `constants.dwell_schedule()`, and it reproduced the sweep's row to four decimal places
+because it was not a second measurement (D36). Rung 2 is now equal-airtime, which is the
+expressible form of D36's "uniform dwell length" — an action is a band and its length is frozen
+(D3, D16), so airtime is the only thing left to make uniform.
 
-### The target, quantified
+**A reference line is not a competitor.** Both lines below the dash read the truth grid. The
+pulse-capture oracle is a ceiling for interception ratio and **not** for intercept time: measured,
+it loses censored intercept time to plain round-robin on 80.7% of episodes, because it is greedy on
+illuminations per slot. Each column has a different optimum (D14), so there is no single ceiling
+row and this table does not print one.
 
-Measured on the 47 train scenarios (D14 amendment): the camper wins interception ratio (57.4%)
-and loses intercept time (23.78 s); round-robin wins intercept time (9.72 s) and loses ratio
-(5.5%). **No trivial strategy is good at both.** The RL scheduler's job is to Pareto-dominate
-that pair — approach round-robin's intercept time while multiplying its interception ratio.
+Beating round-robin is the minimum. **Beating Apfeld is the claim worth making** — stated
+precisely, our adaptation of Apfeld's own no-tracking variant on a binary-detection receiver, at
+the parameters in `baselines.ApfeldParams` (D44). And on the first run the harder bar turned out
+to be rung 5 (below).
+
+### The target, quantified — measured 2026-09-04
+
+`python -m rfenv.compare --seeds 3 --sampled 10`, 47 stare replays + 10 sampled scenarios × 3
+seeds = **1,539 episodes**, at the frozen γ = −111 dB, P<sub>fa</sub> = 1.3499e−3, reward `hit_z`.
+Artefacts in `runs/baselines/`; full table with interquartile ranges in `comparison.md`. Recorded
+as **D46**.
+
+| # | scheduler | interception ratio | censored intercept time (s) | emitter coverage | beats round-robin on **both** |
+|---|---|---|---|---|---|
+| 1 | random | 0.0669 | 4.16 | 0.858 | 42.1% |
+| 2 | round-robin (equal airtime) | 0.0605 | 4.18 | 0.865 | — |
+| 3 | Turing reference sweep | 0.0805 | 3.74 | 0.864 | 51.5% |
+| 4 | greedy camper (observation-fed) | 0.2088 | 9.67 | 0.497 | 1.8% |
+| 5 | **recency / activity** | **0.1104** | **3.20** | **0.897** | **70.2%** |
+| 6a | Apfeld: Active RFs | 0.1320 | 4.32 | 0.860 | 53.2% |
+| 6 | Apfeld adaptive (no tracking) | 0.2455 | 14.86 | 0.367 | 4.1% |
+| — | camper, truth-fed (D14's) | 0.5680 | 15.71 | 0.296 | 7.0% |
+| — | pulse-capture oracle | 0.6579 | 8.01 | 0.691 | 19.3% |
+
+"Beats round-robin on both" is paired per episode — same scenario, same seed, same truth grid —
+because a mean can clear a mean while losing most scenarios.
+
+**What the ladder says, and it is not what D14 predicted.**
+
+1. **The tension is real and belongs to the truth-fed camper.** Ratio 0.568 against round-robin's
+   0.061; intercept time 15.71 s against 4.18 s. That reproduces D14's amendment (57.4% / 23.78 s
+   / 30.4% coverage). Intercept times are lower across the whole table than D14's because D27
+   measures the delay from `on_e` and not from t = 0 — a definition change, not a disagreement.
+2. **A camper that cannot see truth is a much weaker camper**: 0.209 against 0.568. Illumination
+   density is truth-side (D29), and the most reliably-occupied band is not the busiest one. D14's
+   57.4% was never reachable by a deployable scheduler, and the ladder now carries both rows.
+3. **The period-estimation half of Apfeld costs more than it buys here** — rung 6 against its own
+   ablation 6a: 1.9× the ratio for 3.4× the intercept time and less than half the coverage. A 30 s
+   episode and a binary detection series are both ours, not the paper's; D45 has the reasoning.
+4. **The bar for the RL rung is rung 5.** A one-line index policy Pareto-dominates the floor on
+   70% of episodes and beats the Turing sweep on all three metrics. **The Pareto target is now:
+   hold `recency`'s 3.20 s while multiplying its 0.110 interception ratio toward the camper's
+   0.209 and the oracle's 0.658.**
+
+**Reproduce it with:**
+
+```bash
+python -m rfenv.compare --seeds 3 --sampled 10 --figures --out runs/baselines
+```
+
+### Comparison figures
+
+`--figures` writes four kinds of picture into the run directory, all drawn from the artefacts so
+they cannot disagree with the table (`rfenv/render.py`):
+
+- **`pareto.png`** — interception ratio against censored intercept time, one marker per rung, area
+  proportional to coverage, reference lines hollow. D14's finding as a picture: better is up and to
+  the left, and nothing trivial is there.
+- **`timeline_<config>.png`** — one row per rung: band against time over the scenario's occupancy,
+  with the tuning path, a tick per dwell start (so a 100 ms look reads as one decision, D31/D35),
+  declared hits, and a per-emitter strip on the right that turns solid at first intercept. This is
+  the picture that makes round-robin and the camper legible as opposite strategies.
+- **`discovery_<config>.png`** — distinct emitters intercepted against time, one line per rung,
+  with `|E|` as the ceiling. Coverage is one number; this is the path it took.
+- The waterfall (§8 artefact 4) is unchanged and still drawn by `render.waterfall`.
+
+Fixed scenarios — `config_81` (1 detectable emitter), `config_2` (19) and `config_921` (72) — so
+two runs' figures can be laid side by side.
 
 ---
 
@@ -209,12 +283,14 @@ stronger than it is.
 
 1. **Develop and tune** on the 47 train scenarios only.
 2. **Validate** the environment (gates 1–4). No scheduler result is quoted before this.
-3. **Freeze** the environment and publish the receiver ROC.
+3. **Freeze** the environment and publish the receiver ROC. ✅ **taken 2026-09-04** (D42).
 4. **Compare** all schedulers on identical scenarios and seeds; report the full
-   scheduler-level table, never a single metric.
+   scheduler-level table, never a single metric. ✅ **first run 2026-09-04** — `rfenv/compare.py`,
+   1,539 episodes, §5 above and D46. Rung 7 (RL) is the only one missing.
 5. **Ablate** — the baseline ladder is the ablation: it shows which component earns the gain.
+   Rungs 6a/6 are the first one it has produced (D45).
 6. **Test once.** The 45 held-out pairs are touched a single time, at the end, after the system
-   is frozen (D8). Record that use.
+   is frozen (D8). Record that use. **Not yet done** — nothing in §5 has touched them.
 
 ### Reporting rules
 
@@ -223,7 +299,13 @@ stronger than it is.
 - Report **repeated-run statistics** (multiple seeds) with spread, not a single run.
 - **Never report bare accuracy.** With sparse occupancy, "predict nothing" scores well and is
   operationally useless.
-- State the operating point (γ, P<sub>fa</sub>) alongside any scheduler table.
+- State the operating point (γ, P<sub>fa</sub>) alongside any scheduler table. γ, σ,
+  P<sub>fa</sub> and sensitivity are frozen and data-independent; **P<sub>d</sub> is not** — it
+  depends on which grids the reference-sweep population is taken over, so name them. The
+  validation run's 0.85058 (47 scan-replay grids) and the comparison run's 0.8421 (57 stare and
+  sampled grids) are the same rule applied to different worlds (D33, D46).
+- **A reference line is labelled as one in every table it appears in.** The oracles read truth;
+  read as competitors they invert the reading of the whole comparison (§5).
 
 ---
 
@@ -248,6 +330,10 @@ Evaluation is only possible if the environment logs these (see `ENVIRONMENT_SPEC
    sweep (D36), so a sweeping scheduler's path tracing the bright cells there means nothing.
 5. **`metrics.json`** — the three families, one file per run, with the operating point stamped
    on it (§7).
+6. **Scheduler-comparison figures** — the Pareto plot, the per-rung timeline and the discovery
+   curve, all drawn from artefacts 1–3 so a picture cannot disagree with the table beside it.
+   `rfenv/render.py`; written by `python -m rfenv.compare --figures`. §5 §Comparison figures says
+   what each shows.
 
 ---
 
