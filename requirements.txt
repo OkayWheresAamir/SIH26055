@@ -23,3 +23,9 @@ pymupdf>=1.24         # 1.28.2
 
 # Tests.
 pytest>=8.0           # 9.1.1
+
+# Handoff documents. Only needed by `scripts/md2pdf.py`, which renders the
+# markdown handoffs in docs/project/ to PDF. Pure Python — no browser, no system
+# libraries. Nothing in rfenv/ or tests/ imports either.
+markdown>=3.6         # 3.10.3
+xhtml2pdf>=0.2.17     # 0.2.18 — ReportLab underneath

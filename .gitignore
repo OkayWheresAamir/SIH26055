@@ -17,3 +17,8 @@ CLAUDE.local.md
 # Evaluation artefacts — episode logs, waterfalls, metrics.json. Derived from
 # the environment and rebuilt by re-running it; this repo stays clean of them.
 runs/
+
+# Handoff intermediates — `scripts/md2pdf.py` writes an .html on the way to the
+# .pdf. The .md is the source and the .pdf is what gets handed over; the .html
+# is neither.
+docs/project/*_HANDOFF.html
