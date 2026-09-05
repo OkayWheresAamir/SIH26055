@@ -26,7 +26,11 @@ These are ours. They are kept current; if a chat changes a decision, it changes 
 | `EVALUATION.md` | **Single authority on metrics, baselines, validation gates and protocol.** |
 | `DECISIONS.md` | D1–D42 with status, evidence and three consistency audits. **D42 freezes the environment and records what the gates cannot detect.** Read before proposing anything. |
 | `RESEARCH_MAP.md` | Every document in `reference/` classified: what it establishes, what it does not, its authority level. |
-| `RL_LANE_HANDOFF.pdf` (+ `.html` source) | Onboarding handoff for the RL lane: role split for three people, what is frozen, what is theirs to decide, what to learn. **Derived from the four files above — where they disagree, they win.** |
+| `RL_LANE_HANDOFF.md` (+ generated `.pdf`) | Onboarding handoff for the RL lane: the rung-7 target, role split for two or three people, a day-by-day task list, the evaluation rules, and the edge candidates. |
+| `PPT_LANE_HANDOFF.md` (+ generated `.pdf`) | Onboarding handoff for the presentation lane: slide-by-slide content with its source for every number, the figures that already exist, and the traps. |
+
+The two handoffs are **derived from the four files above — where they disagree, those win.** The `.md` is the source; regenerate the PDFs after any edit with
+`.venv/bin/python -m scripts.md2pdf docs/project/RL_LANE_HANDOFF.md docs/project/PPT_LANE_HANDOFF.md`.
 
 ## `protocol/` — how we work
 
