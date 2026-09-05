@@ -232,9 +232,11 @@ python -m rfenv.compare --seeds 3 --sampled 10 --figures --out runs/baselines
 `--figures` writes four kinds of picture into the run directory, all drawn from the artefacts so
 they cannot disagree with the table (`rfenv/render.py`):
 
-- **`pareto.png`** — interception ratio against censored intercept time, one marker per rung, area
-  proportional to coverage, reference lines hollow. D14's finding as a picture: better is up and to
-  the left, and nothing trivial is there.
+- **`pareto.png`** — interception ratio against censored intercept time, one marker per rung,
+  numbered by rung, area proportional to coverage, reference lines hollow, names in a legend
+  beside the axes. D14's finding as a picture: better is up and to the left, and nothing trivial
+  is there. The names are off the markers deliberately — five rungs cluster inside one second and
+  0.08 of ratio, and labelling them in place makes the one corner a reader came for illegible.
 - **`timeline_<config>.png`** — one row per rung: band against time over the scenario's occupancy,
   with the tuning path, a tick per dwell start (so a 100 ms look reads as one decision, D31/D35),
   declared hits, and a per-emitter strip on the right that turns solid at first intercept. This is
