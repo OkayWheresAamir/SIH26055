@@ -81,7 +81,7 @@ Layout, in order (`rfenv/env.py::_observation`):
 | Index | Component | Exact definition | Type / range |
 |---|---|---|---|
 | `0:36` | **per-band hit rate** | `hits[b] / slots_looked[b]`; `0.0` if band never looked at | float32, `[0, 1]` |
-| `36:72` | **per-band visit density** | `slots_looked[b] / max(t, 1)` — fraction of spent airtime given to band *b*. Sums to 1 across bands | float32, `[0, 1]` |
+| `36:72` | **per-band visit density** | `slots_looked[b] / max(t, 1)` — fraction of spent airtime given to band *b*. Sums to exactly 1 across bands once `t ≥ 1`; all-zero in the `reset()` observation | float32, `[0, 1]` |
 | `72:108` | **per-band staleness** | `(t − last_slot[b]) / 600`; **`1.0` if never visited** | float32, `[0, 1]` |
 | `108` | **normalised episode time** | `t / 600` | float32, `[0, 1]` |
 
@@ -94,7 +94,7 @@ components are exactly 1.0). So an unexplored band looks at least as attractive 
 | Variable | Why it is relevant | Available / observable in our env? | Agent-controllable? | Type / range | Connection to the PS objectives |
 |---|---|---|---|---|---|
 | **Hit rate** (36) | What a scheduler needs to **estimate detection probability** for a band — how likely a look here pays off. It is the exploit signal | **Yes**, computed from the agent's own dwell outcomes only | **Indirectly** — the agent moves it by choosing where to look | float32 `[0,1]`, one per band | PS figure of merit *probability of detection*. And directly PS: *"The model should then be trained based on hits and misses"* — this is literally that |
-| **Visit density** (36) | How the agent's **airtime** is being spent. Airtime is the only currency in this problem (§3.2), so this is the agent's own budget, made legible | **Yes**, from own scan history | **Yes** — it is a direct summary of its own past actions | float32 `[0,1]`, sums to 1 | PS figure of merit *Avg intercept rate*; supports **high interception rate** |
+| **Visit density** (36) | How the agent's **airtime** is being spent. Airtime is the only currency in this problem (§3.2), so this is the agent's own budget, made legible | **Yes**, from own scan history | **Yes** — it is a direct summary of its own past actions | float32 `[0,1]`, sums to 1 for `t ≥ 1` (0 at reset) | PS figure of merit *Avg intercept rate*; supports **high interception rate** |
 | **Staleness** (36) | **What makes this restless rather than a plain bandit.** A band ignored for 10 s may have become busy without telling you. The payoff distribution moves while you are not looking. It is the explore signal | **Yes**, from own scan history | **Yes** — looking at a band resets its staleness to 0 | float32 `[0,1]` | PS: scheduling *"against spatially scanning and frequency agile emitters"*; drives **minimise intercept time** |
 | **Normalised time** (1) | Lets the policy behave differently early (explore) and late (exploit). The episode is finite and **terminates** — there is no state past slot 600 | **Yes**, trivially | **No** — the clock advances regardless of what it picks | float32 `[0,1]` | Both objectives; intercept time is measured against a fixed 30 s horizon |
 
