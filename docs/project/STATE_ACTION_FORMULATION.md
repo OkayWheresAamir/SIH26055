@@ -224,6 +224,15 @@ bearing set encoded by binning or online clustering.
 density and staleness demonstrably cannot fix. Measurable **once a policy exists**, meaningless
 before. `PulseWidth` rides on the same decision.
 
+**Direct consequence for the reward lane — read this before choosing a reward.** One of the three
+reward candidates is **`first_intercept`** (+1 per first intercept of an emitter, D29 candidate 3).
+Novelty is a **truth-side** quantity: the reward can see it, the observation cannot. Choosing that
+reward therefore trains the agent to value something it **provably cannot perceive at inference** —
+it would have to approximate novelty with staleness, which measures *time since looked*, not
+*have I already found everyone here*. `hit_z` and `hit_y` do not have this problem. If the reward
+lane lands on `first_intercept`, **D30 stops being optional** — AoA is the observable that would
+make it actionable rather than merely scorable.
+
 **Why it is safe to leave open:** the observation vector is **explicitly not on the freeze list** and
 the four validation gates never read it. Adding AoA later costs a retrain of the policy's input
 layer — **not** a re-validation of the environment, and **not** a re-run of the baselines.

@@ -338,6 +338,14 @@ bearing set encoded by binning or online clustering.</p>
 <p><strong>The trigger that decides it:</strong> a trained agent failing to explore in a way that hit rate, visit
 density and staleness demonstrably cannot fix. Measurable <strong>once a policy exists</strong>, meaningless
 before. <code>PulseWidth</code> rides on the same decision.</p>
+<p><strong>Direct consequence for the reward lane — read this before choosing a reward.</strong> One of the three
+reward candidates is <strong><code>first_intercept</code></strong> (+1 per first intercept of an emitter, D29 candidate 3).
+Novelty is a <strong>truth-side</strong> quantity: the reward can see it, the observation cannot. Choosing that
+reward therefore trains the agent to value something it <strong>provably cannot perceive at inference</strong> —
+it would have to approximate novelty with staleness, which measures <em>time since looked</em>, not
+<em>have I already found everyone here</em>. <code>hit_z</code> and <code>hit_y</code> do not have this problem. If the reward
+lane lands on <code>first_intercept</code>, <strong>D30 stops being optional</strong> — AoA is the observable that would
+make it actionable rather than merely scorable.</p>
 <p><strong>Why it is safe to leave open:</strong> the observation vector is <strong>explicitly not on the freeze list</strong> and
 the four validation gates never read it. Adding AoA later costs a retrain of the policy's input
 layer — <strong>not</strong> a re-validation of the environment, and <strong>not</strong> a re-run of the baselines.</p>
