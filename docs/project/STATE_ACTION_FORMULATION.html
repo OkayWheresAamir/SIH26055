@@ -104,7 +104,7 @@ band that was empty a second ago may be busy now. That is the whole problem.</p>
 <tr>
 <td><code>36:72</code></td>
 <td><strong>per-band visit density</strong></td>
-<td><code>slots_looked[b] / max(t, 1)</code> — fraction of spent airtime given to band <em>b</em>. Sums to 1 across bands</td>
+<td><code>slots_looked[b] / max(t, 1)</code> — fraction of spent airtime given to band <em>b</em>. Sums to exactly 1 across bands once <code>t ≥ 1</code>; all-zero in the <code>reset()</code> observation</td>
 <td>float32, <code>[0, 1]</code></td>
 </tr>
 <tr>
@@ -150,7 +150,7 @@ components are exactly 1.0). So an unexplored band looks at least as attractive 
 <td>How the agent's <strong>airtime</strong> is being spent. Airtime is the only currency in this problem (§3.2), so this is the agent's own budget, made legible</td>
 <td><strong>Yes</strong>, from own scan history</td>
 <td><strong>Yes</strong> — it is a direct summary of its own past actions</td>
-<td>float32 <code>[0,1]</code>, sums to 1</td>
+<td>float32 <code>[0,1]</code>, sums to 1 for <code>t ≥ 1</code> (0 at reset)</td>
 <td>PS figure of merit <em>Avg intercept rate</em>; supports <strong>high interception rate</strong></td>
 </tr>
 <tr>
