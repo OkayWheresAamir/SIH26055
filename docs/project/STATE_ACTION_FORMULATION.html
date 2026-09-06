@@ -1,0 +1,379 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>STATE_ACTION_FORMULATION</title>
+<style>
+@page { size: a4 portrait; margin: 16mm 15mm 15mm 15mm; }
+body { font-family: "Charter","Georgia",serif; font-size: 10.2pt; line-height: 1.45;
+       color: #17181a; }
+h1,h2,h3,h4 { font-family: "Helvetica","Arial",sans-serif; }
+h1 { font-size: 21pt; margin: 0 0 3mm; }
+h2 { font-size: 13.5pt; margin: 8mm 0 2.5mm; padding-bottom: 1.5mm;
+     border-bottom: 1.2pt solid #17181a; }
+h3 { font-size: 11pt; margin: 5mm 0 1.5mm; }
+h4 { font-size: 10pt; margin: 4mm 0 1mm; color: #3a3d42; }
+p  { margin: 0 0 2.5mm; }
+ul,ol { margin: 0 0 2.8mm; }
+li { margin-bottom: 1.1mm; }
+code { font-family: "Courier","monospace"; font-size: 8.7pt; background-color: #f2f2f0; }
+pre { font-family: "Courier","monospace"; font-size: 8.3pt; background-color: #f7f7f5;
+      border: 0.5pt solid #dcdcd6; padding: 3mm; margin: 0 0 3mm; }
+table { width: 100%; margin: 0 0 3.5mm; font-size: 8.9pt; }
+th { text-align: left; font-size: 8.2pt; color: #55585e;
+     border-bottom: 1pt solid #17181a; padding: 1.6mm 2mm 1.2mm; }
+td { padding: 1.6mm 2mm; border-bottom: 0.5pt solid #e0e0dc; }
+blockquote { border-left: 2.5pt solid #17181a; background-color: #f7f7f5;
+             padding: 2.5mm 4mm; margin: 0 0 3.5mm; }
+hr { border-top: 0.5pt solid #d5d5cf; margin: 5mm 0; }
+a { color: #17181a; }
+</style></head><body><h1>State and Action Formulation — SIH26055 Scan Scheduler</h1>
+<p><strong>Version 1 · 2026-09-06 · Owner: Aamir.</strong>
+<strong>Audience:</strong> the RL lane, as the input to the reward / PPO work.</p>
+<blockquote>
+<p><strong>Read this before designing anything against it.</strong> This document is <strong>not a proposal</strong>. The
+state and action spaces described here are <strong>already built, tested and running</strong> — they are what
+<code>rfenv/env.py</code> has exposed since 2026-09-04, what all seven baseline schedulers were measured on
+over 1,539 episodes, and what the four validation gates ran against. Every choice below is a
+recorded decision in <code>docs/project/DECISIONS.md</code> with its evidence attached.</p>
+<p>This is a <strong>write-up of an existing interface</strong>, in the requested format, so the RL lane does not
+have to re-derive it — and so nobody accidentally designs against a different one.</p>
+</blockquote>
+<p><strong>Verification stamp.</strong> Every runtime figure in this document was re-checked on <strong>2026-09-06</strong> by
+importing <code>rfenv</code> and printing the spaces and constants (the command is in §6). <code>pytest tests -q</code>
+→ <strong>229 passed</strong>. Numbers attributed to a decision entry (D3, D30, D31) are quoted from that
+entry's own recorded measurement and are labelled as such, not re-measured here.</p>
+<hr />
+<h2>0. The one-line answer</h2>
+<pre><code>Current situation  →  What the agent knows (STATE)  →  What it can do (ACTION)
+──────────────────────────────────────────────────────────────────────────────
+ t slots elapsed       109 floats in [0,1], built ONLY       pick 1 of 36 bands
+ of 600 (30 s);        from its own past looks:              to point the receiver
+ 36 bands, unknown     per-band hit rate, visit              at next. That is the
+ who is transmitting   density, staleness, + clock           entire action space.
+</code></pre>
+<p>The problem statement calls interception <em>"a two dimensional search problem since it involves
+adjusting receiver's frequency at correct time"</em> (<code>SIH26055_PROBLEM_STATEMENT.md</code> §Detailed
+Description). Those two dimensions — <strong>which frequency</strong>, <strong>at what time</strong> — are exactly the action
+space below. There is no third dimension, and §3.4 explains why.</p>
+<p>The PS's primary objective is <em>"to minimize intercept time and ensure a high interception rate"</em>.
+Both state and action are justified below against those two objectives specifically.</p>
+<hr />
+<h2>1. The current situation — the decision the agent faces</h2>
+<p>At each step the receiver is idle and must be pointed somewhere. Its world:</p>
+<ul>
+<li><strong>36 frequency bands</strong>, centres 250 MHz → 17,750 MHz on 500 MHz spacing
+  (<code>rfenv/constants.py:20</code>, read from <code>metadata/receiver/dwell_centres_mhz</code>; verified identical
+  across all 47 train scan configs). Half-width is <strong>±500 MHz</strong>, so <strong>adjacent bands overlap by
+  half</strong> — D3's measurement: 99.985% of 4,393,233 train scan pulses fall within ±500 MHz of the
+  dwell centre active at their ToA, against 50.92% for a disjoint ±250 tiling.</li>
+<li><strong>A 30 s episode divided into 600 slots of 50 ms</strong> (<code>rfenv/constants.py:43-45</code>). 30.0 s is
+  Turing's own <code>collection_time_s</code>, identical across all 47 train pairs.</li>
+<li><strong>A binary world status per (band, slot)</strong> — the PS's own framing: <em>"The status of environment for
+  each frequency band at each time step can be recorded as a transmission or a non-transmission."</em></li>
+<li><strong>No prior knowledge whatsoever.</strong> Every episode starts cold — no threat library, no carry-over,
+  no prior on who transmits where (<strong>D20</strong>). This is the PS's <em>"absence of prior reliable
+  intelligence"</em> made literal, and it is what keeps the explore/exploit tension real: with a prior,
+  camping on the busiest band would be defensible.</li>
+</ul>
+<p>Looking at one band means <strong>not</strong> looking at the other 35, and an emitter that transmits while the
+receiver is elsewhere is missed. Against <strong>spatially scanning and frequency agile</strong> emitters, a
+band that was empty a second ago may be busy now. That is the whole problem.</p>
+<hr />
+<h2>2. STATE — what the agent knows at each timestep</h2>
+<h3>2.1 The observation space</h3>
+<pre><code class="language-python">observation_space = spaces.Box(low=0.0, high=1.0, shape=(109,), dtype=np.float32)   # rfenv/env.py:162
+</code></pre>
+<p><strong>109 = 36 × 3 + 1.</strong> Every component is natively a fraction, so the box is the unit interval and
+<strong>no scaling or normalisation layer is needed anywhere</strong> — verified at runtime, <code>obs.min() = 0.0</code>,
+<code>obs.max() = 1.0</code>. Ratified as <strong>D34</strong> (<code>SETTLED</code>).</p>
+<p>Layout, in order (<code>rfenv/env.py::_observation</code>):</p>
+<table>
+<thead>
+<tr>
+<th>Index</th>
+<th>Component</th>
+<th>Exact definition</th>
+<th>Type / range</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>0:36</code></td>
+<td><strong>per-band hit rate</strong></td>
+<td><code>hits[b] / slots_looked[b]</code>; <code>0.0</code> if band never looked at</td>
+<td>float32, <code>[0, 1]</code></td>
+</tr>
+<tr>
+<td><code>36:72</code></td>
+<td><strong>per-band visit density</strong></td>
+<td><code>slots_looked[b] / max(t, 1)</code> — fraction of spent airtime given to band <em>b</em>. Sums to 1 across bands</td>
+<td>float32, <code>[0, 1]</code></td>
+</tr>
+<tr>
+<td><code>72:108</code></td>
+<td><strong>per-band staleness</strong></td>
+<td><code>(t − last_slot[b]) / 600</code>; <strong><code>1.0</code> if never visited</strong></td>
+<td>float32, <code>[0, 1]</code></td>
+</tr>
+<tr>
+<td><code>108</code></td>
+<td><strong>normalised episode time</strong></td>
+<td><code>t / 600</code></td>
+<td>float32, <code>[0, 1]</code></td>
+</tr>
+</tbody>
+</table>
+<p>Never-visited bands read staleness <code>1.0</code> — maximally stale (verified: at <code>reset()</code>, all 36 staleness
+components are exactly 1.0). So an unexplored band looks at least as attractive as one last seen at
+<em>t</em> = 0. That is a deliberate exploration prior baked into the encoding.</p>
+<h3>2.2 Each state variable against the five criteria</h3>
+<table>
+<thead>
+<tr>
+<th>Variable</th>
+<th>Why it is relevant</th>
+<th>Available / observable in our env?</th>
+<th>Agent-controllable?</th>
+<th>Type / range</th>
+<th>Connection to the PS objectives</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Hit rate</strong> (36)</td>
+<td>What a scheduler needs to <strong>estimate detection probability</strong> for a band — how likely a look here pays off. It is the exploit signal</td>
+<td><strong>Yes</strong>, computed from the agent's own dwell outcomes only</td>
+<td><strong>Indirectly</strong> — the agent moves it by choosing where to look</td>
+<td>float32 <code>[0,1]</code>, one per band</td>
+<td>PS figure of merit <em>probability of detection</em>. And directly PS: <em>"The model should then be trained based on hits and misses"</em> — this is literally that</td>
+</tr>
+<tr>
+<td><strong>Visit density</strong> (36)</td>
+<td>How the agent's <strong>airtime</strong> is being spent. Airtime is the only currency in this problem (§3.2), so this is the agent's own budget, made legible</td>
+<td><strong>Yes</strong>, from own scan history</td>
+<td><strong>Yes</strong> — it is a direct summary of its own past actions</td>
+<td>float32 <code>[0,1]</code>, sums to 1</td>
+<td>PS figure of merit <em>Avg intercept rate</em>; supports <strong>high interception rate</strong></td>
+</tr>
+<tr>
+<td><strong>Staleness</strong> (36)</td>
+<td><strong>What makes this restless rather than a plain bandit.</strong> A band ignored for 10 s may have become busy without telling you. The payoff distribution moves while you are not looking. It is the explore signal</td>
+<td><strong>Yes</strong>, from own scan history</td>
+<td><strong>Yes</strong> — looking at a band resets its staleness to 0</td>
+<td>float32 <code>[0,1]</code></td>
+<td>PS: scheduling <em>"against spatially scanning and frequency agile emitters"</em>; drives <strong>minimise intercept time</strong></td>
+</tr>
+<tr>
+<td><strong>Normalised time</strong> (1)</td>
+<td>Lets the policy behave differently early (explore) and late (exploit). The episode is finite and <strong>terminates</strong> — there is no state past slot 600</td>
+<td><strong>Yes</strong>, trivially</td>
+<td><strong>No</strong> — the clock advances regardless of what it picks</td>
+<td>float32 <code>[0,1]</code></td>
+<td>Both objectives; intercept time is measured against a fixed 30 s horizon</td>
+</tr>
+</tbody>
+</table>
+<p><strong>All four are built from the agent's own scan history and nothing else.</strong> No prior emitter
+intelligence enters (<strong>D19, D20</strong>), and nothing truth-side leaks into the policy's input path
+(<strong>D29</strong>).</p>
+<h3>2.3 The hard constraint the RL lane must not break</h3>
+<p>This is <strong>D29</strong>, and it is the single most important rule for this lane:</p>
+<blockquote>
+<p><strong>The reward may read truth. The observation may not.</strong></p>
+</blockquote>
+<p>Training is offline and the policy is frozen before deployment, so the reward is a <strong>training-time
+construct discarded at inference</strong>. It may read the truth grid <code>Z</code>, per-emitter signal levels,
+<code>first_e</code> — anything. The <strong>observation</strong> may not, because the 109-vector is all a fielded receiver
+would actually have.</p>
+<p>This is enforced in code, not by convention. <code>rfenv/baselines.py:69</code>:</p>
+<pre><code class="language-python">OBSERVABLE_INFO = frozenset({&quot;slot&quot;, &quot;time_s&quot;, &quot;band&quot;, &quot;dwell_slots&quot;, &quot;Y&quot;})
+</code></pre>
+<p><code>baselines.guarded()</code> strips <code>info</code> down to that set before any policy sees it, so a policy reaching
+for <code>Z</code>, <code>pulses</code> or <code>first_intercept</code> raises a <code>KeyError</code> <strong>instead of quietly scoring well</strong>.
+<code>baselines.make()</code> wraps every deployable rung in <code>guarded()</code> automatically.</p>
+<p><strong>RL lane: wrap your policy in <code>guarded()</code> too.</strong> A <code>KeyError</code> catching an information leak is far
+better than a suspiciously good score catching it.</p>
+<h3>2.4 What the state deliberately excludes, and why</h3>
+<table>
+<thead>
+<tr>
+<th>Excluded</th>
+<th>Why</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Pulse count, peak amplitude within the dwell</td>
+<td>Available at L2 and richer than the PS's framing, but the PS states the environment status as binary — <em>"a transmission or a non-transmission"</em> (<strong>D34</strong>)</td>
+</tr>
+<tr>
+<td>Anything per-emitter</td>
+<td><strong>D19</strong>: any design needing per-emitter attribution from observations inherits a <strong>deinterleaving problem</strong>. Avoid needing it. Deinterleaving is explicitly not the deliverable (<strong>D12</strong>)</td>
+</tr>
+<tr>
+<td>Truth grid <code>Z</code>, <code>first_e</code>, per-emitter levels</td>
+<td><strong>D29</strong> — reward-side and evaluator-side only</td>
+</tr>
+<tr>
+<td>Any prior threat library</td>
+<td><strong>D20</strong> — cold start every episode</td>
+</tr>
+<tr>
+<td><strong>AoA and PulseWidth</strong></td>
+<td><strong>D30 — still open, and owned by the RL lane. See §4.</strong></td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2>3. ACTIONS — what the agent can actually decide</h2>
+<h3>3.1 The action space</h3>
+<pre><code class="language-python">action_space = spaces.Discrete(36)      # rfenv/env.py:159
+</code></pre>
+<table>
+<thead>
+<tr>
+<th>Criterion</th>
+<th>Answer</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>What it is</strong></td>
+<td>"Tune the receiver to band <em>a</em> and dwell there for that band's native dwell time"</td>
+</tr>
+<tr>
+<td><strong>Why relevant</strong></td>
+<td>It is the <em>entire</em> lever the receiver has. The PS's two search dimensions are frequency and time; choosing a band now is choosing both</td>
+</tr>
+<tr>
+<td><strong>Available in our env?</strong></td>
+<td><strong>Yes</strong> — implemented, and all seven baseline schedulers drive the env through it</td>
+</tr>
+<tr>
+<td><strong>Agent-controllable?</strong></td>
+<td><strong>Yes. This is the only thing the agent controls</strong> (see §3.4)</td>
+</tr>
+<tr>
+<td><strong>Type / range</strong></td>
+<td>Discrete integer, <code>0 … 35</code>, one per frequency band</td>
+</tr>
+<tr>
+<td><strong>Legality</strong></td>
+<td><strong>All 36 actions are legal at every timestep</strong> — no masking layer is needed anywhere (<strong>D35</strong>)</td>
+</tr>
+<tr>
+<td><strong>PS connection</strong></td>
+<td>Directly serves both objectives: where you point determines both whether you intercept at all (interception rate) and how soon (intercept time)</td>
+</tr>
+</tbody>
+</table>
+<h3>3.2 An action's cost is not uniform — this is load-bearing</h3>
+<p>A band's <strong>dwell length is a property of the band, not a separate choice.</strong> Seven bands —
+<strong>0, 1, 6, 7, 17, 18, 19</strong> — carry a 100 ms dwell and consume <strong>2 slots</strong>; the other <strong>29</strong> carry
+50 ms and consume <strong>1 slot</strong> (<code>rfenv/constants.py:33-37,51</code>, read from
+<code>metadata/receiver/dwell_times_s</code>; re-verified at runtime 2026-09-06). Turing's full sweep of all
+36 is <strong>2.15 s</strong>.</p>
+<p>Three consequences the RL lane must not get wrong:</p>
+<ol>
+<li><strong>An episode is 600 slots but 300–600 <code>step()</code> calls</strong> (<strong>D35</strong>). Camping on band 0 (wide) takes
+   300 steps; camping on band 5 (narrow) takes 600. Both cover exactly 30 s. So anything computed
+   <em>per step</em> — advantage normalisation, entropy schedules, "average reward per step" — is measuring
+   something different from what the metrics measure.</li>
+<li><strong>Airtime is the only currency.</strong> Retuning is free — D31's measurement puts it under 1 µs, i.e.
+   under 0.002% of a slot. A wide band genuinely costs twice as much of the episode as a narrow one.</li>
+<li><strong>Therefore reward is per slot, and a dwell's reward is the sum of its slots'</strong> (<strong>D31</strong>). A wide
+   band can earn up to +2. The naive "+1 per dwell" is <strong>wrong</strong> and was explicitly rejected: it
+   would make those seven bands strictly dominated — and per D31 they are the bands that matter
+   most, carrying a recorded mean of 764.6 emitter-frequency placements against 170.4, and the
+   slowest rotators (bands 0 and 1 at median 3.00 rpm).</li>
+</ol>
+<h3>3.3 An overrunning dwell is clipped, not made illegal</h3>
+<p>A wide-band action at slot 599 is clipped to one slot rather than forbidden (<strong>D35</strong>), so the action
+space never changes shape mid-episode and no policy needs a masking layer for one edge case.</p>
+<h3>3.4 What is deliberately NOT an action, and why</h3>
+<p>This is the part most likely to be read as something missing. The agent does <strong>not</strong> choose any of
+the following, and each has a recorded reason:</p>
+<table>
+<thead>
+<tr>
+<th>Not an action</th>
+<th>Why not</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Dwell length / bandwidth</strong></td>
+<td>Fixed per band by Turing's own receiver configuration, adopted unchanged (<strong>D3</strong>). Reproducing that configuration exactly is what makes our numbers comparable to their recordings</td>
+</tr>
+<tr>
+<td><strong>Detection threshold γ</strong></td>
+<td>γ = −111 dBm is a <strong>frozen receiver property</strong>, not an agent knob (<strong>D15, D21, D42</strong>). It is calibrated and swept as an experiment, never learned. <strong>No reward and no policy can move P<sub>d</sub> or P<sub>fa</sub></strong></td>
+</tr>
+<tr>
+<td><strong>Antenna steering / look direction</strong></td>
+<td>This receiver <strong>tunes; it does not steer.</strong> The PS frames the search as frequency × time only, so AoA can never be something a dwell is spent on (<strong>D30</strong>)</td>
+</tr>
+<tr>
+<td><strong>Number of bands / band geometry</strong></td>
+<td>Frozen (<strong>D42</strong>), enforced by <code>tests/test_freeze.py</code> with per-value literals plus a SHA-256 digest. Changing it forces re-validation from gate 1 and a re-run of every baseline (<strong>D25</strong>)</td>
+</tr>
+</tbody>
+</table>
+<p><strong>So: "what controllable parameters does the agent have?" → exactly one, which band to look at
+next.</strong> The richness of this problem is not in the action space. It is in <em>when</em> and <em>in what
+order</em>, across 300–600 sequential decisions taken with no prior.</p>
+<hr />
+<h2>4. The one genuinely open state question: D30</h2>
+<p><strong>D30 (<code>OPEN</code>) — do AoA and PulseWidth enter the observation?</strong></p>
+<p><code>DECISIONS.md</code> marks this <strong>"owned by the RL lane"</strong>; <code>RL_LANE_HANDOFF.md</code> §5 assigns it to role
+<strong>R3</strong>. It is the only unanswered state-space question, and it is deliberately unanswered.</p>
+<p><strong>The case for.</strong> To an agent seeing only binary hit/miss, a dwell that finds a <strong>new</strong> emitter and
+one that re-finds a <strong>known</strong> emitter are indistinguishable. D30's recorded walk found that under a
+camper policy ~99% of dwells are redundant and <em>every one of them looks like a hit</em>. AoA separates
+them: assigning each pulse to the emitter with the nearest median bearing scored 96.7%
+(<code>config_2</code>), 99.3% (<code>config_59</code>) and 86.1% (<code>config_921</code>) against true labels.</p>
+<p><strong>The case against.</strong> That accuracy is a <strong>ceiling</strong>, not an achievable figure — it used true labels
+and whole-episode medians. It degrades exactly where the problem is hardest (96.7% → 86.1% going
+from 19 to 99 emitters). And it costs real structure: L1's grid combines cells by <code>max</code>, which is
+meaningless on per-emitter bearings, and the fixed-width 109-vector would need a variable-length
+bearing set encoded by binning or online clustering.</p>
+<p><strong>The trigger that decides it:</strong> a trained agent failing to explore in a way that hit rate, visit
+density and staleness demonstrably cannot fix. Measurable <strong>once a policy exists</strong>, meaningless
+before. <code>PulseWidth</code> rides on the same decision.</p>
+<p><strong>Why it is safe to leave open:</strong> the observation vector is <strong>explicitly not on the freeze list</strong> and
+the four validation gates never read it. Adding AoA later costs a retrain of the policy's input
+layer — <strong>not</strong> a re-validation of the environment, and <strong>not</strong> a re-run of the baselines.</p>
+<hr />
+<h2>5. Frozen vs. open — what you may and may not move</h2>
+<p><strong>Frozen (D42), enforced by <code>tests/test_freeze.py</code>:</strong> band geometry, slot clock, dwell schedule,
+<code>N₀</code>, <code>σ</code>, <code>γ</code>, <code>PD_POPULATION</code>. <strong>The action space follows directly from these and does not move.</strong>
+Editing <code>rfenv/constants.py</code> turns the suite red, and by <strong>D25</strong> any change forces re-validation from
+gate 1 plus a re-run of every baseline.</p>
+<p><strong>Deliberately not frozen — the RL lane's to move:</strong>
+- the <strong>reward</strong> — three candidates already written and selectable by name:
+  <code>hit_z</code>, <code>hit_y</code>, <code>first_intercept</code> (<code>rfenv/env.py:113</code>, verified at runtime). The selection rule
+  is <strong>D47</strong>; the reward/observation asymmetry is <strong>D29</strong>; per-slot summation is <strong>D31</strong>
+- <strong>observation extensions</strong> — D30 (§4)
+- the per-episode scenario draw</p>
+<hr />
+<h2>6. Verify any of this yourself</h2>
+<pre><code class="language-bash">.venv/bin/python -m pytest tests -q          # 229 passed, re-run 2026-09-06
+
+.venv/bin/python -c &quot;
+from rfenv.env import ScanEnv, REWARDS
+from rfenv.scenario import EmitterPool
+from rfenv.baselines import OBSERVABLE_INFO
+env = ScanEnv(pool=EmitterPool.from_train(), reward='hit_z')
+obs, info = env.reset(seed=0)
+print('action_space     ', env.action_space)          # Discrete(36)
+print('observation_space', env.observation_space)     # Box(0.0, 1.0, (109,), float32)
+print('obs shape/range  ', obs.shape, obs.min(), obs.max())
+print('rewards available', sorted(REWARDS))
+print('observable info  ', sorted(OBSERVABLE_INFO))
+&quot;
+</code></pre>
+<p><strong>Where the reasoning lives.</strong> The agent interface is documented in the module docstring at the top
+of <code>rfenv/env.py</code>. The decisions are in <code>docs/project/DECISIONS.md</code> — <strong>D3, D12, D15, D16, D19, D20,
+D21, D25, D28, D29, D30, D31, D34, D35, D42, D47</strong>. The buildable spec is
+<code>docs/project/ENVIRONMENT_SPEC.md</code> §L3.</p>
+<p><strong>Do not redefine a metric here or anywhere else.</strong> <code>docs/project/EVALUATION.md</code> is the single
+authority on metrics, baselines, gates and protocol — including the fact that the bar for RL is
+<strong>rung 5</strong> (interception ratio 0.1104, censored intercept time 3.20 s), not round-robin.</p></body></html>
