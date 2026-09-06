@@ -68,12 +68,6 @@ that primary is not in this repository.
 > `docs/project/DECISIONS.md`; this list holds only what genuinely remains.
 
 **Needs a human decision (not more research):**
-- **D29's selection rule** — how to choose among the three reward candidates when they
-  Pareto-dominate the baselines but not each other. Must be fixed **before** training, so the
-  choice is not made after seeing results. **Now the most urgent open item**: the baseline ladder
-  has run (D46) and has given the rule a concrete Pareto front to be fixed against — rung 5
-  (ratio 0.110, cTTI 3.20 s) and rung 6 (0.246, 14.86 s) are the two corners a reward has to
-  choose between.
 - **CPRIT / deinterleaving as a scheduler input — raised 2026-09-04, conflicts with D12 and D19.**
   `CPRIT(Combined PRI Transform).pdf` and `CPRITworkflow.pdf` propose a PRI-transform module
   between the receiver and the RL agent, on the argument that hit/miss bits alone cannot
@@ -107,8 +101,10 @@ that primary is not in this repository.
 > definition by D28 and recorded in D29), **D33** (`SETTLED` 2026-09-03 — P<sub>d</sub> is
 > averaged over the reference-sweep population, 0.851 at the frozen γ; `PD_POPULATION` is on the
 > freeze list), **D34** (`SETTLED` 2026-09-04 — the 36×3+1 observation vector, ratified in
-> the implementation lane) and **D39** (`SETTLED` 2026-09-04 — gate criteria fixed in
-> `validate.py::GATES` before the first run, and all four gates have since run).
+> the implementation lane), **D39** (`SETTLED` 2026-09-04 — gate criteria fixed in
+> `validate.py::GATES` before the first run, and all four gates have since run) and **D29's
+> selection rule** (`SETTLED` 2026-09-05 as **D47** — paired dominance over round-robin on both
+> headline metrics, fixed before any training run).
 
 **Needs domain review:**
 - *"Approaches to intercept a periodic scan receiver optimally should be outlined"* (PS). Most likely the scan-on-scan problem. A written deliverable, owed to the evaluators; Köksal ch. 3 is the source. Needs someone with the domain reading to write it.

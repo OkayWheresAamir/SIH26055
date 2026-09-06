@@ -128,6 +128,23 @@ reward is aligned with both, and the D7 comparison has to resolve a Pareto front
 scalar. **No reward can move P<sub>d</sub> or P<sub>fa</sub>** (§3, D15, D21) — penalising false
 alarms prices a wasted dwell, it does not improve the receiver.
 
+### Choosing between reward candidates (D47)
+
+Fixed 2026-09-05, **before any training run**, because a rule chosen after the results are visible
+is not a rule. The winner among D29's three candidates is **the one that beats round-robin on both
+headline metrics on the largest fraction of paired episodes** — same scenario, same seed, same
+truth grid, the `both` column of `compare.paired_wins()`. Within 5 pp, nothing is selected: both
+are reported and the choice is escalated.
+
+It ranks neither objective, because the problem statement does not. It also needs no exchange rate
+between a fraction and seconds, which is the thing no measurement in this project can supply.
+
+Two things must be published beside the winner, and are not optional: **the full §4 table with
+spread** (the rule is insensitive to margin — beating by a hair counts as much as beating by
+triple), and **the comparison against rung 5**, which is the actual bar (D46). Round-robin is the
+paired denominator because it is the PS's named open-loop floor and is identical for every
+candidate, so it cancels; it is not the bar.
+
 ### Two traps, both measured on real data (D14)
 
 1. **Per-dwell hit rate is misleading.** A camper that parks on the busiest band scores 85–90%

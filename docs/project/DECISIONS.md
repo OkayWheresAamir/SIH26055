@@ -895,11 +895,12 @@ outside without circularity.
 1. Keep the set to the three above. Every candidate scored on the same 47 scenarios is another
    draw; best-of-many is partly selection noise. D8's single-use held-out set is the backstop.
 2. `EVALUATION.md` §4 already bars ranking across reward families by accumulated reward.
-3. **Open, and not decided here:** the selection rule when candidates Pareto-dominate the
-   baselines but not each other. D14 measured the two objectives in direct tension, so "whichever
-   scores most" has no referent. A scalarisation, a lexicographic rule, or reporting the front —
-   to be fixed **before** training, so the choice is not made after seeing results. Not blocking:
-   `receiver.py` and `env.py` do not depend on it.
+3. ~~**Open, and not decided here:**~~ **RESOLVED by D47 (2026-09-05).** The selection rule when
+   candidates Pareto-dominate the baselines but not each other. D14 measured the two objectives in
+   direct tension, so "whichever scores most" has no referent. A scalarisation, a lexicographic
+   rule, or reporting the front — to be fixed **before** training, so the choice is not made after
+   seeing results. **Fixed as paired dominance count over round-robin; see D47.** It was never
+   blocking: `receiver.py` and `env.py` do not depend on it.
 
 **Evidence.** Reasoned from D5, D7, D14, D21, D26, D28 and the architecture's own stage order.
 The `Φ((S−γ)/σ)` curve is the L2 model definition, not a measurement. `Pd = 0.822` was quoted from
@@ -1735,8 +1736,8 @@ band-half-width change both trip it.
 
 **What is *not* frozen**, deliberately: reward candidates and observation-vector extensions stay
 the RL lane's (D29, D30, D34), and the per-episode draw — which emitters, and the seed — is free
-by construction (D25). **D29 item 3 (the reward-candidate selection rule) is explicitly outside
-this freeze**: it is an RL-lane reward/Pareto decision, it touches nothing on the list, and the
+by construction (D25). **D29 item 3 (the reward-candidate selection rule, settled 2026-09-05 as D47) was
+explicitly outside this freeze**: it is an RL-lane reward/Pareto decision, it touches nothing on the list, and the
 freeze did not wait on it.
 
 **Re-validation trigger.** D25's rule stands: if anything on the list moves, the environment is
@@ -2010,6 +2011,82 @@ different worlds; neither is quotable without naming its grids.
 
 **Evidence.** `runs/baselines/{summary.json,metrics.json,comparison.md}` and the 1,539 artefact
 sets under it, all written 2026-09-04.
+
+---
+
+## D47 — the reward-candidate selection rule: paired dominance over round-robin
+
+**Status:** `SETTLED` (2026-09-05) — **decided by the team**, closing D29 item 3, the last thing
+D29 left open. Fixed **before** any training run, which is the whole point of it.
+
+**The question.** D7 says the reward is a hyperparameter chosen after comparison on the PS's own
+metrics. D14 then measured that the PS's two metrics are in direct tension, so "whichever scores
+most" has no referent — a candidate can win interception ratio and lose censored intercept time,
+and usually will. D29 recorded the gap and deliberately left it open.
+
+**Decision. The winning reward candidate is the one that beats round-robin on *both* headline
+metrics on the largest fraction of paired episodes** — same scenario, same seed, same truth grid.
+`compare.paired_wins()` already computes exactly this and prints it as the `both` column. If two
+candidates land within **5 percentage points** of each other, no candidate is selected: both are
+reported and the choice is escalated.
+
+**Why this rule and not a priority order.** Three rules were put to the team: this one, censored
+intercept time first, and interception ratio first. The team chose this one, on the grounds that
+**the problem statement names both objectives and does not rank them**, so a rule that ranks them
+would be importing a preference the PS does not state.
+
+Two further reasons it is the right shape for *this* project:
+
+- **It needs no exchange rate.** The two metrics are not commensurable — interception ratio is a
+  fraction in [0, 1], censored intercept time is seconds in [0, 30]. Any weighted sum is a claim
+  that one point of ratio is worth *N* seconds, and that claim would have to come from a mission
+  we have not been given. A dominance count never forms the ratio.
+- **Every trap this project has hit came from one metric winning alone** — the camper on
+  interception ratio (D14), the uncensored intercept time that made the same camper look *fast*
+  (D14's amendment). A rule that demands both is the one that keeps reproducing that lesson rather
+  than falling for it.
+
+**Its two weaknesses, recorded rather than argued away.**
+
+1. **It is insensitive to margin.** Beating round-robin by 0.001 counts exactly as much as beating
+   it by a factor of three. A candidate that is spectacular on one axis and merely adequate on the
+   other scores worse than one that is mildly better on both.
+2. **"Both equally" is itself a weighting**, just an implicit one. The rule does not escape having
+   a preference; it declines to make the preference numeric.
+
+Neither is fatal, because §4 requires the full table to be published beside the winner regardless —
+the rule picks, it does not summarise.
+
+**Two consequences for how the RL rung is reported.**
+
+- **Round-robin is the reference in the rule, not the bar to clear.** It is the paired denominator
+  because it is the PS's own named floor and it is open-loop, so it cannot have learned anything
+  from the scenario. That it is a *weak* opponent — random beats it 42.1% of the time (D46) — is
+  irrelevant to its use here: the same denominator is applied to every candidate, so it cancels.
+  **The bar to clear is still rung 5 (D46), and it should be stated separately.**
+- **A margin-based reading must be published alongside**, because of weakness 1. The full §4 table
+  with interquartile ranges is already mandatory (§7); this just says it is not optional when the
+  winner is announced.
+
+**Noted for later, not decided: the two rejected rules have practical merit as a variant, not as
+this rule.** The team observed that a priority order — speed first, or capture first — diverges
+from the PS's own framing but could match a real mission: threat warning wants time, emitter
+characterisation wants pulses. If a mission-specific variant is ever built, it is a **second
+system with a stated mission**, chosen by a rule recorded at that time. It does not reopen this
+one, and it may not be selected after seeing which corner looked better.
+
+**Provenance of the recommendation, stated because it matters.** The rule recommended to the team
+was the dominance count, and the counter it uses (`compare.paired_wins`) was written in the same
+session by the same author, whose best-performing baseline scores highest under it. The team was
+told this before choosing. The contamination is limited but real: the rule is applied to three
+*trained policies* that do not exist yet, so no result the rule will judge has been seen — but
+baseline numbers were shown as calibration, and calibrating a rule is one step from choosing it.
+Recorded so a reviewer can weigh it.
+
+**Evidence.** Reasoned from D7, D14, D28, D29 and D46. The `both` column and the 5 pp margin are
+computed by `rfenv/compare.py::paired_wins`, which `tests/test_compare.py` pins against
+hand-built rows including the case where a candidate wins each metric in a different scenario and
+must therefore score zero.
 
 ---
 

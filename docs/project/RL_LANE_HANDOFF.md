@@ -183,7 +183,7 @@ turns out to be wrong, and our whole credibility story (§8) collapses if it hap
 |---|---|---|
 | **R1 — Training** | the algorithm, the training loop, hyperparameters, checkpoints, the `RLScheduler` policy class | a checkpoint that loads and plays an episode |
 | **R2 — Evaluation & integration** | rung 7 in `baselines.LADDER`, the comparison runs, seeds, the Pareto plot, the held-out run | the §3 table with a row 7 in it |
-| **R3 — Reward & observation** | the three reward candidates, D29's selection rule, the D30 experiment, ablations | a Pareto front over rewards, and D30 answered |
+| **R3 — Reward & observation** | the three reward candidates, D47's selection rule, the D30 experiment, ablations | a Pareto front over rewards, and D30 answered |
 
 **If you are two people:** R1 and R3 merge (they share the training harness anyway). **R2 stays
 separate — do not merge it into R1.**
@@ -232,7 +232,7 @@ tuning and go back to 2.1 — something is structurally wrong, not under-trained
 |---|---|---|---|
 | 3.1 | Longest training run you can afford; checkpoint often | R1 | best checkpoint identified on *train* scenarios |
 | 3.2 | Full ladder run with rung 7 in it, `--seeds 3 --sampled 10 --figures` | R2 | `runs/baselines/comparison.md` has a row 7 |
-| 3.3 | Pareto front over the three rewards; apply D29's selection rule; **record the choice and why** | R3 | one reward chosen, in `DECISIONS.md` |
+| 3.3 | Pareto front over the three rewards; apply **D47**'s rule — `compare.paired_wins()`, the `both` column, 5 pp margin; **record the choice and why** | R3 | one reward chosen, in `DECISIONS.md` |
 | 3.4 | **D30 experiment** — does adding AoA / PulseWidth to the observation help? Train with and without | R3 | a paired comparison, and D30 closed either way |
 | 3.5 | Ablation: rung 7 vs rung 5 vs rung 6a, one paragraph on *which component earns the gain* | R2 | written |
 
@@ -415,7 +415,7 @@ hardware performance we haven't measured, or anything from `../SIHProto`.
 
 | Decision | State | Who closes it | Blocks |
 |---|---|---|---|
-| **D29 selection rule** — what to do when reward candidates Pareto-dominate the baselines but not each other | [ ] owed | **Aamir**, before training | task 3.3 |
+| ~~**D29 selection rule**~~ | [x] **settled 2026-09-05 (D47)** | Aamir | the candidate beating round-robin on *both* metrics on the most paired episodes wins; within 5 pp, nothing is selected. Publish the full §4 table and the rung-5 comparison beside the winner. |
 | **D30** — do AoA and PulseWidth enter the observation? | `OPEN`, explicitly *"owned by the RL lane"* | **R3** | task 3.4 |
 | RL algorithm | not recorded | R1 + brainstorm | task 1.3 — **default to PPO and move on** |
 | The edge | [ ] pending | Aamir + brainstorm | §9 |
