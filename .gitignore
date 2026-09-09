@@ -23,6 +23,12 @@ CLAUDE.local.md
 # the environment and rebuilt by re-running it; this repo stays clean of them.
 runs/
 
+# Dated copies of runs/ taken before a destructive re-run. Same reasoning as
+# runs/ itself, and they are large (the 2026-09-09 one is 224 MB): the
+# checkpoints and artefacts they hold are not source, and the record of what
+# was in them lives in scratch/TRAINING_JOURNEY.md instead.
+runs_backup_*/
+
 # Handoff intermediates — `scripts/md2pdf.py` writes an .html on the way to the
 # .pdf. The .md is the source and the .pdf is what gets handed over; the .html
 # is neither.
