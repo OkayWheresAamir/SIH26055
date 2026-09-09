@@ -1209,6 +1209,8 @@ D26 and D29. Re-measured from `rfenv.receiver` when L2 landed (2026-09-03) — s
 **Status:** `SETTLED` (2026-09-04) — **ratified in the implementation lane, not escalated.**
 Records a choice already made in `ENVIRONMENT_SPEC.md` §L3, built in `rfenv/env.py` and covered
 by `tests/test_env.py`. The human retains a one-line veto; nothing downstream assumes otherwise.
+**EXTENDED 2026-09-09 — see D49 (the base three are no longer the whole vector; `current_band`,
+`camp_time` and `measured_dbm` were added and it is now 36×4+3 = 147 wide, not 109).**
 
 **Why this did not need escalating, when D30 does.** `CLAUDE.md` gates decisions that shape the
 agent interface because they are expensive to reverse. This one is not: the observation vector is
@@ -2087,6 +2089,162 @@ Recorded so a reviewer can weigh it.
 computed by `rfenv/compare.py::paired_wins`, which `tests/test_compare.py` pins against
 hand-built rows including the case where a candidate wins each metric in a different scenario and
 must therefore score zero.
+
+---
+
+## D48 — RL joins the ladder: rungs 7 (DQN), 8 (PPO), 9 (Recurrent PPO)
+
+**Status:** `SETTLED` (2026-09-09) — built, tested, and registered in `rfenv/baselines/ladder.py`.
+Closes the gap `CLAUDE.md`'s own build status named: *"Rung 7 (RL) is the only thing missing from
+the ladder."*
+
+**Three algorithms, one adapter shape each.** All three are `stable-baselines3` (rung 9 also needs
+`sb3-contrib`, which SB3 itself does not ship), trained by `rfenv/rl/{dqn,ppo,recurrent_ppo}.py`
+against `rfenv/rl/common.py::make_train_env` — `ScanEnv(pool=EmitterPool.from_train(), reward=...)`,
+never a fixed replay, so every training episode draws a fresh scenario (D25, D32) and nothing is
+ever memorised. Two policy adapters, not one, because a recurrent policy's `.predict()` has a
+different shape than a feed-forward one's:
+
+- **`RLScheduler`** wraps DQN/PPO's plain `predict(obs, deterministic=True)`. Stateless.
+- **`RecurrentRLScheduler`** wraps rung 9's `predict(obs, state=..., episode_start=..., ...)`,
+  carrying the LSTM's hidden state across calls within an episode and resetting it at each new
+  one (inferred from `info["slot"] == 0`, not tracked by the caller).
+
+Both read only what `guarded()` lets through — `RecurrentRLScheduler` touches exactly one `info`
+field (`slot`, already in `OBSERVABLE_INFO`) purely to detect an episode boundary, never to
+condition the action — so every RL rung is deployable under the same D19/D29 rule every other
+rung already follows, not a special case.
+
+**Multiple trained variants coexist; they do not overwrite each other.** One checkpoint per
+algorithm was never going to be enough — different rewards, different timestep budgets, different
+points along one run all want comparing. `_dqn_rung_factory`/`_ppo_rung_factory`/
+`_recurrent_ppo_rung_factory` are parameterised by checkpoint path, so registering a new variant
+is one `Rung(...)` line naming its own `.zip`, not a retrain-and-overwrite. Lettered sub-rungs
+follow the numbering 6/6a already established for Apfeld's two forms: **7, 7a** (DQN); **8, 8a,
+8b, 8c** (PPO, three `first_intercept` checkpoints at different timestep budgets); **9** (Recurrent
+PPO). `run.md` documents the registration pattern and the training commands.
+
+**Not decided here, still open:** which variant, if any, is the RL lane's answer to D47's
+paired-dominance rule. No trained checkpoint has been run through `compare.paired_wins` against
+round-robin as of this entry — rungs 7-9 exist and are comparable, nothing has been selected.
+
+**Evidence.** `rfenv/rl/{common,dqn,ppo,recurrent_ppo}.py`, `rfenv/baselines/ladder.py`,
+`tests/test_rl.py` (registration, deployability, checkpoint round-trips, and — specifically for
+rung 9 — that hidden state actually threads across calls rather than resetting every dwell).
+
+---
+
+## D49 — the observation vector, extended past D34's base three
+
+**Status:** `SETTLED` (2026-09-09) — built in `rfenv/env.py::ScanEnv._observation`, covered by
+`tests/test_env.py`/`tests/test_baselines.py`. Exactly the kind of change D34 itself reserved:
+*"extensions remain the RL lane's call and get logged as decisions."* D34's own status line is
+amended below to point here.
+
+**Three additions, in the order they landed, each keeping D19/D29's rule** (built only from the
+agent's own scan history or receiver-observable quantities — never truth):
+
+1. **`current_band`** — a one-hot of the band the most recent dwell was on. Distinguishes "I am
+   here right now" from "I left here one slot ago", which `staleness` alone cannot: the currently
+   tuned band and a band just vacated both read staleness ≈ 0.
+2. **`camp_time`** — consecutive slots spent on the current streak, normalised by `N_SLOTS`, reset
+   the instant the action changes. Not redundant with `visit_density` (airtime share over the
+   *whole* episode): a band camped early and abandoned still reads high density long after the
+   agent moved on, where `camp_time` collapses back to 0 the moment it leaves.
+3. **`measured_dbm`** — the most recent dwell's mean `S + noise`, i.e. what the receiver's
+   detector actually read (D19: observable, unlike the truth-side `S` alone), clamped to a fixed
+   `[-120, -20]` dBm window and linearly rescaled to `[0, 1]` to fit the `Box`. Global, not
+   per-band, matching `camp_time`/`current_band`'s scope: it reports only the band just left.
+
+**The vector's size moved three times in the same session**: D34's **109** (36×3+1) → **145**
+(36×4+1, `current_band`) → **146** (+`camp_time`) → **147** (36×4+3, +`measured_dbm`). Every
+existing trained checkpoint breaks at each step — SB3 sizes a policy network's input layer to
+`observation_space.shape` at construction and cannot accept a differently-shaped vector afterward
+— so a shape change is a retrain, not a reload, for every registered RL rung (D48).
+
+**Evidence.** `rfenv/env.py::ScanEnv._observation`, `rfenv/baselines/guard.py` (`CURRENT_BAND`,
+`CAMP_TIME`, `MEASURED_DBM` slice constants, kept in sync with the vector by
+`tests/test_baselines.py::test_the_observation_slices_match_the_environment`).
+
+---
+
+## D50 — reward-candidate churn this session: the default moved, a fourth candidate did not stick
+
+**Status:** `SETTLED` as a record of what changed (2026-09-09). **Not** a D47 rule application —
+recorded as that explicitly, below.
+
+**`DEFAULT_REWARD` moved from `hit_z` to `first_intercept`,** changed directly in `env.py` and
+confirmed this session. No `compare.paired_wins` measurement (D47's own selection rule) was run
+against this specific choice — this entry records that the default **is** now `first_intercept`,
+not that D47's dominance-count procedure is what put it there. Anyone treating this as "the reward
+question is closed" should re-read D47: the rule exists, but no evidence line here claims it was
+applied. Every trainer's `--reward` CLI flag still defaults to `env.DEFAULT_REWARD`, so reproducing
+any rung's base variant (all originally trained on `hit_z`, D48) now needs `--reward hit_z` passed
+explicitly rather than left to the default.
+
+**A fourth candidate, `reward_weighted_camp`, was registered and retired within the same working
+session.** Discovery credit plus declared-hit credit, the declared-hit term taxed by a per-slot
+fee proportional to the current camping streak — an attempt to price greed directly rather than
+leave camping to be merely un-rewarded. It briefly went in as `REWARDS["weighted_camp"]`, a
+deliberate, explicit exception to D29's "exactly three, and the set stays at three." It came back
+out; **D29's three-candidate cap holds, unamended.** Kept as a commented-out draft in `env.py`
+alongside a further, never-finished `reward_hybrid` sketch — neither is active, both are dead code
+by choice, not by accident, in case either is picked back up.
+
+**Evidence.** `rfenv/env.py` (`REWARDS`, `DEFAULT_REWARD`, the commented-out drafts and their
+docstrings), `tests/test_env.py::test_all_reward_candidates_run_and_differ`.
+
+---
+
+## D51 — `newly` credits an emitter once per band, not once per episode
+
+**Status:** `SETTLED` (2026-09-09) — changed in `rfenv/env.py::ScanEnv.step`, flagged as looking
+like a bug, confirmed intentional by the human. Reward-side only; **D28's intercept definition and
+every §4 metric are untouched.** Recorded because it is in a gated category (the reward) and
+because the candidate's name now outlives its semantics — see the last paragraph.
+
+**What changed.** The `newly` set — the only input `reward_first_intercept` (D29's candidate 3)
+has beyond the dwell — used to fire once per emitter per episode: an emitter's true first
+intercept and nothing after. It now fires **once per distinct `(emitter, band)` pair**: on the
+first-ever intercept, and again the first time that emitter turns up in a band it has not been
+credited in before. `track["bands"]` is what remembers which.
+
+**What it does not change, which is the part that matters.** `track["first"]` — `first_e`, the
+censored-intercept-time numerator D28 defines — is written **only** in the `track is None` branch,
+never in the widened one. So it is still set exactly once per emitter, at the true first sighting.
+Censored intercept time, emitter coverage, interception ratio and everything else in
+`EVALUATION.md` §4 are computed from that and are bit-identical either way. Only the reward-facing
+set was widened; the metric-facing one was not.
+
+**Why widen it.** D3's bands overlap — an emitter generically falls inside about two band windows
+— so under the old rule a scheduler that swept an emitter's whole footprint was paid exactly the
+same as one that clipped its edge once and moved on. The widened set pays for covering the
+footprint. Whether a policy can *learn* to act on it is D30's open question, unchanged by this.
+
+**Measured effect: about 2.5×, not the ~2× D3's geometry alone would suggest.** Round-robin, seed
+0, stare replays:
+
+| scenario | distinct emitters intercepted | `newly` credits | credits per emitter |
+|---|---|---|---|
+| `config_2` | 16 | 40 | 2.50× |
+| `config_921` | 61 | 154 | 2.52× |
+
+Credits equal the `(emitter, band)` pair count exactly in both — confirming one credit per pair,
+with no double-counting inside a band. It runs above 2× because a full 36-band sweep catches an
+emitter in more windows than the nominal two it generically spans.
+
+**The naming tension, recorded rather than fixed.** Candidate 3 is still called
+`first_intercept`, and D29 and D28 both describe it in first-intercept language, but it no longer
+pays for first intercepts — it pays for footprint coverage. The name is now wrong in a way that
+will mislead anyone reading D29 without reading this. Renaming it is a checkpoint-invalidating
+change to a registered `REWARDS` key (every rung trained on it names it), so it is **not** done
+here; the mismatch is recorded instead, and D50 already notes this candidate is now the default.
+
+**Evidence.** Measured 2026-09-09, this session, on `config_2` and `config_921` stare replays under
+round-robin at seed 0, counting `info["newly_intercepted"]` per step against `len(env.tracks)` and
+`sum(len(t["bands"]) for t in env.tracks.values())`. Code: `rfenv/env.py::ScanEnv.step` (the
+`if dwell.band not in track["bands"]` branch) and `reward_first_intercept`'s own docstring.
+Reasoned, from the same code, that `first`/`first_e` is unaffected: it is assigned in one branch only.
 
 ---
 
