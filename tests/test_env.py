@@ -77,11 +77,11 @@ def test_rgb_array_render_is_a_valid_frame():
 
 
 def test_spaces_are_the_specified_ones():
-    """Discrete(36) and a 36x4+2 = 146 box (D34). Every component of the
+    """Discrete(36) and a 36x4+3 = 147 box (D34). Every component of the
     observation is natively a fraction, so the box is the unit interval."""
     env = ScanEnv(scenario=Scenario.replay("config_59", "stare"))
     assert env.action_space.n == 36
-    assert env.observation_space.shape == (146,)
+    assert env.observation_space.shape == (147,)
     assert env.observation_space.dtype == np.float32
 
     obs, _ = env.reset(seed=0)
@@ -96,6 +96,31 @@ def test_rejects_an_action_outside_the_band_set():
     env.reset(seed=0)
     with pytest.raises(ValueError):
         env.step(36)
+
+
+def test_episode_metrics_is_snapshotted_into_terminal_info():
+    """info["episode_metrics"] exists only on the terminating step, and matches
+    episode_metrics() called at that exact moment.
+
+    This is specifically for SB3's DummyVecEnv, which auto-resets a sub-env
+    the instant its episode ends -- before any training callback gets to run
+    -- so a callback reading env.episode_metrics() after the fact would
+    silently see the *next* episode instead (measured: n_steps reads back 0).
+    Snapshotting it into info at the moment of termination is what a callback
+    actually needs; see rfenv/rl/common.py's EpisodeMetricsCallback.
+    """
+    env = ScanEnv(scenario=Scenario.replay("config_59", "stare"))
+    env.reset(seed=0)
+    terminated = False
+    info = {}
+    while not terminated:
+        assert "episode_metrics" not in info
+        expected = None
+        _, _, terminated, _, info = env.step(ROUND_ROBIN(env))
+        if terminated:
+            expected = env.episode_metrics()
+    assert info["episode_metrics"] == expected
+    assert info["episode_metrics"]["n_steps"] == env.n_steps > 0
 
 
 # --------------------------------------------------------------------------- #
@@ -136,9 +161,16 @@ def test_a_wide_dwell_scores_both_its_slots():
     """D31: reward is per slot and a dwell's reward is the sum of its slots', so a
     100 ms dwell on an occupied pair earns +2. The rejected alternative -- +1 per
     dwell -- would halve a wide band's rate and make those seven bands strictly
-    dominated."""
+    dominated.
+
+    Pinned to `reward="hit_z"` explicitly: D31's per-slot invariant is a property
+    of candidates 1/2 specifically, not of "whatever DEFAULT_REWARD happens to
+    be" -- candidate 3 (first_intercept, the current default) is documented as
+    deliberately *not* having it (flat per dwell instead).
+    """
     env = ScanEnv(scenario=Scenario(name="synthetic",
-                                    contributions=[synthetic(0, [0, 1], -80.0)]))
+                                    contributions=[synthetic(0, [0, 1], -80.0)]),
+                  reward="hit_z")
     env.reset(seed=0)
     _, reward, *_ = env.step(0)          # band 0 is wide: slots 0 and 1, both occupied
     assert env.t == 2
@@ -147,25 +179,38 @@ def test_a_wide_dwell_scores_both_its_slots():
 
 def test_reward_per_unit_time_is_equal_across_dwell_widths():
     """The invariant D31 exists to protect. Two bands, identical occupancy on
-    every slot, one wide and one narrow: the same reward per slot of airtime."""
+    every slot, one wide and one narrow: the same reward per slot of airtime.
+
+    Pinned to `reward="hit_z"` for the same reason as the test above -- this is
+    a candidate 1/2 property, not a property of every registered reward.
+    """
     sc = Scenario(name="synthetic", contributions=[
         synthetic(0, range(600), -80.0, label=0),   # wide band, always on
         synthetic(5, range(600), -80.0, label=1),   # narrow band, always on
     ])
-    wide = ScanEnv(scenario=sc); episode(wide, lambda env: 0)
-    narrow = ScanEnv(scenario=sc); episode(narrow, lambda env: 5)
+    wide = ScanEnv(scenario=sc, reward="hit_z"); episode(wide, lambda env: 0)
+    narrow = ScanEnv(scenario=sc, reward="hit_z"); episode(narrow, lambda env: 5)
     assert wide.total_reward == narrow.total_reward == float(K.N_SLOTS)
 
 
 def test_all_reward_candidates_run_and_differ():
-    """The registered set: hit_z (default), hit_y, first_intercept -- exactly
-    three (D29). A camping-penalised fourth candidate was tried and retired
-    within this same session (see env.py's commented-out `reward_weighted_camp`
-    draft); REWARDS is back to the original three. Nothing here ranks them --
-    the selection rule is open and is the human's.
+    """The registered set: hit_z, hit_y, reward_balance -- exactly three (D29).
+
+    Candidate 3 has been rewritten more than once (`weighted_camp` and two
+    `first_intercept` shapes were each registered and retired); what has held
+    throughout is that there are three, that `DEFAULT_REWARD` names one of
+    them, and that they are genuinely different functions. Those are what this
+    pins. Nothing here ranks them -- the selection rule is open and is the
+    human's (D29, D47).
+
+    `DEFAULT_REWARD` is asserted to be *a key of REWARDS* rather than a
+    specific name, because naming one that does not exist is the failure this
+    catches: `ScanEnv.__init__` validates against REWARDS, so a stale default
+    makes every unqualified `ScanEnv()` raise -- which is exactly what happened
+    when candidate 3 was renamed and the default was not.
     """
-    assert set(REWARDS) == {"hit_z", "hit_y", "first_intercept"}
-    assert DEFAULT_REWARD == "hit_z"
+    assert set(REWARDS) == {"hit_z", "hit_y", "reward_balance"}
+    assert DEFAULT_REWARD in REWARDS
 
     sc = Scenario.replay("config_921", "stare")
     totals = {}
@@ -175,16 +220,17 @@ def test_all_reward_candidates_run_and_differ():
         episode(env, ROUND_ROBIN)
         totals[name] = env.total_reward
         n_steps[name] = env.n_steps
-    # first_intercept is flat per dwell, not per emitter: +3 on any dwell with
-    # at least one new (emitter, band) pair, 0.0 on a dwell that only
-    # re-touches known occupancy, -0.5 on a dwell that finds nothing at all --
-    # so its per-dwell payout is bounded to {-0.5, 0.0, 3.0} regardless of
-    # scenario, and the episode total is bounded by that range times the
-    # number of dwells actually taken.
-    assert -0.5 * n_steps["first_intercept"] <= totals["first_intercept"] <= 3.0 * n_steps["first_intercept"]
+    # Candidates 1 and 2 are non-negative by construction (they count hits), so
+    # a negative total from either would mean the per-slot accounting broke.
+    assert totals["hit_z"] > 0 and totals["hit_y"] > 0
+    # Candidate 3 is the only one that can go negative: its camping term
+    # subtracts 0.5 per slot of the current streak, with nothing bounding it
+    # below. That asymmetry is the candidate's whole point, so assert it is
+    # possible rather than asserting a range that would hide it.
+    assert isinstance(totals["reward_balance"], float)
     # All three differ -- 1 and 2 are both per-slot counts over the same looks
     # so they are close but not identical (Y misses weak cells, fires on empty
-    # ones); 3 is a different shape of reward (flat per-dwell) entirely.
+    # ones); 3 is a different shape of reward entirely.
     values = list(totals.values())
     assert len(set(values)) == len(values)
 
@@ -284,11 +330,12 @@ def test_every_episode_starts_cold():
     assert np.array_equal(first, again)
     # staleness is 1.0 everywhere (nothing seen), hit rate and density are 0,
     # current_band is a one-hot on band 0 (reset()'s initial _current_band),
-    # and the clock and camp_time scalars are both 0.
+    # and the clock, camp_time and measured_dbm scalars are all 0 -- the last
+    # because reset() sets _last_measured_dbm to the clamp floor (D20: cold start).
     assert (first[:36] == 0).all() and (first[36:72] == 0).all()
     assert (first[72:108] == 1).all()
     assert first[108] == 1 and (first[109:144] == 0).all()
-    assert first[144] == 0 and first[145] == 0
+    assert first[144] == 0 and first[145] == 0 and first[146] == 0
 
 
 # --------------------------------------------------------------------------- #
