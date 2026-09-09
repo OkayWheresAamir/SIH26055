@@ -29,6 +29,13 @@ pymupdf>=1.24         # 1.28.2
 torch>=2.3             # 2.14.0
 stable-baselines3>=2.3 # 2.9.0
 
+# rfenv/rl/recurrent_ppo.py — rung 9, an LSTM-recurrent PPO variant. Plain SB3
+# has no recurrent policy at all (MlpPolicy is feed-forward only), which is
+# what sb3-contrib adds: RecurrentPPO + MlpLstmPolicy, same .learn()/.predict()
+# shape otherwise. Pinned to the same minor version as stable-baselines3 above
+# since sb3-contrib tracks it release-for-release.
+sb3-contrib>=2.3       # 2.9.0
+
 # Tests.
 pytest>=8.0           # 9.1.1
 
