@@ -20,6 +20,7 @@ STALENESS = slice(2 * N_BANDS, 3 * N_BANDS)      # (t - last visit) / N_SLOTS
 CURRENT_BAND = slice(3 * N_BANDS, 4 * N_BANDS)   # one-hot of the band just dwelt on
 CLOCK = 4 * N_BANDS                   # normalised episode time
 CAMP_TIME = 4 * N_BANDS + 1           # consecutive slots on current_band / N_SLOTS
+MEASURED_DBM = 4 * N_BANDS + 2        # last dwell's mean measured dBm, clamped+scaled
 
 # The keys of `info` a deployable scheduler may read. `slot`/`time_s` are the
 # receiver's own clock; `band`, `dwell_slots` and `Y` are what its last look did
