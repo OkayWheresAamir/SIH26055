@@ -23,15 +23,44 @@ proves the enforcement is live.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import numpy as np
 import pytest
 
 from rfenv import baselines as B
 from rfenv import constants as K
 from rfenv.env import ScanEnv
-from rfenv.metrics import run_episode
+from rfenv.rollout import run_episode
 from rfenv.scenario import Scenario
 from rfenv.truth import TruthGrid
+
+# Rungs whose factory reads a trained artefact from disk, and where. Every other
+# rung in the ladder is self-contained; the RL rungs are the exception. The
+# paths are duplicated from rfenv.rl/rfenv.rl.ppo's DEFAULT_CHECKPOINTs rather
+# than imported, so this file -- imported by many tests that have nothing to do
+# with RL -- never forces stable-baselines3/torch to be installed just to
+# collect tests. Keyed by rung *number*, not the descriptive key string: those
+# churn as checkpoints get renamed/retrained (already happened twice), the
+# number is the stable identity (mirrors tests/test_rl.py's _key_for_rung).
+_UNTRAINED_RUNG_CHECKPOINTS = {
+    "7": Path("runs/checkpoints/deep_q_network.zip"),
+    "7a": Path("runs/checkpoints/deep_q_network_hit_y.zip"),
+    "8": Path("runs/checkpoints/ppo.zip"),
+    "8a": Path("runs/checkpoints/ppo_fi.zip"),
+    "8b": Path("runs/checkpoints/ppo_fi_100k.zip"),
+    "8c": Path("runs/checkpoints/ppo_fi_2M.zip"),
+}
+
+
+def _skip_if_untrained(key: str) -> None:
+    """These generic per-rung tests check a property of ANY rung, not that a
+    specific checkpoint exists -- that belongs to tests/test_rl.py, which
+    builds its own untrained model and needs no file on disk."""
+    checkpoint = _UNTRAINED_RUNG_CHECKPOINTS.get(B.BY_KEY[key].rung)
+    if checkpoint is not None and not checkpoint.exists():
+        pytest.skip(f"{key} needs a trained checkpoint at {checkpoint} -- "
+                    "run `python -m rfenv.rl` first, or see tests/test_rl.py")
 
 # The gate-4 extremes plus a middling one: 1 detectable emitter, 19, and 72.
 # Stare replays, never scan (D36).
@@ -67,6 +96,7 @@ def test_every_rung_plays_a_legal_episode(worlds, key, config_id):
     the assertion; the counts restate D35, which is the property most easily broken
     by a policy that miscounts a two-slot dwell.
     """
+    _skip_if_untrained(key)
     scenario, grid = worlds[config_id]
     bands, env = bands_taken(key, scenario, grid)
     assert len(bands) == K.N_SLOTS
@@ -82,6 +112,7 @@ def test_a_rung_never_names_a_band_that_is_not_an_action(worlds, key):
     test here and then fail wherever a policy is called directly -- including in
     whatever drives the RL rung.
     """
+    _skip_if_untrained(key)
     scenario, grid = worlds["config_2"]
     env = ScanEnv(scenario=scenario)
     policy = B.make(key, seed=0, grid=grid)
@@ -107,6 +138,7 @@ def test_the_same_seed_reproduces_the_episode_exactly(worlds, key):
     randomness run off the seed, so any tolerance here would be hiding a source of
     randomness that was never seeded.
     """
+    _skip_if_untrained(key)
     scenario, grid = worlds["config_2"]
     a, env_a = bands_taken(key, scenario, grid, seed=7)
     b, env_b = bands_taken(key, scenario, grid, seed=7)
@@ -216,6 +248,7 @@ def test_a_scheduler_never_sees_truth(worlds, key):
     difference between a convention and an enforcement, and D29's asymmetry
     (reward may read truth, observation may not) is only credible as the latter.
     """
+    _skip_if_untrained(key)
     scenario, grid = worlds["config_2"]
     env = ScanEnv(scenario=scenario)
     seen: set[str] = set()
@@ -245,7 +278,7 @@ def test_a_rung_that_reaches_for_truth_fails(worlds):
 def test_the_observation_slices_match_the_environment(worlds):
     """`baselines.HIT_RATE` and friends still describe what `env` builds (D34).
 
-    A silent reordering of the 109-vector would leave every rung running and every
+    A silent reordering of the 146-vector would leave every rung running and every
     other test passing while rung 5 optimised staleness as though it were hit rate.
     """
     scenario, _ = worlds["config_2"]
@@ -259,6 +292,7 @@ def test_the_observation_slices_match_the_environment(worlds):
     hit_rate = np.asarray(obs[B.HIT_RATE], dtype=np.float64)
     visit = np.asarray(obs[B.VISIT_DENSITY], dtype=np.float64)
     stale = np.asarray(obs[B.STALENESS], dtype=np.float64)
+    current = np.asarray(obs[B.CURRENT_BAND], dtype=np.float64)
 
     slot = info["slot"]
     assert obs[B.CLOCK] == pytest.approx(slot / K.N_SLOTS, abs=1e-6)
@@ -269,6 +303,10 @@ def test_the_observation_slices_match_the_environment(worlds):
     assert stale[6] < 0.02
     assert 0.0 <= hit_rate[6] <= 1.0
     assert hit_rate[np.arange(K.N_BANDS) != 6].sum() == pytest.approx(0.0)
+    assert current[6] == pytest.approx(1.0)
+    assert current.sum() == pytest.approx(1.0)     # one-hot: exactly one band current
+    # Camped on band 6 since t=0 with no switch, so the streak equals elapsed time.
+    assert obs[B.CAMP_TIME] == pytest.approx(obs[B.CLOCK], abs=1e-6)
 
 
 # --------------------------------------------------------------------------- #
@@ -316,6 +354,9 @@ def test_the_oracle_captures_more_pulses_than_any_scheduler(worlds):
     _, oracle = bands_taken("oracle_pulse", scenario, grid)
     best = oracle.episode_metrics()["interception_ratio"]
     for key in B.SCHEDULERS:
+        checkpoint = _UNTRAINED_RUNG_CHECKPOINTS.get(B.BY_KEY[key].rung)
+        if checkpoint is not None and not checkpoint.exists():
+            continue
         _, env = bands_taken(key, scenario, grid)
         assert env.episode_metrics()["interception_ratio"] <= best + 1e-12, key
 
@@ -356,7 +397,7 @@ def test_a_reference_line_refuses_to_be_built_without_the_grid():
 
 def test_an_unknown_rung_is_an_error():
     with pytest.raises(KeyError):
-        B.make("deep_q_network", seed=0)
+        B.make("not_a_rung", seed=0)
 
 
 def test_rungs_do_not_share_a_random_stream(worlds):

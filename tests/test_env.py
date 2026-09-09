@@ -40,12 +40,48 @@ def test_passes_the_gymnasium_env_checker():
     check_env(ScanEnv(scenario=Scenario.replay("config_59", "stare")), skip_render_check=True)
 
 
+def test_passes_the_gymnasium_render_check():
+    """With a render_mode actually set, the render check need not be skipped."""
+    check_env(ScanEnv(scenario=Scenario.replay("config_81", "stare"), render_mode="rgb_array"))
+
+
+# --------------------------------------------------------------------------- #
+# Optional rendering -- off unless render_mode is set (nothing about
+# reset()/step() changes either way)
+# --------------------------------------------------------------------------- #
+
+def test_render_is_off_by_default():
+    env = ScanEnv(scenario=Scenario.replay("config_81", "stare"))
+    env.reset(seed=0)
+    assert env.render() is None
+
+
+def test_render_mode_rejects_an_unknown_value():
+    with pytest.raises(ValueError):
+        ScanEnv(scenario=Scenario.replay("config_81", "stare"), render_mode="human")
+
+
+def test_render_before_reset_raises():
+    env = ScanEnv(scenario=Scenario.replay("config_81", "stare"), render_mode="rgb_array")
+    with pytest.raises(RuntimeError):
+        env.render()
+
+
+def test_rgb_array_render_is_a_valid_frame():
+    env = ScanEnv(scenario=Scenario.replay("config_81", "stare"), render_mode="rgb_array")
+    env.reset(seed=0)
+    env.step(0)
+    frame = env.render()
+    assert frame.dtype == np.uint8
+    assert frame.ndim == 3 and frame.shape[2] == 3
+
+
 def test_spaces_are_the_specified_ones():
-    """Discrete(36) and a 36x3+1 = 109 box (D34). Every component of the
+    """Discrete(36) and a 36x4+2 = 146 box (D34). Every component of the
     observation is natively a fraction, so the box is the unit interval."""
     env = ScanEnv(scenario=Scenario.replay("config_59", "stare"))
     assert env.action_space.n == 36
-    assert env.observation_space.shape == (109,)
+    assert env.observation_space.shape == (146,)
     assert env.observation_space.dtype == np.float32
 
     obs, _ = env.reset(seed=0)
@@ -121,24 +157,36 @@ def test_reward_per_unit_time_is_equal_across_dwell_widths():
     assert wide.total_reward == narrow.total_reward == float(K.N_SLOTS)
 
 
-def test_all_three_reward_candidates_run_and_differ():
-    """Exactly three, and the set stays at three (D29). Nothing here ranks them --
-    the selection rule is open and is the human's."""
+def test_all_reward_candidates_run_and_differ():
+    """The registered set: hit_z (default), hit_y, first_intercept -- exactly
+    three (D29). A camping-penalised fourth candidate was tried and retired
+    within this same session (see env.py's commented-out `reward_weighted_camp`
+    draft); REWARDS is back to the original three. Nothing here ranks them --
+    the selection rule is open and is the human's.
+    """
     assert set(REWARDS) == {"hit_z", "hit_y", "first_intercept"}
     assert DEFAULT_REWARD == "hit_z"
 
     sc = Scenario.replay("config_921", "stare")
     totals = {}
+    n_steps = {}
     for name in REWARDS:
         env = ScanEnv(scenario=sc, reward=name)
         episode(env, ROUND_ROBIN)
         totals[name] = env.total_reward
-    # candidate 3 counts each emitter once, so it is bounded by |E| and far smaller
-    assert totals["first_intercept"] < totals["hit_y"]
-    assert totals["first_intercept"] <= len(env.detectable)
-    # 1 and 2 are both per-slot counts over the same looks, so they are close but
-    # not identical: Y misses weak occupied cells and fires on empty ones.
-    assert totals["hit_z"] != totals["hit_y"]
+        n_steps[name] = env.n_steps
+    # first_intercept is flat per dwell, not per emitter: +3 on any dwell with
+    # at least one new (emitter, band) pair, 0.0 on a dwell that only
+    # re-touches known occupancy, -0.5 on a dwell that finds nothing at all --
+    # so its per-dwell payout is bounded to {-0.5, 0.0, 3.0} regardless of
+    # scenario, and the episode total is bounded by that range times the
+    # number of dwells actually taken.
+    assert -0.5 * n_steps["first_intercept"] <= totals["first_intercept"] <= 3.0 * n_steps["first_intercept"]
+    # All three differ -- 1 and 2 are both per-slot counts over the same looks
+    # so they are close but not identical (Y misses weak cells, fires on empty
+    # ones); 3 is a different shape of reward (flat per-dwell) entirely.
+    values = list(totals.values())
+    assert len(set(values)) == len(values)
 
 
 def test_an_unknown_reward_is_refused():
@@ -234,9 +282,13 @@ def test_every_episode_starts_cold():
     episode(env, ROUND_ROBIN, seed=1)
     again, _ = env.reset(seed=2)
     assert np.array_equal(first, again)
-    # staleness is 1.0 everywhere (nothing seen), hit rate and density are 0
+    # staleness is 1.0 everywhere (nothing seen), hit rate and density are 0,
+    # current_band is a one-hot on band 0 (reset()'s initial _current_band),
+    # and the clock and camp_time scalars are both 0.
     assert (first[:36] == 0).all() and (first[36:72] == 0).all()
-    assert (first[72:108] == 1).all() and first[108] == 0
+    assert (first[72:108] == 1).all()
+    assert first[108] == 1 and (first[109:144] == 0).all()
+    assert first[144] == 0 and first[145] == 0
 
 
 # --------------------------------------------------------------------------- #
