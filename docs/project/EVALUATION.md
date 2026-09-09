@@ -178,7 +178,9 @@ imprint is the point. `rfenv/compare.py` refuses a scan replay rather than trust
 | 5 | **Recency / activity heuristic** | Simple adaptive benchmark: `argmax(hit rate + gap measured in reference sweeps)` over the D34 observation. |
 | 6a | **Apfeld: Active RFs** | Apfeld's own ablation — the tentative list with no period estimation (D13, D45). |
 | 6 | **Apfeld adaptive** | Published non-learning adaptive strategy (`docs/reference/scheduling/paperSSPD (1).pdf` §II), adapted to a binary-detection receiver (D44). The serious bar. |
-| 7 | **RL scheduler** | Ours. **Does not exist yet.** |
+| 7 | **DQN** | Ours. Built (D48). **No runnable checkpoint** — all six DQN/PPO checkpoints predate D49's observation change and cannot execute. |
+| 8 | **PPO** | Ours. Built (D48). Same: no runnable checkpoint. |
+| 9 | **Recurrent PPO (LSTM)** | Ours. Built (D48). The only RL family with runnable checkpoints; measured below. |
 | — | **Greedy static, truth-fed** | Reference line: D14's camper, which knew where the pulses were. Not a scheduler. |
 | — | **Pulse-capture oracle** | Ceiling **for interception ratio only**. Not a baseline — a reference line. |
 
@@ -220,6 +222,43 @@ as **D46**.
 
 "Beats round-robin on both" is paired per episode — same scenario, same seed, same truth grid —
 because a mean can clear a mean while losing most scenarios.
+
+### Rung 9 (RL) joins the table — measured 2026-09-09
+
+`python -m rfenv.compare --seeds 3 --sampled 10 --figures --out runs/baselines`, run
+2026-09-09T20:30:50Z at the same 57 scenarios × 3 seeds, reward `reward_balance`, 13 buildable
+rungs = **2,223 episodes**. **Every heuristic row and both reference lines above reproduce
+exactly**, `recency`'s 70.2% included — that reproduction is what licenses the new rows.
+
+| # | scheduler | interception ratio | censored intercept time (s) | emitter coverage | beats round-robin on **both** |
+|---|---|---|---|---|---|
+| 9a | Recurrent PPO, 100k | 0.1251 | 19.16 | 0.125 | 1.8% |
+| 9b | Recurrent PPO, 200k | 0.2265 | 16.26 | 0.252 | **0.0%** |
+| 9c | Recurrent PPO, 300k | 0.1695 | 16.26 | 0.248 | 1.8% |
+| 9d | Recurrent PPO, 400k | 0.2052 | 15.49 | 0.282 | **0.0%** |
+
+**Rungs 7 and 8 have no row**, and their absence is a result in itself: every DQN and PPO
+checkpoint was trained against a narrower observation vector and cannot run at all (D49). What is
+in the table is rung 9 only.
+
+**The RL rungs beat rung 5 on interception ratio and lose the comparison anyway.** 0.2265 against
+`recency`'s 0.1104, winning that column on 78.9% of paired episodes — while censored intercept time
+is four to five times worse and coverage is a third. Set those rows beside rung 4 (0.2088 / 9.67 /
+0.497 / 1.8%) and rung 6 (0.2455 / 14.86 / 0.367 / 4.1%) and the profile is the same one: **the
+agent converged on the camping exploit that rung 4 exists to demonstrate is available** (D14).
+Rung 4 was put in the ladder to show a single metric can be gamed; rung 9 is the measurement that
+an agent will game it if the ladder lets it.
+
+This is why §4 prints the three metrics together and never one alone. An RL row reported on
+interception ratio by itself would read as a win over every heuristic in the table.
+
+**One qualification, and it is not small.** Every number above — and every RL number in this
+repository — was produced with `deterministic=True` at inference. Measured 2026-09-09 on one
+episode, the same checkpoints queried with sampled actions spread airtime over 27–32 of 36 bands
+instead of 1–2, and coverage triples to 0.79. The learned action distribution is broad
+(`entropy_loss = -2.58` against a `ln(36) = 3.58` maximum); the argmax of it is not. Whether the
+camping profile above survives sampled inference **has not been measured at this scale** and is the
+outstanding question for the lane.
 
 **What the ladder says, and it is not what D14 predicted.**
 
