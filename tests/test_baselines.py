@@ -50,17 +50,45 @@ _UNTRAINED_RUNG_CHECKPOINTS = {
     "8a": Path("runs/checkpoints/ppo_fi.zip"),
     "8b": Path("runs/checkpoints/ppo_fi_100k.zip"),
     "8c": Path("runs/checkpoints/ppo_fi_2M.zip"),
+    "9": Path("runs/checkpoints/recurrent_ppo.zip"),
+    "9a": Path("runs/checkpoints/lstm_ppo4_100000_steps.zip"),
+    "9b": Path("runs/checkpoints/lstm_ppo4_200000_steps.zip"),
+    "9c": Path("runs/checkpoints/lstm_ppo4_300000_steps.zip"),
+    "9d": Path("runs/checkpoints/lstm_ppo4_400000_steps.zip"),
 }
+
+
+def _unusable_checkpoint(key: str) -> str | None:
+    """Why this rung's checkpoint cannot be used here, or None if it can.
+
+    Two distinct reasons, and the second is the one that used to be missed:
+    the file may be **absent** (never trained on this machine), or it may be
+    **present but stale** -- trained against a narrower observation vector and
+    unable to run in the current environment at all (D49). Only the first was
+    checked before, so restoring a set of stale checkpoints to disk turned ~30
+    clean skips into failures whose message was a bare shape error.
+    """
+    checkpoint = _UNTRAINED_RUNG_CHECKPOINTS.get(B.BY_KEY[key].rung)
+    if checkpoint is None:
+        return None
+    if not checkpoint.exists():
+        return (f"{key} needs a trained checkpoint at {checkpoint} -- "
+                "run `python -m rfenv.rl` first, or see tests/test_rl.py")
+    from rfenv.rl.common import checkpoint_is_usable
+    if not checkpoint_is_usable(checkpoint):
+        return (f"{key}'s checkpoint {checkpoint} was trained against a "
+                "different observation width and can no longer run (D49) -- "
+                "retrain it to include this rung")
+    return None
 
 
 def _skip_if_untrained(key: str) -> None:
     """These generic per-rung tests check a property of ANY rung, not that a
     specific checkpoint exists -- that belongs to tests/test_rl.py, which
     builds its own untrained model and needs no file on disk."""
-    checkpoint = _UNTRAINED_RUNG_CHECKPOINTS.get(B.BY_KEY[key].rung)
-    if checkpoint is not None and not checkpoint.exists():
-        pytest.skip(f"{key} needs a trained checkpoint at {checkpoint} -- "
-                    "run `python -m rfenv.rl` first, or see tests/test_rl.py")
+    reason = _unusable_checkpoint(key)
+    if reason is not None:
+        pytest.skip(reason)
 
 # The gate-4 extremes plus a middling one: 1 detectable emitter, 19, and 72.
 # Stare replays, never scan (D36).
@@ -278,7 +306,7 @@ def test_a_rung_that_reaches_for_truth_fails(worlds):
 def test_the_observation_slices_match_the_environment(worlds):
     """`baselines.HIT_RATE` and friends still describe what `env` builds (D34).
 
-    A silent reordering of the 146-vector would leave every rung running and every
+    A silent reordering of the 147-vector would leave every rung running and every
     other test passing while rung 5 optimised staleness as though it were hit rate.
     """
     scenario, _ = worlds["config_2"]
@@ -307,6 +335,7 @@ def test_the_observation_slices_match_the_environment(worlds):
     assert current.sum() == pytest.approx(1.0)     # one-hot: exactly one band current
     # Camped on band 6 since t=0 with no switch, so the streak equals elapsed time.
     assert obs[B.CAMP_TIME] == pytest.approx(obs[B.CLOCK], abs=1e-6)
+    assert 0.0 <= obs[B.MEASURED_DBM] <= 1.0
 
 
 # --------------------------------------------------------------------------- #
@@ -354,8 +383,7 @@ def test_the_oracle_captures_more_pulses_than_any_scheduler(worlds):
     _, oracle = bands_taken("oracle_pulse", scenario, grid)
     best = oracle.episode_metrics()["interception_ratio"]
     for key in B.SCHEDULERS:
-        checkpoint = _UNTRAINED_RUNG_CHECKPOINTS.get(B.BY_KEY[key].rung)
-        if checkpoint is not None and not checkpoint.exists():
+        if _unusable_checkpoint(key) is not None:
             continue
         _, env = bands_taken(key, scenario, grid)
         assert env.episode_metrics()["interception_ratio"] <= best + 1e-12, key
