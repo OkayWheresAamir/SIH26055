@@ -21,6 +21,7 @@ import pytest
 from rfenv import constants as K
 from rfenv import metrics as M
 from rfenv.env import ScanEnv
+from rfenv.rollout import run_episode
 from rfenv.scenario import Scenario
 
 ROUND_ROBIN = lambda obs, info: info["slot"] % K.N_BANDS
@@ -37,7 +38,7 @@ def scenario():
 
 def finished(scenario, policy=ROUND_ROBIN, seed=0, reward="hit_z"):
     env = ScanEnv(scenario=scenario, reward=reward)
-    return M.run_episode(env, policy, seed=seed)
+    return run_episode(env, policy, seed=seed)
 
 
 def written(tmp_path, scenario, policy=ROUND_ROBIN, seed=0, scheduler="round_robin"):

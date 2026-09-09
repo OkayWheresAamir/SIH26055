@@ -5,7 +5,7 @@ its whole world:
 
     action       choose one of 36 bands
     observation  what its own scan history has taught it -- nothing else
-    reward       one of three candidates, all of which may read truth
+    reward       one of REWARDS' registered candidates, all of which may read truth
     time         advances by the chosen band's native dwell, 1 or 2 slots
 
 Three properties of this interface are load-bearing and none of them is a
@@ -54,23 +54,39 @@ from rfenv.truth import TruthGrid
 #
 # Exactly three, and the set stays at three (D29): every candidate scored on the
 # same 47 scenarios is another draw, and best-of-many is partly selection noise.
+# A camping-penalised fourth candidate was registered and retired within this
+# same working session (see git history / `reward_weighted_camp`, kept below
+# as a commented-out draft alongside a further `reward_hybrid` sketch) --
+# neither is active; REWARDS holds exactly the original three again.
 #
-# All three are **per slot**, and a dwell's reward is the sum over its slots
-# (D31), so a 100 ms dwell can earn up to +2. That keeps reward per unit time
-# equal across wide and narrow bands. The rejected alternative -- +1 per dwell
-# regardless of length -- would make the seven wide bands strictly dominated, and
+# Candidates 1 and 2 are **per slot**, and a dwell's reward is the sum over its
+# slots (D31), so a 100 ms dwell can earn up to +2. That keeps reward per unit
+# time equal across wide and narrow bands -- the alternative, +1 per dwell
+# regardless of length, would make the seven wide bands strictly dominated, and
 # those are measurably the bands holding the densest emitter populations and the
-# slowest rotators. It would also be the only per-dwell quantity in a project
-# whose every judging metric is per-slot or per-illumination.
+# slowest rotators.
+#
+# Candidate 3 is the exception: it is flat per dwell by design (a discovery is
+# worth the same whether the dwell that found it was 1 or 2 slots), so it does
+# not carry D31's per-slot invariant -- see `reward_first_intercept`'s own
+# docstring for why.
 #
 # D28 puts the two headline metrics on opposite sides of the Y/Z line -- censored
 # intercept time needs Y = 1, interception ratio does not -- so no single reward
 # is aligned with both. That is why there are three rather than one, and why the
 # rule for choosing between them is a human decision recorded as open in D29.
 # Nothing here ranks them.
+#
+# Every candidate takes `camp_slots` (see `ScanEnv.step`'s streak counter)
+# though none of the three currently active read it, the same way every
+# candidate already takes `newly` even though only candidate 3 reads that --
+# one call signature for `self._reward_fn(dwell, newly, camp_slots)`, not a
+# special case per candidate. Kept even unused so a camping-aware candidate
+# (see the commented-out drafts below) can be re-enabled without touching the
+# call site again.
 
 
-def reward_hit_z(dwell: DwellResult, newly: set[int]) -> float:
+def reward_hit_z(dwell: DwellResult, newly: set[int], camp_slots: int) -> float:
     """Candidate 1, the default: +1 per **true** hit, cell-level `Z` (D5).
 
     Values every occupied cell equally, whatever its level, so it prices
@@ -80,7 +96,7 @@ def reward_hit_z(dwell: DwellResult, newly: set[int]) -> float:
     return float(dwell.Z.sum())
 
 
-def reward_hit_y(dwell: DwellResult, newly: set[int]) -> float:
+def reward_hit_y(dwell: DwellResult, newly: set[int], camp_slots: int) -> float:
     """Candidate 2: +1 per **declared** hit `Y` -- what the receiver actually said.
 
     Weights cells by loudness, since `P(Y=1) = Phi((S-gamma)/sigma)` runs from 0.5
@@ -96,24 +112,95 @@ def reward_hit_y(dwell: DwellResult, newly: set[int]) -> float:
     return float(dwell.Y.sum())
 
 
-def reward_first_intercept(dwell: DwellResult, newly: set[int]) -> float:
-    """Candidate 3: +1 per emitter intercepted for the **first** time (D28).
+def reward_first_intercept(dwell: DwellResult, newly: set[int], camp_slots: int) -> float:
+    """Candidate 3: a flat +3 per dwell that finds at least one emitter for the
+    **first time in a given band** (D28's own-first-intercept rule, extended
+    per-band rather than per-episode -- see `ScanEnv.step`'s `newly`), whatever
+    the count of new emitters that dwell credits. A dwell that finds nothing new
+    still earns +1 if it lands on an occupied cell at all (`Z`, even a cell
+    belonging to an already-found emitter), minus a flat 0.5 -- so an empty look
+    nets -0.5, a look that re-touches known occupancy nets +0.5, and a look that
+    surfaces a new (emitter, band) pair nets +3 outright.
 
-    The discovery weighting D5 flagged as open; D28 gives it the precise
-    definition it lacked. Unaffected by the per-slot rule -- an emitter is
-    first-intercepted once, whichever slot of the dwell delivers it.
+    Deliberately flat rather than `+1 * len(newly)`: this candidate prices *that*
+    a dwell discovered something at all, not how many, and does not scale with
+    dwell width the way candidates 1/2 and D31 do -- a discovery is worth the
+    same whether it lands on a 1- or 2-slot band.
 
     Reads truth, which is allowed (D29) and necessary: novelty is not something
     binary hit/miss can perceive. Whether a policy can *learn* to act on a signal
     it cannot observe is the open question D30 raises; it does not block training.
     """
-    return float(len(newly))
+    reward = 0.0
+    if len(newly) == 0:
+        reward -= 0.5
+        if float(dwell.Z.sum()) > 0:
+            reward += 0.5
+    else:
+        reward += 3.0
+    return reward
+
+# def reward_weighted_camp(dwell: DwellResult, newly: set[int], camp_slots: int) -> float:
+#     """Candidate 4: discovery credit plus declared-hit credit, each dwell's
+#     declared-hit term taxed in proportion to how long the current streak on
+#     this band has run.
+
+#         reward  = 3 * len(newly)              if newly, else -0.5
+#         reward += Y.sum() - 0.1 * (camp_slots - 1)   if Y.sum() > 0
+#         reward -= 0.1 * camp_slots                   otherwise
+
+#     Unlike candidates 1-3, `camp_slots` here is a **linear per-slot fee**, not
+#     a normalised, bounded discount -- it grows without limit over a long
+#     streak, so this candidate is not bounded above or below by any other
+#     candidate's total on the same episode (measured: it can exceed
+#     `reward_hit_z`'s total by using the `newly` bonus, which `reward_hit_z`
+#     doesn't have, at all). What it does guarantee, holding a dwell's own
+#     occupancy fixed, is that a longer streak on the same band always pays
+#     strictly less than a shorter one for that same look -- see
+#     `tests/test_env.py::test_weighted_camp_reward_penalises_longer_camping`.
+
+#     Reads `Y` and `newly` for the same reasons candidates 2 and 3 do (D29).
+#     """
+#     reward = 0.0
+#     if len(newly) != 0:
+#         reward += 3.0 * len(newly)
+#     else:
+#         reward -= 0.5
+#     if dwell.Y.sum() > 0:
+#         reward += float(dwell.Y.sum()) - (0.1 * (camp_slots - 1))
+#     else:
+#         reward -= 0.1 * camp_slots
+#     return reward
+
+# def reward_hybrid(dwell: DwellResult, newly: set[int], camp_slots: int) -> float:
+#     reward = 0.0
+
+#     # 1. New emitter-band discovery
+#     if len(newly) != 0:
+#         reward += 3.0 * len(newly)
+#     else:
+#         reward -= 0.5
+
+#         # 2. There was activity, even though it wasn't new
+#         if float(dwell.Z.sum()) > 0:
+#             reward += 0.5
+
+#     # 3. Recency / exploration bonus
+#     gap_sweeps = (
+#         float(obs[STALENESS][action])
+#         * N_SLOTS
+#         / SWEEP_SLOTS
+#     )
+
+#     reward += 0.1 * gap_sweeps
+
+#     return reward
 
 
 REWARDS = {
     "hit_z": reward_hit_z,
     "hit_y": reward_hit_y,
-    "first_intercept": reward_first_intercept,
+    "first_intercept": reward_first_intercept
 }
 DEFAULT_REWARD = "hit_z"
 
@@ -132,7 +219,11 @@ class ScanEnv(gym.Env):
     repeats and there is nothing to memorise -- D25, D32).
     """
 
-    metadata = {"render_modes": []}
+    # "human" is deliberately not offered: this project's rendering stack forces
+    # the Agg backend (render.py) so tests and CI never try to open a window.
+    # Use "rgb_array" and assemble frames yourself, or see
+    # `render.compare_animation` for a ready-made multi-scheduler version.
+    metadata = {"render_modes": ["rgb_array"], "render_fps": 20}
 
     def __init__(
         self,
@@ -142,25 +233,33 @@ class ScanEnv(gym.Env):
         reward: str = DEFAULT_REWARD,
         gamma_dbm: float = GAMMA_DBM,
         sigma_db: float = NOISE_SIGMA_DB,
+        render_mode: str | None = None,
     ):
         super().__init__()
         if scenario is None and pool is None:
             raise ValueError("ScanEnv needs a `scenario` to replay or a `pool` to sample from")
         if reward not in REWARDS:
             raise ValueError(f"reward must be one of {sorted(REWARDS)}, got {reward!r}")
+        if render_mode is not None and render_mode not in self.metadata["render_modes"]:
+            raise ValueError(
+                f"render_mode must be one of {self.metadata['render_modes']}, got {render_mode!r}"
+            )
 
+   
         self._scenario = scenario
         self._pool = pool
         self.reward_name = reward
         self._reward_fn = REWARDS[reward]
         self.gamma = float(gamma_dbm)
         self.sigma = float(sigma_db)
+        self.render_mode = render_mode
 
         self.action_space = spaces.Discrete(N_BANDS)
-        # 36 x 3 + 1 = 109 (D34). Every component is natively a fraction, so the
-        # box is the unit interval and no scaling layer is needed anywhere.
+        # 36 x 4 + 2 = 146 (D34). Every component is natively a fraction (the
+        # current-band block is a one-hot, still 0/1-valued), so the box is the
+        # unit interval and no scaling layer is needed anywhere.
         self.observation_space = spaces.Box(
-            low=0.0, high=1.0, shape=(N_BANDS * 3 + 1,), dtype=np.float32
+            low=0.0, high=1.0, shape=(N_BANDS * 4 + 2,), dtype=np.float32
         )
 
         self.grid: TruthGrid | None = None
@@ -185,12 +284,14 @@ class ScanEnv(gym.Env):
         self.scenario = scenario
         self.grid = TruthGrid.from_scenario(scenario)
         self.receiver = Receiver(self.gamma, self.sigma, rng=self.np_random)
-
+        self._current_band = 0
         self.t = 0
         self._slots_looked = np.zeros(N_BANDS, dtype=np.int64)
         self._hits = np.zeros(N_BANDS, dtype=np.int64)
         self._last_slot = np.full(N_BANDS, -1, dtype=np.int64)
         self._last_hit_slot = np.full(N_BANDS, -1, dtype=np.int64)
+        self._prev_action = -1
+        self._camp_slots = 0
 
         # Evaluator-side episode state. E is the coverage denominator: emitters
         # with a non-empty detectable interval, not every transmitter in the
@@ -215,12 +316,26 @@ class ScanEnv(gym.Env):
         if self.grid is None:
             raise RuntimeError("call reset() before step()")
         action = int(action)
+  
         if not self.action_space.contains(action):
             raise ValueError(f"action {action} outside 0..{N_BANDS - 1}")
         if self.t >= N_SLOTS:
             raise RuntimeError("episode is over; call reset()")
 
+        self._current_band = action
+
         dwell = self.receiver.dwell(self.grid, action, self.t)
+
+        # Camping streak: consecutive slots spent on this same band, reset the
+        # moment the action changes. Slots, not dwells, so a run of narrow
+        # (1-slot) dwells on one band doesn't read as "less camped" than the
+        # same airtime spent on a wide (2-slot) one -- consistent with airtime
+        # being the only currency (D31).
+        if action == self._prev_action:
+            self._camp_slots += dwell.n_slots
+        else:
+            self._camp_slots = dwell.n_slots
+        self._prev_action = action
 
         # Per-emitter tracks, per D28. Slots inside a dwell arrive in order, so
         # the first sighting recorded for an emitter is its earliest.
@@ -244,12 +359,22 @@ class ScanEnv(gym.Env):
             else:
                 track["last"] = slot
                 track["count"] += 1
+                # `newly` fires again on a band this emitter hasn't been
+                # credited in before -- not just its true first-ever intercept.
+                # Deliberate (reward_first_intercept): an emitter generically
+                # spans 2 overlapping bands (D3), so this rewards sweeping an
+                # emitter's full footprint, not only its first sighting.
+                # `first`/`first_e` (censored intercept time) is untouched --
+                # only this reward-facing set is widened.
+                if dwell.band not in track["bands"]:
+                    newly.add(emitter)
                 track["bands"].add(dwell.band)
 
-        reward = float(self._reward_fn(dwell, newly))
+        reward = float(self._reward_fn(dwell, newly, self._camp_slots))
 
         self._slots_looked[action] += dwell.n_slots
         self._hits[action] += int(dwell.Y.sum())
+        
         self._last_slot[action] = dwell.slot0 + dwell.n_slots - 1
         hit_slots = np.flatnonzero(dwell.Y)
         if hit_slots.size:
@@ -298,7 +423,7 @@ class ScanEnv(gym.Env):
     # ----------------------------------------------------------- observation --
 
     def _observation(self) -> np.ndarray:
-        """The 109-vector (D34), built from the agent's own scan history alone.
+        """The 146-vector (D34), built from the agent's own scan history alone.
 
         Each of the three per-band quantities maps onto one of the PS's own
         figures of merit, which is why these three:
@@ -308,6 +433,19 @@ class ScanEnv(gym.Env):
           staleness      what makes this restless rather than a plain bandit: a
                          band ignored for 10 s may have become busy without
                          telling you
+
+        A fourth, `current_band`, is a one-hot of the band this observation is
+        being computed after -- so the agent can tell "I am here now" apart from
+        "I last looked here a while ago" (`staleness` alone conflates the two,
+        since the currently-tuned band always reads staleness 0 too).
+
+        A final scalar, `camp_time`, is how long the *current streak* on this
+        band has run: consecutive slots spent on whatever band `current_band`
+        points to, reset the instant the action changes (see `ScanEnv.step`),
+        normalised by `N_SLOTS`. `visit_density` is the wrong signal for this --
+        it is airtime share over the *whole* episode, so a band camped early and
+        abandoned still reads high density long after the agent moved on;
+        `camp_time` collapses back to 0 the moment it leaves.
 
         Nothing truth-side appears here. `Z`, per-emitter levels and `first_e` are
         all available to the *reward* (D29) and all absent from this vector.
@@ -328,9 +466,14 @@ class ScanEnv(gym.Env):
             self._last_slot >= 0, (self.t - self._last_slot) / N_SLOTS, 1.0
         )
 
+        current_band = np.zeros(N_BANDS, dtype=np.float64)
+        current_band[self._current_band] = 1.0
+
+        camp_time = self._camp_slots / N_SLOTS
+
         return np.concatenate([
-            hit_rate, visit_density, staleness, [self.t / N_SLOTS]
-        ]).astype(np.float32)
+            hit_rate, visit_density, staleness, current_band,
+            [self.t / N_SLOTS], [camp_time]]).astype(np.float32)
 
     # ------------------------------------------------------------------ info --
 
@@ -365,6 +508,28 @@ class ScanEnv(gym.Env):
             info["detectable"] = dict(self.detectable)
             info["emitter_table"] = self.emitter_table()
         return info
+
+    # --------------------------------------------------------------- render --
+
+    def render(self):
+        """Optional visualisation -- off unless `render_mode` was set at construction.
+
+        Returns an (H, W, 3) uint8 array for `render_mode="rgb_array"`: the
+        truth grid as background, with the tuning path and declared hits
+        accumulated in `self.log` so far. `None` if `render_mode` is `None`
+        (the default), which is the whole "optional" part -- nothing about
+        `reset()`/`step()` changes either way.
+
+        Lazy import: `render.py` is the only module that imports matplotlib,
+        and every other part of the environment must keep working without a
+        plotting stack installed (`rfenv/render.py`'s own module docstring).
+        """
+        if self.render_mode is None:
+            return None
+        if self.grid is None:
+            raise RuntimeError("call reset() before render()")
+        from rfenv import render as R
+        return R.env_frame(self)
 
     def _append_log(self, dwell: DwellResult) -> None:
         """One row **per slot**, as `EVALUATION.md` §8 specifies.

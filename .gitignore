@@ -1,4 +1,9 @@
 .venv/
+venv/
+
+# Claude Code's own local config/permissions — machine-specific, not shared.
+.claude/
+
 __pycache__/
 *.py[cod]
 .pytest_cache/
@@ -22,3 +27,6 @@ runs/
 # .pdf. The .md is the source and the .pdf is what gets handed over; the .html
 # is neither.
 docs/project/*_HANDOFF.html
+
+
+Claude outputs/

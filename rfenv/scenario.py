@@ -82,12 +82,13 @@ def _guard_heldout(path: Path, allow_heldout: bool, reason: str = "") -> None:
             "# Held-out data use log\n\n"
             "Every read of `data/turing/*/test_*` (D8). Appended automatically by\n"
             "`rfenv.scenario`. An entry here is a claim that the system was frozen\n"
-            "at the time.\n\n"
+            "at the time.\n\n",
+            encoding="utf-8",
         )
     from datetime import datetime, timezone
 
     stamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-    with HELDOUT_USE_LOG.open("a") as fh:
+    with HELDOUT_USE_LOG.open("a", encoding="utf-8") as fh:
         fh.write(f"- `{stamp}` — `{path}` — {reason or 'no reason given'}\n")
 
 

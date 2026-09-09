@@ -53,12 +53,12 @@ from rfenv.env import DEFAULT_REWARD, ScanEnv
 from rfenv.metrics import (
     aggregate,
     run_dir,
-    run_episode,
     scheduler_metrics,
     write_metrics_json,
     write_run,
 )
 from rfenv.receiver import operating_point
+from rfenv.rollout import run_episode
 from rfenv.scenario import EmitterPool, Scenario, list_configs
 from rfenv.truth import TruthGrid
 
@@ -445,8 +445,9 @@ FIGURE_SCENARIOS = ("config_81", "config_2", "config_921")
 
 
 def figures(out_root: Path, summary: dict[str, dict], keys: tuple[str, ...],
-            seed: int, reward: str) -> list[Path]:
-    """The three comparison pictures, plus a per-scenario timeline for each extreme.
+            seed: int, reward: str, *, gif_stride: int = 8, gif_fps: int = 12) -> list[Path]:
+    """The three comparison pictures, a per-scenario timeline, and an animated
+    GIF of the same rows, for each of the fixed scenarios.
 
     Import is local: matplotlib belongs to `render.py` and the comparison must run
     without a plotting stack.
@@ -456,12 +457,24 @@ def figures(out_root: Path, summary: dict[str, dict], keys: tuple[str, ...],
     are re-run here rather than reloaded from `out_root` because a figure of one
     scenario needs every rung's artefacts for that scenario together, and finding
     them by path would be reconstructing what `compare()` already knows.
+
+    **One combined GIF per scenario, not one per rung.** `render.compare_animation`
+    already draws every compared rung as a synced row in one file -- that's what
+    "compare" means, and it's the same artefacts `schedule_timeline` draws from, so
+    the still and the animated picture cannot disagree. `gif_stride`/`gif_fps` default
+    coarser than `compare_animation`'s own (stride=4) on purpose: this runs
+    automatically on every `--figures` call, for as many rungs as were compared, so
+    the default has to stay reasonable rather than the smoothest possible.
     """
     from rfenv import render
 
     written = []
     render.pareto(
-        {B.BY_KEY[k].label: row for k, row in _means(summary).items()},
+        # Keyed by rung key (unique) with the display label carried inside the
+        # row, not used as the key itself -- two rungs sharing a label (e.g.
+        # two PPO variants) must still draw as two points (see render.pareto's
+        # docstring for the bug this avoids).
+        {k: {**row, "label": B.BY_KEY[k].label} for k, row in _means(summary).items()},
         out_root / "pareto.png",
         title="The baseline ladder on the two PS objectives",
     )
@@ -482,8 +495,13 @@ def figures(out_root: Path, summary: dict[str, dict], keys: tuple[str, ...],
             runs, out_root / f"discovery_{config_id}.png",
             title=f"Emitters found against time — {scenario.name}, seed {seed}",
         )
+        render.compare_animation(
+            runs, grid, out_root / f"animation_{config_id}.gif",
+            stride=gif_stride, fps=gif_fps,
+        )
         written += [out_root / f"timeline_{config_id}.png",
-                    out_root / f"discovery_{config_id}.png"]
+                    out_root / f"discovery_{config_id}.png",
+                    out_root / f"animation_{config_id}.gif"]
     return written
 
 
@@ -508,6 +526,9 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--reward", default=DEFAULT_REWARD,
                     help="reward candidate; affects the reward column only (D7)")
     ap.add_argument("--figures", action="store_true", help="write the comparison plots")
+    ap.add_argument("--gif-stride", type=int, default=8,
+                     help="slots between animation frames, --figures only (default 8)")
+    ap.add_argument("--gif-fps", type=int, default=12, help="--figures only")
     args = ap.parse_args(argv)
 
     keys = tuple(r.key for r in B.LADDER)
@@ -558,12 +579,14 @@ def main(argv: list[str] | None = None) -> int:
         ),
     )
     (out_root / "summary.json").write_text(
-        json.dumps({"meta": meta, "ladder": summary}, indent=2, default=_jsonable) + "\n"
+        json.dumps({"meta": meta, "ladder": summary}, indent=2, default=_jsonable) + "\n",
+        encoding="utf-8",
     )
-    (out_root / "comparison.md").write_text(_report_md(summary, meta))
+    (out_root / "comparison.md").write_text(_report_md(summary, meta), encoding="utf-8")
 
     if args.figures:
-        for path in figures(out_root, summary, keys, seeds[0], args.reward):
+        for path in figures(out_root, summary, keys, seeds[0], args.reward,
+                            gif_stride=args.gif_stride, gif_fps=args.gif_fps):
             print(f"  figure: {path}")
 
     print()

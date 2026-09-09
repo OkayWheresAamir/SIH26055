@@ -12,7 +12,7 @@ numpy>=2.0            # 2.5.2
 h5py>=3.10            # 3.16.0 — reading the Turing HDF5 recordings
 gymnasium>=1.0        # 1.3.0  — the L3 agent interface
 
-# Artefacts. matplotlib is imported by `rfenv/render.py` and by nothing else, so
+# Artefacts. matplotlib is imported by `rfenv/render/` and by nothing else, so
 # the environment, its metrics and the whole test suite bar tests/test_render.py
 # run without a plotting stack installed.
 matplotlib>=3.8       # 3.11.1
@@ -20,6 +20,14 @@ matplotlib>=3.8       # 3.11.1
 # docsearch/. Lazily imported in `docsearch/corpus.py` — only needed to rebuild
 # the index (`python -m docsearch.corpus --rebuild`), not to query it.
 pymupdf>=1.24         # 1.28.2
+
+# rfenv/rl/ — rungs 7 (DQN) and 8 (PPO), EVALUATION.md §5. Imported by
+# tests/test_rl.py and lazily by rfenv/baselines/ladder.py's rung 7/8 factories
+# only, so the rest of the suite runs without a training stack installed. SB3
+# has historically pinned an upper bound on gymnasium, and this project runs
+# gymnasium==1.3.0 — confirmed compatible below (step 1 of verification).
+torch>=2.3             # 2.14.0
+stable-baselines3>=2.3 # 2.9.0
 
 # Tests.
 pytest>=8.0           # 9.1.1
