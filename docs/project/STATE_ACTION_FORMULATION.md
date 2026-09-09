@@ -24,10 +24,11 @@ entry's own recorded measurement and are labelled as such, not re-measured here.
 ```
 Current situation  →  What the agent knows (STATE)  →  What it can do (ACTION)
 ──────────────────────────────────────────────────────────────────────────────
- t slots elapsed       109 floats in [0,1], built ONLY       pick 1 of 36 bands
- of 600 (30 s);        from its own past looks:              to point the receiver
- 36 bands, unknown     per-band hit rate, visit              at next. That is the
- who is transmitting   density, staleness, + clock           entire action space.
+ t slots elapsed       147 floats in [0,1], built ONLY       pick 1 of 36 bands
+ of 600 (30 s);        from its own past looks: per-band      to point the receiver
+ 36 bands, unknown     hit rate, visit density, staleness,    at next. That is the
+ who is transmitting   current band, + clock, camp time,      entire action space.
+                       last measured level
 ```
 
 The problem statement calls interception *"a two dimensional search problem since it involves
@@ -69,12 +70,17 @@ band that was empty a second ago may be busy now. That is the whole problem.
 ### 2.1 The observation space
 
 ```python
-observation_space = spaces.Box(low=0.0, high=1.0, shape=(109,), dtype=np.float32)   # rfenv/env.py:162
+observation_space = spaces.Box(low=0.0, high=1.0, shape=(147,), dtype=np.float32)
 ```
 
-**109 = 36 × 3 + 1.** Every component is natively a fraction, so the box is the unit interval and
-**no scaling or normalisation layer is needed anywhere** — verified at runtime, `obs.min() = 0.0`,
-`obs.max() = 1.0`. Ratified as **D34** (`SETTLED`).
+**147 = 36 × 4 + 3.** Every component is natively a fraction, so the box is the unit interval and
+**no scaling or normalisation layer is needed anywhere**.
+
+D34 ratified the base **109 = 36 × 3 + 1** (hit rate, visit density, staleness, clock). **D49
+extended it** with `current_band` (36-wide one-hot of the band just dwelt on), `camp_time` (consecutive slots on that band / N_SLOTS) and `measured_dbm` (the last dwell's mean measured level, clamped and rescaled) — 109 → 145 → 146 → 147, in that
+order. D34 remains the base; D49 is the extension and the reason for the current width. Note that
+**every trained checkpoint breaks at each such change**: SB3 sizes a policy's input layer at
+construction, so a width change is a retrain, not a reload.
 
 Layout, in order (`rfenv/env.py::_observation`):
 
@@ -110,7 +116,7 @@ This is **D29**, and it is the single most important rule for this lane:
 
 Training is offline and the policy is frozen before deployment, so the reward is a **training-time
 construct discarded at inference**. It may read the truth grid `Z`, per-emitter signal levels,
-`first_e` — anything. The **observation** may not, because the 109-vector is all a fielded receiver
+`first_e` — anything. The **observation** may not, because the 147-vector is all a fielded receiver
 would actually have.
 
 This is enforced in code, not by convention. `rfenv/baselines.py:69`:
@@ -217,7 +223,7 @@ them: assigning each pulse to the emitter with the nearest median bearing scored
 **The case against.** That accuracy is a **ceiling**, not an achievable figure — it used true labels
 and whole-episode medians. It degrades exactly where the problem is hardest (96.7% → 86.1% going
 from 19 to 99 emitters). And it costs real structure: L1's grid combines cells by `max`, which is
-meaningless on per-emitter bearings, and the fixed-width 109-vector would need a variable-length
+meaningless on per-emitter bearings, and the fixed-width observation vector would need a variable-length
 bearing set encoded by binning or online clustering.
 
 **The trigger that decides it:** a trained agent failing to explore in a way that hit rate, visit
@@ -267,7 +273,7 @@ from rfenv.baselines import OBSERVABLE_INFO
 env = ScanEnv(pool=EmitterPool.from_train(), reward='hit_z')
 obs, info = env.reset(seed=0)
 print('action_space     ', env.action_space)          # Discrete(36)
-print('observation_space', env.observation_space)     # Box(0.0, 1.0, (109,), float32)
+print('observation_space', env.observation_space)     # Box(0.0, 1.0, (147,), float32)
 print('obs shape/range  ', obs.shape, obs.min(), obs.max())
 print('rewards available', sorted(REWARDS))
 print('observable info  ', sorted(OBSERVABLE_INFO))

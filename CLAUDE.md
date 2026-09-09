@@ -11,8 +11,9 @@ whole point of it — follow them before doing anything else.
 
 **Build status (2026-09-04).** `rfenv/` has L0 (`scenario.py`), L1 (`truth.py`), L2
 (`receiver.py`), L3 (`env.py`), the artefact layer (`metrics.py`, `render.py`), `validate.py`
-and now the baseline ladder (`baselines.py`, `compare.py`) all built, with **229 passing tests**
-under `tests/`. **`ENVIRONMENT_SPEC.md`
+and now the baseline ladder (`baselines/`, `compare.py`) all built, with **287 passing tests**
+under `tests/` (42 skipped — mostly rungs whose checkpoints are absent or stale; 1 failing,
+`test_heldout_split_is_refused_without_an_explicit_flag`, which needs the held-out split present). **`ENVIRONMENT_SPEC.md`
 §Build order is complete.**
 
 **The four validation gates ran for the first time on 2026-09-04** (`python -m rfenv.validate`,
@@ -36,7 +37,22 @@ episodes.
 
 **The bar for RL is rung 5, not round-robin.** A one-line index policy (`argmax(hit rate + gap in
 sweeps)`) Pareto-dominates the floor on **70.2%** of episodes; round-robin is beaten by almost
-everything. **Rung 7 (RL) is the only thing missing from the ladder.**
+everything.
+
+**RL is now on the ladder, and it lost — informatively (2026-09-09).** Rungs 7 (DQN), 8 (PPO) and
+9 (Recurrent PPO) are built and registered (**D48**). Measured over 2,223 episodes, rung 9 beats
+rung 5 on interception ratio (0.227 against 0.110, winning that column on 78.9% of paired
+episodes) and scores **0.0–1.8% on the `both` column** against `recency`'s 70.2%, because its
+intercept time is five times worse and its coverage a third. That profile is rung 4's: **the agent
+converged on the camping exploit rung 4 exists to demonstrate is available** (D14). `EVALUATION.md`
+§5 carries the rows.
+
+Two caveats on that result, both live. **Rungs 7 and 8 have no row at all** — every DQN/PPO
+checkpoint predates D49's observation change and cannot execute. And every RL number here was
+produced with `deterministic=True`; on one episode, the same checkpoints queried with *sampled*
+actions spread airtime over 27–32 of 36 bands instead of 1–2, with coverage tripling. The learned
+distribution is broad and its argmax is not, so the camping may be an inference artefact rather
+than a learned policy. **Unmeasured at scale — do not quote the camping result as settled.**
 
 **The environment was frozen on 2026-09-04 (D42).** `rfenv/constants.py` is closed — band
 geometry, slot clock, dwell schedule, `N₀`, `σ`, `γ`, `PD_POPULATION` — and

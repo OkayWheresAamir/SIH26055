@@ -428,8 +428,10 @@ obs, reward, terminated, truncated, info = env.step(action)
 **Action space:** `Discrete(36)`. Choose one of 36 frequency bands to listen to.
 **All 36 are legal at every step — no action masking is needed.**
 
-**Observation space:** `Box(0.0, 1.0, shape=(109,), dtype=float32)`. That is 36×3 + 1, ratified as
-**D34**. Every component is natively a fraction, so **no scaling layer is needed anywhere**:
+**Observation space:** `Box(0.0, 1.0, shape=(147,), dtype=float32)`. That is 36×4 + 3. D34
+ratified the base 36×3 + 1; **D49 extended it** with `current_band` (36-wide one-hot of the band just dwelt on), `camp_time` (consecutive slots on that band / N_SLOTS) and `measured_dbm` (the last dwell's mean measured level, clamped and rescaled). Every component is natively a fraction, so **no scaling layer is
+needed anywhere**. The slice table below covers the base three — see `rfenv/baselines/guard.py`
+for the full current layout:
 
 | Slice | Index | Meaning |
 |---|---|---|

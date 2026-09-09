@@ -129,8 +129,10 @@ that the shape is right. Nothing is inherited from it; its truth grid is an all-
 placeholder, which is precisely the part this spec replaces.
 
 - `action_space = Discrete(36)`
-- `observation_space`: dimension 36×3 + 1 — per-band empirical hit rate, per-band visit
-  density, per-band staleness, plus normalised episode time. **Recorded as D34** (`SETTLED`) —
+- `observation_space`: dimension **36×4 + 3 = 147**. The base 36×3 + 1 — per-band empirical hit
+  rate, per-band visit density, per-band staleness, plus normalised episode time — **recorded as
+  D34** (`SETTLED`), then **extended by D49** with `current_band` (36-wide one-hot of the band just dwelt on), `camp_time` (consecutive slots on that band / N_SLOTS) and `measured_dbm` (the last dwell's mean measured level, clamped and rescaled). D34's own text left extensions to the RL lane; D49 is that
+  extension, and every observation-width change invalidates every trained checkpoint. D34 —
   the choice lived only in this spec until the 2026-09-03 audit found it ungated while its
   proposed extension (D30) correctly was. Ratified as-is; it is not on the freeze list, so it
   stays the RL lane's to extend. These three quantities are derived
