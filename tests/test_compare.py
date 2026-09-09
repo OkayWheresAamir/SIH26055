@@ -25,6 +25,7 @@ from rfenv import compare as C
 from rfenv import constants as K
 from rfenv import metrics as M
 from rfenv.env import ScanEnv
+from rfenv.rollout import run_episode
 from rfenv.scenario import Scenario
 from rfenv.truth import TruthGrid
 
@@ -115,7 +116,7 @@ def test_the_artefacts_reproduce_the_live_environment(scenario, grid, tmp_path):
     """
     run = C.run_one("recency", scenario, 0, tmp_path, grid=grid)
     env = ScanEnv(scenario=scenario)
-    M.run_episode(env, B.make("recency", seed=0, grid=grid), seed=0)
+    run_episode(env, B.make("recency", seed=0, grid=grid), seed=0)
     live, disk = env.episode_metrics(), M.scheduler_metrics(run)
     for metric in C.HEADLINE + ("n_steps", "n_detectable", "n_intercepted"):
         assert disk[metric] == pytest.approx(live[metric]), metric
@@ -325,7 +326,7 @@ def test_the_cli_writes_a_complete_comparison(tmp_path):
     assert summary["ladder"]["round_robin"]["rung"] == "2"
     assert summary["meta"]["paired"]["recency"]["n"] == 2
 
-    report = (out / "comparison.md").read_text()
+    report = (out / "comparison.md").read_text(encoding="utf-8")
     for phrase in ("interception ratio", "censored intercept time",
                    "emitter coverage", "γ = "):
         assert phrase in report
@@ -334,4 +335,4 @@ def test_the_cli_writes_a_complete_comparison(tmp_path):
 
 def test_the_cli_rejects_an_unknown_rung(tmp_path):
     with pytest.raises(SystemExit):
-        C.main(["--out", str(tmp_path), "--rungs", "ppo"])
+        C.main(["--out", str(tmp_path), "--rungs", "not_a_rung"])

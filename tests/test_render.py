@@ -18,6 +18,7 @@ from rfenv import metrics as M
 from rfenv import render as R
 from rfenv.env import ScanEnv
 from rfenv.receiver import operating_point, roc
+from rfenv.rollout import run_episode
 from rfenv.scenario import Scenario
 from rfenv.truth import TruthGrid
 
@@ -33,7 +34,7 @@ def grid():
 @pytest.fixture(scope="module")
 def run(tmp_path_factory):
     env = ScanEnv(scenario=Scenario.replay("config_59", "stare"))
-    M.run_episode(env, ROUND_ROBIN, seed=0)
+    run_episode(env, ROUND_ROBIN, seed=0)
     d = tmp_path_factory.mktemp("render")
     return M.write_run(d, env, scheduler="round_robin", seed=0)
 
@@ -47,6 +48,38 @@ def test_the_waterfall_draws_the_path_the_scheduler_actually_flew(grid, run):
     ax = fig.axes[0]
     (line,) = [ln for ln in ax.lines if ln.get_label() == "receiver tuning"]
     assert list(line.get_ydata()) == [row["band"] for row in run.log]
+
+
+# --------------------------------------------------------------------------- #
+# The live/animated views (ScanEnv.render() and its multi-scheduler sibling)
+# --------------------------------------------------------------------------- #
+
+def test_env_frame_is_a_real_picture_not_a_blank_one():
+    env = ScanEnv(scenario=Scenario.replay("config_59", "stare"), render_mode="rgb_array")
+    env.reset(seed=0)
+    for _ in range(20):
+        _, _, terminated, _, _ = env.step(6)
+        if terminated:
+            break
+    frame = R.env_frame(env)
+    assert frame.dtype == np.uint8
+    assert frame.ndim == 3 and frame.shape[2] == 3
+    assert len(np.unique(frame.reshape(-1, 3), axis=0)) > 1
+
+
+def test_compare_animation_writes_a_nonempty_gif(tmp_path):
+    """A coarse stride keeps this to a handful of frames -- correctness, not speed."""
+    scenario = Scenario.replay("config_81", "stare")
+    small_grid = TruthGrid.from_scenario(scenario)
+    runs = {}
+    for key, policy in (("round_robin", ROUND_ROBIN), ("camper", CAMPER)):
+        env = ScanEnv(scenario=scenario)
+        run_episode(env, policy, seed=0)
+        runs[key] = M.write_run(tmp_path / key, env, scheduler=key, seed=0)
+
+    out = R.compare_animation(runs, small_grid, tmp_path / "cmp.gif", stride=150, fps=10)
+    assert out.exists()
+    assert out.stat().st_size > 0
 
 
 def test_declared_hits_are_marked_and_true_occupancy_is_not(grid, run):

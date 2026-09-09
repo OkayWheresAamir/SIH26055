@@ -95,8 +95,9 @@ from rfenv.constants import (
     slots_for_dwell,
 )
 from rfenv.env import ScanEnv
-from rfenv.metrics import read_run, run_episode, scheduler_metrics, write_run
+from rfenv.metrics import read_run, scheduler_metrics, write_run
 from rfenv.receiver import Receiver, operating_point
+from rfenv.rollout import run_episode
 from rfenv.scenario import (
     EmitterContribution,
     Scenario,
@@ -1034,7 +1035,7 @@ def main(argv: list[str] | None = None) -> int:
 
     for res in results:
         (out_dir / f"gate{res.gate}.json").write_text(
-            json.dumps(res.to_json(), indent=2, default=_jsonable) + "\n"
+            json.dumps(res.to_json(), indent=2, default=_jsonable) + "\n", encoding="utf-8"
         )
 
     _render(out_dir, results)
@@ -1049,9 +1050,9 @@ def main(argv: list[str] | None = None) -> int:
                    "gated": r.gated, "passed": r.passed} for r in results],
     }
     (out_dir / "summary.json").write_text(
-        json.dumps(summary, indent=2, default=_jsonable) + "\n"
+        json.dumps(summary, indent=2, default=_jsonable) + "\n", encoding="utf-8"
     )
-    (out_dir / "report.md").write_text(_report_md(results, point, args.seed))
+    (out_dir / "report.md").write_text(_report_md(results, point, args.seed), encoding="utf-8")
 
     print()
     for res in results:
