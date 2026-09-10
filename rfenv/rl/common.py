@@ -55,14 +55,30 @@ from rfenv.env import DEFAULT_REWARD, ScanEnv
 from rfenv.scenario import EmitterPool
 
 
-def make_train_env(*, reward: str = DEFAULT_REWARD) -> ScanEnv:
+def make_train_env(*, reward: str = DEFAULT_REWARD,
+                   pool: EmitterPool | None = None) -> ScanEnv:
     """A fresh-scenario-per-reset training env (D25, D32) -- what RL trains on.
 
     `reward` is threaded straight through to ScanEnv, which is the whole
     "reward as a hyperparameter" requirement -- ScanEnv already validates it
     against `REWARDS`.
+
+    **The pool is the training half only (D60), not all 47 configs.** It used to
+    be `EmitterPool.from_train()` -- every train-split emitter, which is the same
+    population `compare.py` samples its evaluation scenarios from. The baselines
+    do not train, so that asymmetry ran one way, ours, and any margin it produced
+    over rung 5 was not a real advantage. `split.training_pool()` is built from
+    35 configs and shares **zero** emitters with the validation pool.
+
+    `pool` is injectable so checkpoint selection can score against
+    `split.validation_pool()` without routing around this function, and so tests
+    can pass something small. Passing `EmitterPool.from_train()` re-opens the
+    leak; that is exactly why it is no longer the default.
     """
-    return ScanEnv(pool=EmitterPool.from_train(), reward=reward)
+    if pool is None:
+        from rfenv.split import training_pool
+        pool = training_pool()
+    return ScanEnv(pool=pool, reward=reward)
 
 
 # --------------------------------------------------------------------------- #

@@ -79,13 +79,54 @@ D49 and D55 finished the job. **No RL row currently in `EVALUATION.md` §5 was p
 conditions that can answer whether an agent games this ladder.** The training record is
 `scratch/TRAINING_JOURNEY.md` §9.
 
-**One open reward question, measured but not acted on (D56).** `reward_balance` scores rung 5 and
-round-robin within **+2.3 ± 11.7** of each other over 8 seeds — rung 5 ahead on 4 of 8 — against a
-scenario-to-scenario spread of about 80. It separates catastrophe from competence by a huge margin
-(camping −1361 against round-robin +324) but barely separates competence from excellence, so
-**round-robin is approximately the ceiling this reward can teach**. D46's stated Pareto target is
-not encoded in it. Left alone deliberately: D47's paired-dominance selection rule has still never
-been run, and any change should come out of that rather than another hand-tuned coefficient.
+**The reward set is now an axis, and D29's cap of three is lifted (D57).** `greedy` (exploit
+corner: declarations plus remembered hit rate, no explore term, no camping cost) and `explore`
+(explore corner: staleness minus airtime concentration plus new `(emitter, band)` discoveries) are
+the two ends of D14's tension and are *expected* to fail their opposite check — measured, `greedy`
+ranks camping above sweeping and `explore` ranks round-robin above rung 5. `weighted` is the single
+knob between them at `alpha = 0.3`, and it is **the only registered candidate that both orders the
+ladder correctly (+874.0) and separates rung 5 from round-robin (+70.5)** — the gap D56 identifies
+in `reward_balance`. The alpha was set from a measured window (0.2–0.4; below it the explore half
+dominates, from 0.5 up a 2-band ping-pong outscores round-robin — D53's failure mode through the
+greedy half), which is an ordering sanity check and **not** tuning against a score. `DEFAULT_REWARD`
+is unchanged at `reward_balance`: `weighted` scoring better on both checks is an argument for
+running D47, not a substitute for having run it.
+
+**D56 was measured wrong and is withdrawn (2026-09-10).** It reported that `reward_balance`
+separates rung 5 from round-robin by only +2.3 ± 11.7 — because it scored a hand-written
+`step % N_BANDS` sweep instead of rung 2, which is `EQUAL_AIRTIME_CYCLE` (D43). Against the real
+rung the separation is **+59.0 ± 19.4 with rung 5 ahead on 8/8 seeds** — three times the seed
+noise, not three percent of it. D53 and D57 used the same stand-in and are corrected in place;
+their conclusions survive, only their `round_robin` rows move. **A measurement that substitutes an
+obvious-looking reimplementation for a registered rung is not measuring the ladder**, and a test
+now enforces it.
+
+**Every reward candidate is now screened before anything trains on it (D62).** Score rungs 2, 4, 5
+and 6a under each candidate, 8 seeds, paired per seed: a candidate passes only if it puts rung 5
+clearly above rung 2 relative to seed noise and rung 4 clearly below both. No agent needed, minutes
+on a CPU. **`reward_balance` is the only one of six that passes** — and the finding that matters is
+that **`hit_z` and `hit_y`, D29's original two, both fail**: they rank the camper above every
+sweeping policy, which is D14's tension in reward form. Every DQN and PPO run in this repository
+trained on one of those two. D47 is now gated behind this screen and **has still never been run**.
+
+**The train/evaluation leak is closed (D60).** Training sampled `EmitterPool.from_train()` — all 47
+development configs — while evaluation ran those same 47 replays plus scenarios sampled from that
+same pool. The baselines do not train, so the asymmetry ran one way, ours. The 47 are now split
+**35 training / 12 validation** by a rule written before anyone looked at which configs landed
+where (`rfenv/split.py`), and the pool is rebuilt from the training half: **2,600 contributions /
+1,431 emitters against 843 / 482, with zero shared**. Splitting the config list alone would not
+have done it — the pool is assembled *from* the configs.
+
+**Checkpoint selection is pre-registered (D61).** Highest `P(dominates rung 5) − P(dominated by
+rung 5)` on the validation half, ties toward fewer steps, fixed in `rfenv/selection.py` before the
+run that uses it.
+
+**No RL result in this repository is currently clean.** The 2,223-episode acceptance run of
+2026-09-10 (`runs/acceptance_2026-09-10/`) has rung 9c Pareto-dominating rung 5 on 48.0% of
+episodes against being dominated on 13.5%, and rung 9b at 43.9% against 4.7% — but every one of
+those checkpoints trained on the emitters it was scored against. Sound arithmetic, contaminated
+comparison, **not written into `EVALUATION.md` §5**. The number to chase is that comparison
+re-measured after a retrain on the training half.
 
 **The environment was frozen on 2026-09-04 (D42).** `rfenv/constants.py` is closed — band
 geometry, slot clock, dwell schedule, `N₀`, `σ`, `γ`, `PD_POPULATION` — and

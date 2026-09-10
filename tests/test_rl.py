@@ -53,8 +53,24 @@ def _key_for_rung(rung_number: str) -> str:
     variants get trained (D-line, this session already renamed twice) -- the
     rung *number* is the stable identity, so look up by that instead of
     hardcoding a key that will go stale again.
+
+    **Matches the lettered family, not just the bare number.** An algorithm's
+    rungs are numbered `9`, `9a`, `9b`, ... and which of them exists depends on
+    what has been trained: when the pre-D55 RecurrentPPO family was retired the
+    only bare `9` went with it, leaving `9a`..`9d`. These tests are asking "the
+    RecurrentPPO rung", not "rung 9 exactly", so an exact match made them fail on
+    a change that was not about them. Falls back to the first lettered variant,
+    in ladder order.
     """
-    return next(r.key for r in B.LADDER if r.rung == rung_number)
+    exact = [r.key for r in B.LADDER if r.rung == rung_number]
+    if exact:
+        return exact[0]
+    family = [r.key for r in B.LADDER if r.rung.startswith(rung_number)]
+    if not family:
+        raise AssertionError(
+            f"no rung numbered {rung_number!r} or {rung_number!r}<letter> in the ladder"
+        )
+    return family[0]
 
 
 @pytest.fixture(scope="module")
@@ -346,7 +362,9 @@ def recurrent_untrained_model():
 
 def test_recurrent_ppo_rung_is_registered_in_the_ladder():
     spec = B.BY_KEY[_key_for_rung("9")]
-    assert spec.rung == "9"
+    # `9` or a lettered variant of it -- which exists depends on what has been
+    # trained, and the bare number went when the pre-D55 family was retired.
+    assert spec.rung.startswith("9")
     assert spec.deployable is True
     assert spec.needs_grid is False
 
