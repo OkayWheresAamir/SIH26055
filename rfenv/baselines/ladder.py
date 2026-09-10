@@ -204,43 +204,97 @@ LADDER: tuple[Rung, ...] = (
     # point in render.pareto() and one row anywhere else keyed by label, since
     # compare.py's `_means`/figure-building code keys by label, not by key.
 
-    Rung("recurrent_ppo_first_intercept_1M", "9", "Recurrent PPO (LSTM),1M",
-         "Ours. Third algorithm: sb3-contrib RecurrentPPO (MlpLstmPolicy), "
-         "trained on hit_z (D29). Sees the same D34 observation as every "
-         "other rung, but the policy carries an LSTM hidden state across "
-         "the episode instead of acting on each look alone.",
-         _recurrent_ppo_rung_factory(_RECURRENT_PPO_DEFAULT_CHECKPOINT)),
-    Rung("recurrent_ppo_first_intercept_100k", "9a", "Recurrent PPO (LSTM),100k",
-            "Ours. Third algorithm: sb3-contrib RecurrentPPO (MlpLstmPolicy), "
-            "trained on hit_z (D29). Sees the same D34 observation as every "
-            "other rung, but the policy carries an LSTM hidden state across "
-            "the episode instead of acting on each look alone.",
-            _recurrent_ppo_rung_factory(Path("runs/checkpoints/lstm_ppo5_100000_steps.zip"))),
-    Rung("recurrent_ppo_first_intercept_200k", "9b", "Recurrent PPO (LSTM),200k",
-            "Ours. Third algorithm: sb3-contrib RecurrentPPO (MlpLstmPolicy), "
-            "trained on hit_z (D29). Sees the same D34 observation as every "
-            "other rung, but the policy carries an LSTM hidden state across "
-            "the episode instead of acting on each look alone.",
-            _recurrent_ppo_rung_factory(Path("runs/checkpoints/lstm_ppo5_200000_steps.zip"))),
-    Rung("recurrent_ppo_first_intercept_300k", "9c", "Recurrent PPO (LSTM),300k",
-            "Ours. Third algorithm: sb3-contrib RecurrentPPO (MlpLstmPolicy), "
-            "trained on hit_z (D29). Sees the same D34 observation as every "
-            "other rung, but the policy carries an LSTM hidden state across "
-            "the episode instead of acting on each look alone.",
-            _recurrent_ppo_rung_factory(Path("runs/checkpoints/lstm_ppo4_300000_steps.zip"))),
-    Rung("recurrent_ppo_first_intercept_400k", "9d", "Recurrent PPO (LSTM),400k",
-            "Ours. Third algorithm: sb3-contrib RecurrentPPO (MlpLstmPolicy), "
-            "trained on hit_z (D29). Sees the same D34 observation as every "
-            "other rung, but the policy carries an LSTM hidden state across "
-            "the episode instead of acting on each look alone.",
-            _recurrent_ppo_rung_factory(Path("runs/checkpoints/lstm_ppo4_400000_steps.zip"))),
+    # ----------------------------------------------------------------- #
+    # The pre-D55 RecurrentPPO family, retired 2026-09-09.
+    #
+    # Commented out rather than deleted, matching rung 8d's precedent. Every one
+    # of these was trained on a reward key that no longer exists in `REWARDS`
+    # (`first_intercept`, renamed and rewritten -- D50/D53) against a 147-wide
+    # observation (D55 took it to 146), so they are permanently unloadable: not
+    # stale, dead. They cannot produce a row again and their published results
+    # are already marked superseded in `EVALUATION.md` §5.
+    #
+    # They are commented out **because their rung numbers collided** with the
+    # corrected-reward family below -- 9a..9d appeared twice, which breaks every
+    # lookup by number and stamps duplicate labels on the Pareto markers. git
+    # holds them if a retrain ever wants the numbering back.
+    # ----------------------------------------------------------------- #
+    # Rung("recurrent_ppo_first_intercept_1M", "9", "Recurrent PPO (LSTM),1M",
+    #      "Ours. Third algorithm: sb3-contrib RecurrentPPO (MlpLstmPolicy), "
+    #      "trained on hit_z (D29). Sees the same D34 observation as every "
+    #      "other rung, but the policy carries an LSTM hidden state across "
+    #      "the episode instead of acting on each look alone.",
+    #      _recurrent_ppo_rung_factory(_RECURRENT_PPO_DEFAULT_CHECKPOINT)),
+    # Rung("recurrent_ppo_first_intercept_100k", "9a", "Recurrent PPO (LSTM),100k",
+    #         "Ours. Third algorithm: sb3-contrib RecurrentPPO (MlpLstmPolicy), "
+    #         "trained on hit_z (D29). Sees the same D34 observation as every "
+    #         "other rung, but the policy carries an LSTM hidden state across "
+    #         "the episode instead of acting on each look alone.",
+    #         _recurrent_ppo_rung_factory(Path("runs/checkpoints/lstm_ppo5_100000_steps.zip"))),
+    # Rung("recurrent_ppo_first_intercept_200k", "9b", "Recurrent PPO (LSTM),200k",
+    #         "Ours. Third algorithm: sb3-contrib RecurrentPPO (MlpLstmPolicy), "
+    #         "trained on hit_z (D29). Sees the same D34 observation as every "
+    #         "other rung, but the policy carries an LSTM hidden state across "
+    #         "the episode instead of acting on each look alone.",
+    #         _recurrent_ppo_rung_factory(Path("runs/checkpoints/lstm_ppo5_200000_steps.zip"))),
+    # Rung("recurrent_ppo_first_intercept_300k", "9c", "Recurrent PPO (LSTM),300k",
+    #         "Ours. Third algorithm: sb3-contrib RecurrentPPO (MlpLstmPolicy), "
+    #         "trained on hit_z (D29). Sees the same D34 observation as every "
+    #         "other rung, but the policy carries an LSTM hidden state across "
+    #         "the episode instead of acting on each look alone.",
+    #         _recurrent_ppo_rung_factory(Path("runs/checkpoints/lstm_ppo4_300000_steps.zip"))),
+    # Rung("recurrent_ppo_first_intercept_400k", "9d", "Recurrent PPO (LSTM),400k",
+    #         "Ours. Third algorithm: sb3-contrib RecurrentPPO (MlpLstmPolicy), "
+    #         "trained on hit_z (D29). Sees the same D34 observation as every "
+    #         "other rung, but the policy carries an LSTM hidden state across "
+    #         "the episode instead of acting on each look alone.",
+    #         _recurrent_ppo_rung_factory(Path("runs/checkpoints/lstm_ppo4_400000_steps.zip"))),
 
-    Rung("lstm_balance_100k_1M", "9", "Recurrent PPO (reward_balance, 100k)",
+
+    Rung("lstm_balance_100k_1M", "9a", "Recurrent PPO (reward_balance, 100k)",
      "Ours. Trained on reward_balance after D52/D53/D55, 100k timesteps.",
      _recurrent_ppo_rung_factory(Path("runs/checkpoints/lstm_balance_1M_s1.zip"))),
+    
+    Rung("lstm_balance_200k_1M", "9b", "Recurrent PPO (reward_balance, 200k)",
+     "Ours. Trained on reward_balance after D52/D53/D55, 200k timesteps.",
+     _recurrent_ppo_rung_factory(Path("runs/checkpoints/lstm_balance_1M_s2.zip"))),
 
+    Rung("lstm_balance_300k_1M", "9c", "Recurrent PPO (reward_balance, 300k)",
+         "Ours. Trained on reward_balance after D52/D53/D55, 300k timesteps.",
+         _recurrent_ppo_rung_factory(Path("runs/checkpoints/lstm_balance_1M_s3.zip"))),
 
+    Rung("lstm_balance_400k_1M", "9d", "Recurrent PPO (reward_balance, 400k)",
+        "Ours. Trained on reward_balance after D52/D53/D55, 400k timesteps.",
+        _recurrent_ppo_rung_factory(Path("runs/checkpoints/lstm_balance_1M_s4.zip"))),
 
+    Rung("lstm_balance_500k_1M", "9e", "Recurrent PPO (reward_balance, 500k)",
+            "Ours. Trained on reward_balance after D52/D53/D55, 500k timesteps.",
+            _recurrent_ppo_rung_factory(Path("runs/checkpoints/lstm_balance_1M_s5.zip"))),
+    
+    Rung("lstm_balance_600k_1M", "9f", "Recurrent PPO (reward_balance, 600k)",
+                "Ours. Trained on reward_balance after D52/D53/D55, 600k timesteps.",
+                _recurrent_ppo_rung_factory(Path("runs/checkpoints/lstm_balance_1M_s6.zip"))),
+    
+    Rung("lstm_balance_700k_1M", "9g", "Recurrent PPO (reward_balance, 700k)",
+                "Ours. Trained on reward_balance after D52/D53/D55, 700k timesteps.",
+                _recurrent_ppo_rung_factory(Path("runs/checkpoints/lstm_balance_1M_s7.zip"))),
+        
+    
+    Rung("lstm_balance_800k_1M", "9f", "Recurrent PPO (reward_balance, 800k)",
+                "Ours. Trained on reward_balance after D52/D53/D55, 800k timesteps.",
+                _recurrent_ppo_rung_factory(Path("runs/checkpoints/lstm_balance_1M_s8.zip"))),
+    
+    Rung("lstm_balance_900k_1M", "9f", "Recurrent PPO (reward_balance, 900k)",
+                "Ours. Trained on reward_balance after D52/D53/D55, 900k timesteps.",
+                _recurrent_ppo_rung_factory(Path("runs/checkpoints/lstm_balance_1M_s9.zip"))),
+    
+    Rung("lstm_balance_1M", "9f", "Recurrent PPO (reward_balance, 1M)",
+                "Ours. Trained on reward_balance after D52/D53/D55, 1M timesteps.",
+                _recurrent_ppo_rung_factory(Path("runs/checkpoints/lstm_balance_1M.zip"))),
+        
+        
+        
+        
     Rung("camper_oracle", "—", "Greedy static, truth-fed (D14's camper)",
          "Reference line: D14's camper, which knew where the pulses were.",
          lambda rng, grid: OracleCamper(grid, rng),

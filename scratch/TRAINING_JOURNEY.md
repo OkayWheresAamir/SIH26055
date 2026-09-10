@@ -731,3 +731,124 @@ lettered rung so the series shows whether the policy is still improving at 1M or
 
 The reading table from §9.3 stands, with §10.4's correction: **~+275 is both the target and roughly
 the cap.** Stalling near +212 means it is not beating random.
+
+---
+
+# 12. Acceptance scale, a withdrawn measurement, and the leak — 2026-09-10
+
+## 12.1 The acceptance run
+
+`python -m rfenv.compare --seeds 3 --sampled 10 --figures`, 57 scenarios × 3 seeds =
+**2,223 episodes**, artefacts in `runs/acceptance_2026-09-10/`. First run at protocol scale since
+D52/D53/D54/D55, and the first ever to compute the paired comparison against **rung 5** as well as
+the floor — until now only the floor comparison existed, so every RL claim in this repository had
+been measured against the wrong reference.
+
+Paired both directions, because `wins on both` is not symmetric — an episode can split:
+
+| rung | dominates rung 5 | dominated by it | neither | ratio |
+|---|---|---|---|---|
+| 9b · 200k | 43.9% | **4.7%** | 51.5% | **9.3 : 1** |
+| 9c · 300k | **48.0%** | 13.5% | 38.6% | 3.6 : 1 |
+| 9a · 100k | 30.4% | 11.7% | 57.9% | 2.6 : 1 |
+| 9d · 400k | 25.7% | 27.5% | 46.8% | 0.9 : 1 |
+| 6a · apfeld | 23.4% | 21.6% | 55.0% | 1.1 : 1 |
+
+Against the floor: 9c **80.1%**, 9b 78.9%, rung 5 67.3%.
+
+**Stated precisely: 48.0% is not a majority.** What the models do is dominate rung 5 far more often
+than the reverse, where every heuristic sits at or below 1.1:1. 400k is *worse* than 200k and 300k
+— performance peaks around 200–300k and degrades, which is the concrete argument for a
+pre-registered selection rule.
+
+**And it is contaminated** (§12.3). Not written into `EVALUATION.md` §5.
+
+## 12.2 D56 was measured wrong
+
+The brief asked for D56 to be reconciled with the result before anything was built on it, listing
+three hypotheses. Manifests were read rather than recalled: all three checkpoints trained on
+`reward_balance`, obs 146, seed 0, `n_steps=8192`, `ent_coef=0.01`, `gamma=0.997`. **H1 eliminated
+by evidence.**
+
+H2 is the answer, and the bug is ours:
+
+| quantity | separation | seeds with rung 5 ahead |
+|---|---|---|
+| `recency − rung 2` (correct) | **+59.0 ± 19.4** | **8 / 8** |
+| `recency − step % 36` (what D56 measured) | +2.0 ± 13.5 | 5 / 8 |
+
+D56 scored a **hand-written `step % N_BANDS` sweep** and called it `round_robin`. Rung 2 is
+`EQUAL_AIRTIME_CYCLE` (D43) — equal *airtime* per band, not one dwell per band — and the naive
+version hands the seven wide bands twice the airtime, scoring **+57.0 ± 18.5** higher with coverage
+0.932 against 0.793. The separation is three times the seed noise, not three percent of it.
+
+D53 and D57 used the same stand-in. Their conclusions survive; only their `round_robin` rows move.
+All three entries corrected in place; D56 withdrawn.
+
+**The lesson, now a test:** a rung has a registered implementation for a reason, and a measurement
+that substitutes an obvious-looking reimplementation is not measuring the ladder.
+
+## 12.3 The train/evaluation leak (D60)
+
+Training sampled `EmitterPool.from_train()` — every emitter in all 47 development configs — while
+evaluation ran those same 47 replays plus scenarios sampled from that same pool. The heuristic
+rungs do not train, so the asymmetry ran one way, ours.
+
+Split rule written into `rfenv/split.py` **before anyone looked at which configs landed where**:
+order by detectable-emitter count ascending, take every 4th from index 1 into validation.
+Systematic along the difficulty variable rather than random, because difficulty spans 2 to 99
+emitters and dominates every §4 metric.
+
+| | n | min | median | max | mean |
+|---|---|---|---|---|---|
+| training | 35 | 1 | 38 | 82 | **40.9** |
+| validation | 12 | 1 | 37 | 80 | **40.2** |
+
+It fell balanced and **was not re-drawn after that was seen** — re-rolling until a split looks good
+is the error the rule prevents.
+
+Splitting the config list is not enough: the pool is assembled *from* the configs.
+`EmitterPool.from_configs` is the constructor that matters. Measured: **2,600 contributions /
+1,431 emitters training, 843 / 482 validation, 0 shared.**
+
+## 12.4 The reward screen (D62)
+
+| candidate | rung 2 | rung 5 | rung 4 | rung 6a | sep | camper | verdict |
+|---|---|---|---|---|---|---|---|
+| `reward_balance` | 217.9 | 276.9 | **−414.1** | 278.7 | 3.0σ | 7.3σ | **PASS** |
+| `weighted` | 1455.7 | 1817.2 | 1323.0 | 1928.4 | 2.6σ | 0.4σ | FAIL |
+| `hit_z` | 196.4 | 299.1 | **409.8** | 376.6 | 3.1σ | −2.3σ | FAIL |
+| `hit_y` | 165.4 | 270.5 | **372.4** | 332.0 | 2.6σ | −1.9σ | FAIL |
+| `greedy` | 459.0 | 776.6 | **1198.3** | 984.2 | 2.7σ | −2.7σ | FAIL |
+| `explore` | 1277.0 | 1238.1 | −205.2 | 1034.0 | **−2.5σ** | 31.5σ | FAIL |
+
+**`hit_z` and `hit_y` — D29's original two — both fail.** They rank rung 4 above every sweeping
+policy. Every DQN and PPO run in this repository trained on one of them (D48). The screen costs
+minutes and would have saved all of it.
+
+## 12.5 Selection, and its first execution
+
+D61: highest `dominates − dominated` against rung 5 on the validation half, ties toward fewer
+steps. The rule was first proposed as a win-rate rule together with a false claim about its
+behaviour; the discrepancy was raised and net dominance ratified in its place.
+
+| checkpoint | steps | dominates | dominated | net |
+|---|---|---|---|---|
+| `lstm_balance_1M_s2` | 200k | 55.6% | 8.3% | **+47.2%** ← selected |
+| `lstm_balance_1M_s3` | 300k | 36.1% | 5.6% | +30.6% |
+| `lstm_balance_1M_s1` | 100k | 36.1% | 11.1% | +25.0% |
+
+**Selects nothing** — all three predate D60 and trained on these emitters. It demonstrates the rule
+executes. Note 200k and 300k tie on win rate at 36.1%, which under the rejected version would have
+fallen to the tie-break.
+
+## 12.6 Where this leaves the lane
+
+- **No clean RL number exists.** Every checkpoint predates D60.
+- **The human declined a retrain** on 2026-09-10 (cost), and will train `greedy` to 500k instead.
+  `greedy` **fails** D62's screen at −2.7σ, so the screen predicts a camper — rung 4's profile.
+  That run is therefore the screen's **first falsification test** and is worth doing as a control
+  with the prediction recorded first. It also runs under D60 automatically, since
+  `make_train_env` now defaults to the training half.
+- **Still open:** the iteration ledger (one row per run, including failures, with a command to
+  re-run any past run from its manifest alone), and D47, which has never been run.
