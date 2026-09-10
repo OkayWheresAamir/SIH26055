@@ -60,10 +60,15 @@ def test_the_verdict_is_the_conjunction_of_the_three_checks():
 def test_the_screen_separates_a_known_good_reward_from_a_known_bad_one():
     """One end-to-end check on two candidates whose behaviour is settled.
 
-    `hit_z` pays only for hits and cannot help but rank the camper top -- that is
-    D14's tension and the reason rung 4 is in the ladder at all. `reward_balance`
-    prices airtime concentration and does not. If the screen ever stops
-    distinguishing those two it has stopped working.
+    `greedy` (the exploit corner, D57) has no explore term and no camping cost
+    by design, so it cannot help but rank the camper top -- D14's tension and the
+    reason rung 4 is in the ladder at all. `hit_z`/`hit_y` were this repository's
+    original known-bad example and shared the same failure; they are gone from
+    `REWARDS` after failing this exact screen (D62), which is itself evidence the
+    screen works -- `greedy` is the one still registered to check it against.
+    `reward_balance` prices airtime concentration and does not share the
+    failure. If the screen ever stops distinguishing those two it has stopped
+    working.
 
     Two seeds rather than eight: this asserts the *direction*, and the criteria
     themselves are pinned above without paying for episodes.
@@ -71,10 +76,10 @@ def test_the_screen_separates_a_known_good_reward_from_a_known_bad_one():
     pool = EmitterPool.from_train()
     seeds = (0, 1)
 
-    bad = G.screen("hit_z", seeds=seeds, pool=pool)
+    bad = G.screen("greedy", seeds=seeds, pool=pool)
     good = G.screen("reward_balance", seeds=seeds, pool=pool)
 
-    # The camper is the discriminator: above both sweeps under hit_z, far below
+    # The camper is the discriminator: above both sweeps under greedy, far below
     # them under reward_balance.
     assert bad.scores["camper"].mean() > bad.scores["round_robin"].mean()
     assert good.scores["camper"].mean() < good.scores["round_robin"].mean()

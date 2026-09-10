@@ -65,7 +65,7 @@ N_SEEDS = 8              # the brief's "8+ seeds, per seed not averaged"
 
 # **Separation is measured paired and in units of its own noise.** The absolute
 # gap is meaningless across candidates -- they have wildly different scales, from
-# `hit_z`'s hundreds to `explore`'s thousands -- so what has to clear a bar is
+# `reward_balance`'s hundreds to `explore`'s thousands -- so what has to clear a bar is
 # the ratio of the mean paired difference to its standard deviation. 2.0 is two
 # standard errors of the per-seed difference, the conventional "not noise" line,
 # and it is the same quantity D56 got wrong by measuring against the wrong

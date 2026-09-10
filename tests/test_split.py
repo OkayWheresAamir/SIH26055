@@ -11,6 +11,7 @@ import numpy as np
 import pytest
 
 from rfenv import split
+from rfenv.env import DEFAULT_REWARD
 from rfenv.rl.common import make_train_env
 from rfenv.scenario import TRAIN_SPLIT, EmitterPool, list_configs
 
@@ -79,7 +80,7 @@ def test_training_does_not_sample_the_evaluation_pool():
     scenarios from. Reverting it would re-open the leak while every other test
     stayed green.
     """
-    env = make_train_env(reward="hit_z")
+    env = make_train_env(reward=DEFAULT_REWARD)
     assert len(env._pool) == len(split.training_pool())
     assert len(env._pool) < len(EmitterPool.from_train())
 

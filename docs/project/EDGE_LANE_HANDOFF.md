@@ -390,7 +390,7 @@ Everything in §8 is closed. This is what is open, roughly ordered by how cheap 
 | Open surface | Status | Who owns it | Cost |
 |---|---|---|---|
 | **The framing, the story, the tagline** | wide open, and it is yours | you | — |
-| **The scoring function used during training** | three candidates, selection rule fixed in advance | RL lane | days |
+| **The scoring function used during training** | four registered candidates (D57 added three, D62 retired two), screened before selection, selection rule fixed in advance (D47) | RL lane | days |
 | **The learning algorithm and network** | entirely unfixed on purpose | RL lane | days |
 | **Extra inputs to the agent's observation** | open; two specific candidates (angle of arrival, pulse width) are formally undecided | RL lane | ~1 day |
 | **A preference-conditioned agent** — one network, a dial the operator moves at mission time between "find everything fast" and "capture the most signal" | not started; supported by the measured conflict in §5 | RL lane | ~half a day *on top of* a working agent |
