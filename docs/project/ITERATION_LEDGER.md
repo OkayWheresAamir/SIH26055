@@ -74,6 +74,68 @@ python -m rfenv.rl.recurrent_ppo --reward reward_balance_improved --timesteps 40
   --run-name lstm_balance_improved --description "treatment: density-weighted occupancy, D60 split"
 ```
 
+## `clean_lstm_seed1`/`seed2`, `lstm_balance_improved_seed1`/`seed2` — the crashed matched-seed attempt
+
+| | |
+|---|---|
+| **Reward** | `reward_balance` (×2 seeds) and `reward_balance_improved` (×2 seeds) |
+| **Split** | D60 (`training_pool()`) |
+| **Hyperparameters** | Identical to `clean_lstm`/`lstm_balance_improved`: `ent_coef=0.01 gamma=0.997 n_steps=8192` |
+| **Seeds** | 1 and 2, one run per (reward, seed) pair — 4 runs, launched together in the background |
+| **Started** | 2026-09-10, on the pre-D67 (146-wide) observation |
+| **Manifests** | None — no run reached its first 100k checkpoint before the crash |
+| **Validation (D61)** | N/A |
+| **Headline** | N/A |
+| **Outcome** | **Crashed.** The machine crashed partway through; all 4 runs stopped with no checkpoint saved (`runs/checkpoints/` held no `seed1`/`seed2` files afterward — confirmed, not assumed). Nothing salvageable, nothing lost beyond wall-clock time, since none had passed its first save point. Superseded rather than retried as-was: D67 (below) landed before the retry, changing the observation width these runs would have trained against. Lesson taken: train one model at a time in the background from here on, not several in parallel.
+
+## `lstm_balance_d67_control` — first retrain under D67 (183-wide observation)
+
+| | |
+|---|---|
+| **Reward** | `reward_balance` |
+| **Split** | D60 (`training_pool()`) |
+| **Hyperparameters** | `ent_coef=0.01 gamma=0.997 n_steps=8192` — identical to `clean_lstm` (D64) |
+| **Seed** | 0 |
+| **Timesteps** | 400,000 (target), checkpointed every 100,000 |
+| **Observation** | 183-wide (D67) — **not comparable to any pre-D67 checkpoint's numbers directly** |
+| **Started** | 2026-09-10, single run, no other training running concurrently |
+| **Manifests** | `runs/checkpoints/lstm_balance_d67_control_s{1,2,3,4}.json`, all landed |
+| **Validation (D61)** | `lstm_balance_d67_control_s3` (300k) selected, **net dominance +25.0%** (36.1% dominates / 11.1% dominated) — lower than D64's original 146-wide control (+36.1%), not directly comparable (different observation width). |
+| **Headline** | **Run 2026-09-10** (`runs/d67_paired_comparison/`, rung `14c`): paired against recency, **ratio 62.0%, cTTI 39.8%, both 25.7%** — a few points above the pre-D67 equivalent's 22.8% (D64/D65), despite no camping behaviour appearing (see Outcome). |
+| **Outcome** | Complete. **Streak analysis (3 sample scenarios): no change.** Max dwell streak 4-6 slots, same order of magnitude as every pre-D67 checkpoint (D64/D66 measured max 6). The hoped-for commitment behavior has not appeared on this checkpoint, yet the headline `both` column still moved up a few points against its pre-D67 equivalent — not attributed to the hypothesised mechanism, since that mechanism didn't show up. See D67 for the full accounting alongside the treatment arm. |
+
+```
+venv/Scripts/python.exe -m rfenv.rl.recurrent_ppo --reward reward_balance --timesteps 400000 \
+  --seed 0 --hyperparam ent_coef=0.01 --hyperparam gamma=0.997 --hyperparam n_steps=8192 \
+  --checkpoint runs/checkpoints/lstm_balance_d67_control.zip --checkpoint-freq 100000 \
+  --run-name lstm_balance_d67_control \
+  --description "control: reward_balance, D60 split, D67 observation (183-wide, hit_streak)"
+```
+
+## `lstm_balance_d67_treatment` — treatment arm under D67 (183-wide observation)
+
+| | |
+|---|---|
+| **Reward** | `reward_balance_improved` |
+| **Split** | D60 (`training_pool()`) |
+| **Hyperparameters** | `ent_coef=0.01 gamma=0.997 n_steps=8192` — identical to control |
+| **Seed** | 0 |
+| **Timesteps** | 400,000 (target), checkpointed every 100,000 |
+| **Observation** | 183-wide (D67) |
+| **Started** | 2026-09-10, single run, launched only after the control arm fully finished |
+| **Manifests** | `runs/checkpoints/lstm_balance_d67_treatment_s{1,2,3,4}.json`, all landed |
+| **Validation (D61)** | `lstm_balance_d67_treatment_s1` (100k) selected, **net dominance +33.3%** (38.9% dominates / 5.6% dominated). Higher than the D67 control's +25.0% -- treatment beats control on validation this time (reversed under D65's 146-wide setup). |
+| **Headline** | **Run 2026-09-10** (`runs/d67_paired_comparison/`, rung `15a`): paired against recency, **ratio 77.2%, cTTI 49.7%, both 35.1%** -- ahead of the control's 62.0%/39.8%/25.7% on the same run, and both a few points above their pre-D67 (D65) equivalents (22.8%/31.0%). |
+| **Outcome** | Complete. **Streak analysis: no commitment behaviour** -- max dwell streak 4-6 slots on all three sample scenarios, same as every pre-D67 checkpoint. The headline moved up modestly for both arms anyway; not attributed to the hypothesised mechanism since that mechanism didn't appear. See D67 for the full accounting. |
+
+```
+venv/Scripts/python.exe -m rfenv.rl.recurrent_ppo --reward reward_balance_improved --timesteps 400000 \
+  --seed 0 --hyperparam ent_coef=0.01 --hyperparam gamma=0.997 --hyperparam n_steps=8192 \
+  --checkpoint runs/checkpoints/lstm_balance_d67_treatment.zip --checkpoint-freq 100000 \
+  --run-name lstm_balance_d67_treatment \
+  --description "treatment: reward_balance_improved, D60 split, D67 observation (183-wide, hit_streak)"
+```
+
 ---
 
 ## Maintaining this file

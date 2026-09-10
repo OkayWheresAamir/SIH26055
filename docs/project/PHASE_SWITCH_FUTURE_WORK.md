@@ -111,13 +111,45 @@ sub-policy executing within each one).
   their head." Of everything discussed for this line of work, this is the one
   that argument weighs hardest against.
 
+## Option D — attention over the 36 bands, conditional on Option A
+
+**Not a phase-switching mechanism on its own** — a different question about
+*representation*, raised alongside this work and recorded here because it's
+the same kind of "should we build this" decision. The observation has real
+per-band structure: four 36-wide blocks (`HIT_RATE`, `VISIT_DENSITY`,
+`STALENESS`, `CURRENT_BAND`) plus two scalars, and the action is "pick one of
+36 bands." The current policy flattens all of that into one vector for an MLP,
+which has to learn from scratch that positions 5, 41, 77 and 113 all describe
+band 5. A policy that treats the 36 bands as tokens and uses self-attention
+across them could learn cross-band relationships natively instead.
+
+**Why it's not next.** Every negative result so far — the D64/D65 checkpoints
+never committing to anything, D66's gate making things worse — points at the
+reward and the training signal, not at representational capacity. Nothing
+measured suggests the current MLP+LSTM is too weak to represent the policy
+that would use a streak feature well; the diagnosis has consistently been that
+nothing currently rewards using it. Attention changes how the network
+processes its inputs, not what it's rewarded for. It's also real engineering
+`sb3-contrib` doesn't provide out of the box — a custom `ActorCriticPolicy`
+with a Transformer/self-attention feature extractor, its own new
+hyperparameters, and almost certainly slower per-step training than the
+current MLP+LSTM — which is a lot to spend on a hypothesis nothing has yet
+supported.
+
+**When it would become worth it.** After Option A lands and is retrained: if
+the network *still* can't exploit per-band relational structure even with a
+clean streak feature in hand, that is real evidence the bottleneck is
+architectural rather than incentive-based, and attention becomes the
+well-motivated next step rather than a guess. Not before.
+
 ## If this gets picked up again
 
-Start with **Option A** if either is attempted — it's the cheaper test of
+Start with **Option A** if any of this is attempted — it's the cheaper test of
 "does phase-awareness help at all" (one retrain cycle, not a new action space
-and a new reward simultaneously), and D66's own result is a reason to expect
-the answer might still be no even with a better signal, which is worth finding
-out before spending on Option C's larger surface.
+and a new reward simultaneously, and not a new policy architecture), and
+D66's own result is a reason to expect the answer might still be no even with
+a better signal, which is worth finding out before spending on Option C's or
+Option D's larger surface.
 
 Whatever gets built, screen any accompanying reward change through
 `rfenv/reward_gate.py` (D62) before training on it, and retrain under D60/D61

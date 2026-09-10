@@ -20,10 +20,19 @@ STALENESS = slice(2 * N_BANDS, 3 * N_BANDS)      # (t - last visit) / SWEEP_SLOT
 CURRENT_BAND = slice(3 * N_BANDS, 4 * N_BANDS)   # one-hot of the band just dwelt on
 CLOCK = 4 * N_BANDS                   # normalised episode time
 MEASURED_DBM = 4 * N_BANDS + 1        # last dwell's mean measured dBm, clamped+scaled
+HIT_STREAK = slice(4 * N_BANDS + 2, 5 * N_BANDS + 2)   # consecutive declared hits per band, capped (D67)
+CURRENT_HIT_STREAK = 5 * N_BANDS + 2  # HIT_STREAK[current_band] -- the streak of the band just dwelt on
 
 # `CAMP_TIME` sat at 4 * N_BANDS + 1 until D55 removed it from the vector. It is not
 # reinstated here: a policy that wants the streak reads visit_density, which says
 # the same thing without waiting for the agent to commit to camping first.
+#
+# `HIT_STREAK`/`CURRENT_HIT_STREAK` are not the same thing D55 removed. `camp_time`
+# was the agent's own *action* streak (how many consecutive dwells it spent on one
+# band); `hit_streak` is the *band's* own recent history (how many consecutive
+# visits to that band declared), tracked whether or not the agent stayed there --
+# information `visit_density` cannot substitute for, since a band can be visited
+# rarely and still be hot every time it is (D67).
 
 # The keys of `info` a deployable scheduler may read. `slot`/`time_s` are the
 # receiver's own clock; `band`, `dwell_slots` and `Y` are what its last look did

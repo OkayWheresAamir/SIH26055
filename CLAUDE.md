@@ -70,9 +70,9 @@ that step collapses the rung into rung 4. That correction now lives in `_observa
 policy gets it. `visit_density` reads in fair shares (1.0 = equal airtime, ceiling 36.0),
 `staleness` in reference sweeps (1.0 = one pass overdue, ceiling 13.95), **the box is deliberately
 no longer the unit interval**, and `camp_time` is gone — measured, it took exactly two values under
-any non-camping policy. **The vector is 146 wide.** Rung 5's ranking is unchanged (verified on
-1,408 of 1,408 steps) and `reward_balance` is numerically unchanged (verified to 1.6e-7), so D53's
-table survives.
+any non-camping policy. **The vector was 146 wide** (extended to 183 by D67, below). Rung 5's
+ranking is unchanged (verified on 1,408 of 1,408 steps) and `reward_balance` is numerically
+unchanged (verified to 1.6e-7), so D53's table survives.
 
 **Every checkpoint in `runs/checkpoints/` is now dead**, rungs 7 and 8 included — they predated
 D49 and D55 finished the job. **No RL row currently in `EVALUATION.md` §5 was produced under
@@ -153,6 +153,21 @@ own action choices instead of a sweep — both measured *worse* than the camper 
 intercept time and coverage. The code was removed after being measured; `D66` stays as the record
 and `docs/project/PHASE_SWITCH_FUTURE_WORK.md` carries the two directions (an observation feature,
 or a jointly-learned phase/band action) still worth trying if this line of work is picked up again.
+
+**Option A was built the same day: the observation is now 183 wide, not 146 (D67).** Two blocks
+appended after `measured_dbm` — `HIT_STREAK` (36-wide, consecutive declared hits per band across
+visits, capped and rescaled) and `CURRENT_HIT_STREAK` (the current band's own streak, a
+convenience scalar). Existing slice offsets are untouched, so no heuristic rung needed changing.
+**Every checkpoint that predates this commit is now permanently unloadable** — D64's, D65's, every
+snapshot of both arms — same cost every past observation change has carried (D49, D55), paid again
+here on purpose rather than by accident. A gap this exposed is closed alongside it: the test
+suite's per-rung checkpoint-usability check was a hand-maintained table that had fallen behind for
+every rung added after D55, so this change's first test run produced 85 failures instead of clean
+skips; rewritten to build each rung directly and catch the error `require_loadable()` (D49) already
+raises, removing the table and the maintenance burden with it. A fresh retrain under 183 is
+in progress — training one model at a time, sequentially, after a laptop crash interrupted the
+first attempt at running several in parallel. Full account: D67, `scratch/TRAINING_JOURNEY.md`
+§15.
 
 **The environment was frozen on 2026-09-04 (D42).** `rfenv/constants.py` is closed — band
 geometry, slot clock, dwell schedule, `N₀`, `σ`, `γ`, `PD_POPULATION` — and
