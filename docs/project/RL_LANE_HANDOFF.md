@@ -4,6 +4,25 @@
 `RL_LANE_HANDOFF.html` (2026-09-03), both of which predate D29/D31 and D43–D46 and still print a
 six-rung ladder. **Delete them; this file is the source.**
 
+> **AMENDED 2026-09-09 — three things below are now out of date; see D52, D53 and D54.**
+> **(1)** The registered reward candidates are `hit_z`, `hit_y`, `reward_balance`. The key
+> `first_intercept` no longer exists — candidate 3 was renamed and rewritten (D50, D53), so any
+> command here that passes `--reward first_intercept` will be refused by `ScanEnv.__init__`.
+> **(2)** `reward_balance`'s camping cost is charged against airtime share
+> (`-3.0 * visit_density[action] * n_slots`), not a consecutive-repeat streak — the streak version
+> was defeated for free by alternating between two bands, and measurably ranked a 2-band ping-pong
+> above round-robin (D53).
+> **(3)** Inference **samples** the policy; it no longer takes the argmax. `RLScheduler` and
+> `RecurrentRLScheduler` take `deterministic`, defaulting to `False`, so every code snippet below
+> showing `deterministic=True` is stale except for rung 7 (a DQN's greedy action *is* its policy).
+> **(4)** The observation is **146 wide, not 147**, and its box is no longer `[0, 1]` (D55):
+> `camp_time` was dropped as measurably inert, `visit_density` now reads in fair shares (ceiling
+> 36.0) and `staleness` in reference sweeps (ceiling 13.95). Every checkpoint that predates this is
+> unloadable. **(5)** `reward_balance` separates catastrophe from competence but not competence from
+> excellence — measured, it scores rung 5 and round-robin within +2.3 +/- 11.7 of each other over 8
+> seeds, so round-robin is roughly the ceiling it can teach (D56, open).
+> The PDF beside this file is older still and does not carry these amendments.
+
 **Audience:** the 2–3 people building rung 7. **Owner of this file:** Aamir.
 **Regenerate the PDF** with `python -m scripts.md2pdf docs/project/RL_LANE_HANDOFF.md`.
 

@@ -1,29 +1,49 @@
-"""Rungs 7 and 8 of the baseline ladder: reinforcement-learning schedulers.
+"""Rungs 7, 8 and 9 of the baseline ladder: reinforcement-learning schedulers.
 
-Both deliberately naive first passes (RL_TEAM_HANDOFF.md §15 Day 1):
-library-default hyperparameters, reward = hit_z (env.DEFAULT_REWARD), nothing
-tuned. See `dqn.py` (rung 7) and `ppo.py` (rung 8).
+All deliberately naive first passes (RL_TEAM_HANDOFF.md §15 Day 1):
+library-default hyperparameters, nothing tuned. Each base variant (rungs 7, 8,
+9 -- not their lettered siblings) was specifically trained with `--reward hit_z`
+(D29's candidate 1) -- pass that flag explicitly if reproducing one, since
+`env.DEFAULT_REWARD` has since moved to `first_intercept` and no longer matches.
+See `dqn.py` (rung 7), `ppo.py` (rung 8) and `recurrent_ppo.py` (rung 9).
 
-**Package layout, built for more than one algorithm.** `RLScheduler` (the
-`(obs, info) -> band` adapter around `model.predict()`) and `make_train_env`
-(the `ScanEnv(pool=..., reward=...)` factory) are algorithm-agnostic --
-any SB3 algorithm exposes the same `.predict()` API and trains on the same
-env -- and live in `common.py`. Only `train()`, `load_checkpoint()` and the
-default checkpoint path are algorithm-specific, one file per algorithm
-(`dqn.py`, `ppo.py`). A third algorithm is another sibling file, not a rewrite.
+**Package layout, built for more than one algorithm.** `make_train_env` (the
+`ScanEnv(pool=..., reward=...)` factory) is algorithm-agnostic -- any SB3(-contrib)
+algorithm trains on the same env -- and lives in `common.py`, alongside the two
+policy adapters `common.py`'s own docstring explains (`RLScheduler` for a plain
+feed-forward `.predict()`, `RecurrentRLScheduler` for a recurrent one). Only
+`train()`, `load_checkpoint()` and the default checkpoint path are
+algorithm-specific, one file per algorithm (`dqn.py`, `ppo.py`,
+`recurrent_ppo.py`). A fourth algorithm is another sibling file, not a rewrite.
 Top-level `rfenv.rl.train`/`load_checkpoint`/`DEFAULT_CHECKPOINT` stay aliased
 to `dqn.py` specifically (today's original algorithm, kept for anything
-already using those names); PPO is reached explicitly as `rfenv.rl.ppo.*`.
+already using those names); PPO and RecurrentPPO are reached explicitly as
+`rfenv.rl.ppo.*` / `rfenv.rl.recurrent_ppo.*`.
 
 Usage::
 
     python -m rfenv.rl --check-env                                   # DQN sanity check only, no training
-    python -m rfenv.rl                                                # train DQN on hit_z, 20,000 steps (the defaults)
+    python -m rfenv.rl --reward hit_z                                 # train DQN on hit_z, 20,000 steps (rung 7's own setting)
     python -m rfenv.rl --reward hit_y --timesteps 100000 --seed 1     # a different reward candidate (D29)
     python -m rfenv.rl --checkpoint runs/checkpoints/dqn_hit_y.zip --reward hit_y
 
     python -m rfenv.rl.ppo --check-env                                # PPO's own CLI, same shape
     python -m rfenv.rl.ppo --checkpoint runs/checkpoints/ppo_hit_y.zip --reward hit_y
+
+    python -m rfenv.rl.recurrent_ppo --check-env                      # RecurrentPPO's own CLI, same shape
+    python -m rfenv.rl.recurrent_ppo --checkpoint runs/checkpoints/recurrent_ppo_hit_y.zip --reward hit_y
+
+**Every checkpoint written here gets a `.json` manifest beside it**, from the
+shared helper in `common.py` -- so `dqn.py`, `ppo.py`, `recurrent_ppo.py` and
+any algorithm added later are self-describing by construction rather than by
+anyone remembering. It records what the SB3 archive cannot: the reward (SB3
+serialises the algorithm's constructor arguments, never the reward function,
+so two runs differing only in reward are indistinguishable inside the `.zip`),
+the exact argv, the commit and whether the tree was dirty, and the observation
+width at training time. `load_checkpoint()` reads that width first and refuses
+a stale checkpoint up front, with the training command that rebuilds it,
+instead of letting it fail later inside `predict()` with a bare shape error.
+Checkpoints predating manifests have none and still load. See `run.md`.
 
 Training writes a checkpoint; it does not by itself run the agent against
 anything. To actually run it -- against the rest of the ladder, on real

@@ -1209,6 +1209,8 @@ D26 and D29. Re-measured from `rfenv.receiver` when L2 landed (2026-09-03) — s
 **Status:** `SETTLED` (2026-09-04) — **ratified in the implementation lane, not escalated.**
 Records a choice already made in `ENVIRONMENT_SPEC.md` §L3, built in `rfenv/env.py` and covered
 by `tests/test_env.py`. The human retains a one-line veto; nothing downstream assumes otherwise.
+**EXTENDED 2026-09-09 — see D49, then RESCALED, see D55 (the base three are no longer the whole vector; `current_band`,
+`current_band` and `measured_dbm` were added and it is now 36×4+2 = 146 wide, not 109 — D49, D55).**
 
 **Why this did not need escalating, when D30 does.** `CLAUDE.md` gates decisions that shape the
 agent interface because they are expensive to reverse. This one is not: the observation vector is
@@ -2087,6 +2089,506 @@ Recorded so a reviewer can weigh it.
 computed by `rfenv/compare.py::paired_wins`, which `tests/test_compare.py` pins against
 hand-built rows including the case where a candidate wins each metric in a different scenario and
 must therefore score zero.
+
+---
+
+## D48 — RL joins the ladder: rungs 7 (DQN), 8 (PPO), 9 (Recurrent PPO)
+
+**Status:** `SETTLED` (2026-09-09) — built, tested, and registered in `rfenv/baselines/ladder.py`.
+Closes the gap `CLAUDE.md`'s own build status named: *"Rung 7 (RL) is the only thing missing from
+the ladder."*
+
+**Three algorithms, one adapter shape each.** All three are `stable-baselines3` (rung 9 also needs
+`sb3-contrib`, which SB3 itself does not ship), trained by `rfenv/rl/{dqn,ppo,recurrent_ppo}.py`
+against `rfenv/rl/common.py::make_train_env` — `ScanEnv(pool=EmitterPool.from_train(), reward=...)`,
+never a fixed replay, so every training episode draws a fresh scenario (D25, D32) and nothing is
+ever memorised. Two policy adapters, not one, because a recurrent policy's `.predict()` has a
+different shape than a feed-forward one's:
+
+- **`RLScheduler`** wraps DQN/PPO's plain `predict(obs, deterministic=True)`. Stateless.
+- **`RecurrentRLScheduler`** wraps rung 9's `predict(obs, state=..., episode_start=..., ...)`,
+  carrying the LSTM's hidden state across calls within an episode and resetting it at each new
+  one (inferred from `info["slot"] == 0`, not tracked by the caller).
+
+Both read only what `guarded()` lets through — `RecurrentRLScheduler` touches exactly one `info`
+field (`slot`, already in `OBSERVABLE_INFO`) purely to detect an episode boundary, never to
+condition the action — so every RL rung is deployable under the same D19/D29 rule every other
+rung already follows, not a special case.
+
+**Multiple trained variants coexist; they do not overwrite each other.** One checkpoint per
+algorithm was never going to be enough — different rewards, different timestep budgets, different
+points along one run all want comparing. `_dqn_rung_factory`/`_ppo_rung_factory`/
+`_recurrent_ppo_rung_factory` are parameterised by checkpoint path, so registering a new variant
+is one `Rung(...)` line naming its own `.zip`, not a retrain-and-overwrite. Lettered sub-rungs
+follow the numbering 6/6a already established for Apfeld's two forms: **7, 7a** (DQN); **8, 8a,
+8b, 8c** (PPO, three `first_intercept` checkpoints at different timestep budgets); **9** (Recurrent
+PPO). `run.md` documents the registration pattern and the training commands.
+
+**Not decided here, still open:** which variant, if any, is the RL lane's answer to D47's
+paired-dominance rule. No trained checkpoint has been run through `compare.paired_wins` against
+round-robin as of this entry — rungs 7-9 exist and are comparable, nothing has been selected.
+
+**Evidence.** `rfenv/rl/{common,dqn,ppo,recurrent_ppo}.py`, `rfenv/baselines/ladder.py`,
+`tests/test_rl.py` (registration, deployability, checkpoint round-trips, and — specifically for
+rung 9 — that hidden state actually threads across calls rather than resetting every dwell).
+
+---
+
+## D49 — the observation vector, extended past D34's base three
+
+**Status:** `SETTLED` (2026-09-09) — built in `rfenv/env.py::ScanEnv._observation`, covered by
+`tests/test_env.py`/`tests/test_baselines.py`. Exactly the kind of change D34 itself reserved:
+*"extensions remain the RL lane's call and get logged as decisions."* D34's own status line is
+amended below to point here.
+
+**Three additions, in the order they landed, each keeping D19/D29's rule** (built only from the
+agent's own scan history or receiver-observable quantities — never truth):
+
+1. **`current_band`** — a one-hot of the band the most recent dwell was on. Distinguishes "I am
+   here right now" from "I left here one slot ago", which `staleness` alone cannot: the currently
+   tuned band and a band just vacated both read staleness ≈ 0.
+2. **`camp_time`** — consecutive slots spent on the current streak, normalised by `N_SLOTS`, reset
+   the instant the action changes. Not redundant with `visit_density` (airtime share over the
+   *whole* episode): a band camped early and abandoned still reads high density long after the
+   agent moved on, where `camp_time` collapses back to 0 the moment it leaves.
+   **REMOVED 2026-09-09 by D55.** The reasoning above is sound but the component was measurably
+   inert: under a non-camping policy it takes exactly two values, because the streak cannot exceed
+   one dwell unless the agent is already camping.
+3. **`measured_dbm`** — the most recent dwell's mean `S + noise`, i.e. what the receiver's
+   detector actually read (D19: observable, unlike the truth-side `S` alone), clamped to a fixed
+   `[-120, -20]` dBm window and linearly rescaled to `[0, 1]` to fit the `Box`. Global, not
+   per-band, matching `camp_time`/`current_band`'s scope: it reports only the band just left.
+
+**The vector's size moved three times in the same session**: D34's **109** (36×3+1) → **145**
+(36×4+1, `current_band`) → **146** (+`camp_time`) → **147** (36×4+3, +`measured_dbm`), and then
+**back to 146** when D55 dropped `camp_time` and rescaled two blocks. Every
+existing trained checkpoint breaks at each step — SB3 sizes a policy network's input layer to
+`observation_space.shape` at construction and cannot accept a differently-shaped vector afterward
+— so a shape change is a retrain, not a reload, for every registered RL rung (D48).
+
+**Evidence.** `rfenv/env.py::ScanEnv._observation`, `rfenv/baselines/guard.py` (`CURRENT_BAND`,
+`MEASURED_DBM` slice constants — `CAMP_TIME` until D55 — kept in sync with the vector by
+`tests/test_baselines.py::test_the_observation_slices_match_the_environment`).
+
+---
+
+## D50 — reward-candidate churn this session: the default moved, a fourth candidate did not stick
+
+**Status:** `SETTLED` as a record of what changed (2026-09-09). **Not** a D47 rule application —
+recorded as that explicitly, below. **SUPERSEDED on the default 2026-09-09 — see D53:**
+`first_intercept` is no longer a registered key at all; candidate 3 is now `reward_balance` and
+`DEFAULT_REWARD` names that. Everything below about the *fourth* candidate still stands.
+
+**`DEFAULT_REWARD` moved from `hit_z` to `first_intercept`,** changed directly in `env.py` and
+confirmed this session. No `compare.paired_wins` measurement (D47's own selection rule) was run
+against this specific choice — this entry records that the default **is** now `first_intercept`,
+not that D47's dominance-count procedure is what put it there. Anyone treating this as "the reward
+question is closed" should re-read D47: the rule exists, but no evidence line here claims it was
+applied. Every trainer's `--reward` CLI flag still defaults to `env.DEFAULT_REWARD`, so reproducing
+any rung's base variant (all originally trained on `hit_z`, D48) now needs `--reward hit_z` passed
+explicitly rather than left to the default.
+
+**A fourth candidate, `reward_weighted_camp`, was registered and retired within the same working
+session.** Discovery credit plus declared-hit credit, the declared-hit term taxed by a per-slot
+fee proportional to the current camping streak — an attempt to price greed directly rather than
+leave camping to be merely un-rewarded. It briefly went in as `REWARDS["weighted_camp"]`, a
+deliberate, explicit exception to D29's "exactly three, and the set stays at three." It came back
+out; **D29's three-candidate cap holds, unamended.** Kept as a commented-out draft in `env.py`
+alongside a further, never-finished `reward_hybrid` sketch — neither is active, both are dead code
+by choice, not by accident, in case either is picked back up.
+
+**Evidence.** `rfenv/env.py` (`REWARDS`, `DEFAULT_REWARD`, the commented-out drafts and their
+docstrings), `tests/test_env.py::test_all_reward_candidates_run_and_differ`.
+
+---
+
+## D51 — `newly` credits an emitter once per band, not once per episode
+
+**Status:** `SETTLED` (2026-09-09) — changed in `rfenv/env.py::ScanEnv.step`, flagged as looking
+like a bug, confirmed intentional by the human. Reward-side only; **D28's intercept definition and
+every §4 metric are untouched.** Recorded because it is in a gated category (the reward) and
+because the candidate's name now outlives its semantics — see the last paragraph.
+
+**What changed.** The `newly` set — the only input `reward_first_intercept` (D29's candidate 3)
+has beyond the dwell — used to fire once per emitter per episode: an emitter's true first
+intercept and nothing after. It now fires **once per distinct `(emitter, band)` pair**: on the
+first-ever intercept, and again the first time that emitter turns up in a band it has not been
+credited in before. `track["bands"]` is what remembers which.
+
+**What it does not change, which is the part that matters.** `track["first"]` — `first_e`, the
+censored-intercept-time numerator D28 defines — is written **only** in the `track is None` branch,
+never in the widened one. So it is still set exactly once per emitter, at the true first sighting.
+Censored intercept time, emitter coverage, interception ratio and everything else in
+`EVALUATION.md` §4 are computed from that and are bit-identical either way. Only the reward-facing
+set was widened; the metric-facing one was not.
+
+**Why widen it.** D3's bands overlap — an emitter generically falls inside about two band windows
+— so under the old rule a scheduler that swept an emitter's whole footprint was paid exactly the
+same as one that clipped its edge once and moved on. The widened set pays for covering the
+footprint. Whether a policy can *learn* to act on it is D30's open question, unchanged by this.
+
+**Measured effect: about 2.5×, not the ~2× D3's geometry alone would suggest.** Round-robin, seed
+0, stare replays:
+
+| scenario | distinct emitters intercepted | `newly` credits | credits per emitter |
+|---|---|---|---|
+| `config_2` | 16 | 40 | 2.50× |
+| `config_921` | 61 | 154 | 2.52× |
+
+Credits equal the `(emitter, band)` pair count exactly in both — confirming one credit per pair,
+with no double-counting inside a band. It runs above 2× because a full 36-band sweep catches an
+emitter in more windows than the nominal two it generically spans.
+
+**The naming tension, recorded rather than fixed.** Candidate 3 is still called
+`first_intercept`, and D29 and D28 both describe it in first-intercept language, but it no longer
+pays for first intercepts — it pays for footprint coverage. The name is now wrong in a way that
+will mislead anyone reading D29 without reading this. Renaming it is a checkpoint-invalidating
+change to a registered `REWARDS` key (every rung trained on it names it), so it is **not** done
+here; the mismatch is recorded instead, and D50 already notes this candidate is now the default.
+
+**Evidence.** Measured 2026-09-09, this session, on `config_2` and `config_921` stare replays under
+round-robin at seed 0, counting `info["newly_intercepted"]` per step against `len(env.tracks)` and
+`sum(len(t["bands"]) for t in env.tracks.values())`. Code: `rfenv/env.py::ScanEnv.step` (the
+`if dwell.band not in track["bands"]` branch) and `reward_first_intercept`'s own docstring.
+Reasoned, from the same code, that `first`/`first_e` is unaffected: it is assigned in one branch only.
+
+---
+
+## D52 — the reward's staleness array was the inverse of the observation's, and paid for camping
+
+**Status:** `SETTLED` (2026-09-09) — a bug fix, not a design change. Recorded anyway because it
+sits in a gated category (the reward, D29) and because it silently invalidates every RL result
+trained against `reward_balance` before this date.
+
+**What was wrong.** `ScanEnv.step` maintains three per-band arrays that exist only to be handed to
+the reward — `_hit_rate_array`, `_visit_density_array`, `_staleness_array`. The staleness one
+stored
+
+```python
+self._staleness_array[action] = self._last_slot[action] / N_SLOTS
+```
+
+which is *when* the band was last seen. The quantity `_observation()` reports, and the one
+`reward_balance`'s docstring promises it prices exploration against, is *how long ago*:
+`(self.t - self._last_slot[action]) / N_SLOTS`. Over an episode those two run in opposite
+directions. A band revisited constantly has a large and growing `_last_slot`; a band abandoned
+early keeps a small one forever. So `(1.5 - visit_density) * staleness` — the term whose entire
+job is to pull the agent toward neglected bands — paid **most** for returning to the band it had
+just left.
+
+The never-visited case was worse than merely inverted. `_last_slot` initialises to the sentinel
+`-1`, and the array element for a band is written on the step that band is *chosen*, before the
+dwell lands. A band chosen once at slot 0 and never again therefore kept `-1 / 600` — a small
+**negative** staleness — for the rest of the episode.
+
+**Measured, before the fix.** Sampled scenario, seed 0, at `t = 503`, after one dwell on band 0 at
+slot 0 and 250 dwells on band 18:
+
+| band | last seen | exploration term `(1.5 − visit_density) × staleness` |
+|---|---|---|
+| 18 — just left | slot ~502 | **+0.419** |
+| 0 — untouched for 500 slots | slot 1 | **−0.0025** |
+
+After the fix, the same two read **+0.00084** and **+1.5**.
+
+**Why nothing caught it.** `_observation()` never reads these arrays; it recomputes all three from
+the raw counters (`_slots_looked`, `_hits`, `_last_slot`) and was always correct. The bug lived
+only in the reward-facing copy, so every observation test passed and the agent's *inputs* were
+never wrong — only the price it was paid for acting on them. Two dead locals in the same function
+(`staleness_before` and `staleness`) held the correct formula and went unused, which is what made
+the wrong line read as if it were right.
+
+**Consequence for existing results.** Every RecurrentPPO checkpoint trained on `reward_balance`
+before 2026-09-09 was optimising a reward whose exploration term rewarded camping. Those runs are
+not evidence about what the environment teaches; they are evidence about what that reward taught.
+`EVALUATION.md` §5's rung 9 rows are marked accordingly.
+
+**Evidence.** `rfenv/env.py::ScanEnv.step` (the `_staleness_array` assignment) against
+`ScanEnv._observation` (the `staleness` block). Measured this session by stepping a
+`ScanEnv(pool=EmitterPool.from_train(), reward="reward_balance")` at seed 0 and reading both
+quantities directly. Pinned by
+`tests/test_env.py::test_the_reward_reads_the_same_staleness_the_observation_reports`, which
+asserts the array equals the observation's value at the index the reward reads, that a
+never-visited band reads 1.0 rather than −1/600, and that a long-abandoned band reads staler than
+one just left.
+
+---
+
+## D53 — `reward_balance`'s camping cost is charged against airtime share, not a repeat streak
+
+**Status:** `SETTLED` (2026-09-09) — a change to the shape of a registered reward candidate,
+proposed with the measurements below and **confirmed by the human** before it went in, per
+CLAUDE.md's architecture gate. Candidate 3 only; D29's three-candidate cap holds, unamended.
+
+**Naming, first, because D50 is now stale on it.** Candidate 3 is `reward_balance`, and
+`DEFAULT_REWARD` names it. The key `first_intercept` that D50 recorded as the default no longer
+exists in `REWARDS`; the rename and rewrite happened outside any recorded session, so this entry
+records the state, not the moment it changed. D51's discussion of `newly` describes a candidate
+that no longer reads `newly` at all — `reward_balance` ignores it. `newly` is still computed and
+still published in `info["newly_intercepted"]`, so nothing about D51's measurement is withdrawn;
+it simply has no consumer in the current candidate set.
+
+**What changed.** The fourth term of `reward_balance`:
+
+```python
+reward -= 1.0 * camp_slots                                    # before
+reward -= 3.0 * visit_density_array[action] * dwell.n_slots   # after
+```
+
+**Why.** `camp_slots` counts *consecutive* slots on one band and resets the instant the action
+changes. A policy therefore defeats it for free by alternating between two bands: a 2-band
+ping-pong and a full 36-band sweep both pay exactly `N_SLOTS` in total. That is not a small
+loophole — it is the difference between the behaviour rung 4 exists to demonstrate and the floor
+the whole ladder is built on. `visit_density` has no such hole, because it is airtime share over
+the episode: sustained camping drives it to 1.0, alternating holds it near 0.5, a sweep near 1/36.
+
+**Measured.** Four fixed policies, three sampled scenarios each (seeds 0, 1, 2), the staleness bug
+of D52 already fixed in both columns so the two terms are compared on equal footing:
+
+| policy | interception ratio | censored intercept time | emitter coverage | `−1.0 × camp_slots` | `−3.0 × visit_density × n_slots` |
+|---|---|---|---|---|---|
+| recency (rung 5) | 0.0995 | 6.49 s | 0.782 | −206.6 | **+329.5** |
+| round-robin | 0.1179 | 2.47 s | **0.921** | −228.5 | **+324.3** |
+| alternate, 2 bands | 0.1985 | 16.55 s | 0.261 | **−218.9** | −505.4 |
+| camp one band | 0.2350 | 16.84 s | 0.245 | −89,867 | −1,361 |
+
+**The old term ranked the 2-band ping-pong above round-robin** — coverage 0.261 against 0.921,
+censored intercept time 16.55 s against 2.47 s, and it scored 4% better. There was no gradient
+toward sweeping; what little existed pointed the wrong way. That is the direct explanation for why
+the rung 9 policy's action distribution stayed near-uniform (D54): "don't repeat the same band
+twice in a row" is the only coherent thing that reward taught, and a near-random policy already
+satisfies it.
+
+Two secondary properties of the new term, both deliberate:
+
+- **Scaled by `dwell.n_slots`**, so the cost is per slot of airtime spent and D31's per-slot
+  invariant survives — a wide band costs twice as much because it consumes twice as much episode.
+- **The reward's range collapses from ~90,000 to ~1,700.** An unbounded streak counter makes a
+  fully-camped episode worth −89,867 against a good episode's +330, which is a 270× spread for a
+  value head to fit. This is a training-stability argument, not a correctness one, and is recorded
+  as such.
+
+**What this does not claim.** These are four hand-written policies on three sampled scenarios, not
+D47's paired-dominance procedure over the full protocol, and not a claim that `reward_balance` is
+the right candidate. D47's selection rule remains un-applied, exactly as D50 left it. What is
+claimed is narrower and sufficient: the previous term ordered two known policies backwards, and
+this one does not.
+
+**Evidence.** `rfenv/env.py::reward_balance`. Measured this session by scoring each policy through
+`ScanEnv(pool=EmitterPool.from_train(), reward="reward_balance")` at seeds 0/1/2 and reading
+`episode_metrics()["total_reward"]`. Pinned by
+`tests/test_env.py::test_reward_balance_ranks_a_sweep_above_a_two_band_pingpong`, asserted as an
+ordering rather than against literals because the numbers move with the scenario draw.
+
+---
+
+## D54 — RL inference samples the policy; it does not take the argmax
+
+**Status:** `SETTLED` (2026-09-09) — a change to the evaluation protocol, proposed with the
+measurement below and **confirmed by the human**. This is the entry that withdraws the "the agent
+learned to camp" reading of `EVALUATION.md` §5.
+
+**What was wrong.** `RLScheduler` and `RecurrentRLScheduler` both hardcoded `deterministic=True`,
+so every RL row ever produced in this repository reported the **mode** of the policy rather than
+the policy. For a DQN that is correct — the greedy argmax *is* a DQN's policy. For an on-policy
+algorithm it is not: PPO optimises expected return under the sampled distribution and never
+evaluates its own mode, so nothing in training constrains where the argmax lands.
+
+**Measured, on `runs/checkpoints/lstm_gamma997.zip`, one seed-0 episode**, reading the action
+distribution directly off `policy.get_distribution`:
+
+```
+mean entropy       2.369    (uniform over 36 bands = ln 36 = 3.584; collapsed = 0)
+mean max-probability 0.206  the modal band holds about a fifth of the mass
+argmax             band 5 on 580 of 586 steps
+```
+
+**The policy had not collapsed — it was broad. Its mode was sticky.** Taking the argmax of a broad
+distribution whose peak barely moves turns a spread-out policy into a one-band camper. The same
+checkpoint, same seeds, sampled instead:
+
+| inference | distinct bands visited | emitter coverage |
+|---|---|---|
+| `deterministic=True`, seed 0 / 1 | 2 / 2 | 0.247 / 0.041 |
+| `deterministic=False`, seed 0 / 1 | **31 / 31** | **0.603 / 0.714** |
+
+This confirms at the level of the distribution what `EVALUATION.md` §5 already flagged as an
+unmeasured caveat from a single episode. **The camping in every rung 9 row is an inference
+artefact, not a learned policy.**
+
+**The decision.** `deterministic` is now a constructor parameter on both adapters, defaulting to
+`False`. Three consequences, each deliberate:
+
+1. **Rung 7 (DQN) passes `deterministic=True` explicitly** in its ladder factory. SB3's
+   `deterministic=False` on a DQN means ε-greedy *exploration* noise at
+   `exploration_final_eps` (0.05 by default) — a training artefact, not a learned distribution.
+   Sampling it would inject 5% random actions into an evaluation.
+2. **Rungs 8 and 9 sample.** That is what their training return measured, so it is what an
+   evaluation of them should measure.
+3. **torch's global generator is seeded per rung, from the rung's own stream.** SB3's `.predict()`
+   draws its sample from torch's global RNG and accepts no generator argument, so without this two
+   runs of `compare.py` at the same seed would give a sampled rung different actions and
+   `EVALUATION.md` §7's "identical scenarios and seeds" would quietly stop holding. `make()`
+   already derives an RNG from the episode seed and the rung key; `_seed_torch` folds that into
+   torch. Verified: same seed → byte-identical action sequence.
+
+**What this does not settle.** Whether rung 9 *beats* anything under sampled inference is
+unmeasured at protocol scale — the numbers above are two episodes on one checkpoint trained
+against the pre-D52 reward. `EVALUATION.md` §5's rung 9 table is superseded on both counts and
+needs re-running once a checkpoint trained on the corrected reward exists.
+
+**Evidence.** `rfenv/rl/common.py` (`RLScheduler`, `RecurrentRLScheduler`),
+`rfenv/baselines/ladder.py` (`_seed_torch` and the three rung factories). Measured this session on
+`lstm_gamma997.zip` at seeds 0 and 1; entropy and max-probability read from
+`model.policy.get_distribution(...).distribution.probs` over a full seed-0 episode.
+
+---
+
+## D55 — the observation is rescaled so 1.0 means something, and `camp_time` is dropped
+
+**Status:** `SETTLED` (2026-09-09) — a change to the observation vector, which is a gated
+category (D34, D42's "not frozen, deliberately" list). **Proposed with the measurements below and
+confirmed by the human**, who also accepted the cost: it invalidates every checkpoint, including a
+1M-step RecurrentPPO run that was in flight when the change went in.
+
+**The vector goes 147 → 146.** Nothing was reordered; two blocks changed units and one scalar left.
+
+| block | before (D34/D49) | after (D55) |
+|---|---|---|
+| `hit_rate` | hits / slots looked | unchanged |
+| `visit_density` | slots looked / elapsed | **× `N_BANDS`** — airtime share over *fair* share |
+| `staleness` | (t − last visit) / `N_SLOTS` | **/ `SWEEP_SLOTS`** — neglect in reference sweeps |
+| `current_band` | one-hot | unchanged |
+| `clock` | t / `N_SLOTS` | unchanged |
+| `camp_time` | streak / `N_SLOTS` | **removed** |
+| `measured_dbm` | clamped, rescaled | unchanged |
+
+**The observation space is no longer the unit box**, and that is the point rather than a side
+effect. `visit_density` declares a ceiling of `N_BANDS` (36.0, a fully camped episode) and
+`staleness` one of `N_SLOTS / SWEEP_SLOTS` (13.95, a band untouched all episode). SB3 does not
+rescale inputs, so the numbers in the box are the numbers the network sees; an honest box beats a
+tidy one.
+
+### Why: two of the three per-band blocks lived in the bottom tenth of their range
+
+Measured this session over 1,506 round-robin steps and 1,409 rung-5 steps, 3 seeds each, sampled
+scenarios:
+
+| block | mean | p99 | max |
+|---|---|---|---|
+| `visit_density`, before | **0.0278** | 0.065 | 1.000 |
+| `visit_density`, after | **1.0000** | 2.323 | 36.000 |
+| `staleness`, before | **0.0697** | 1.000 | 1.000 |
+| `staleness`, after | **0.9720** | 13.953 | 13.953 |
+
+`visit_density`'s old mean is not an accident of the policy — it sums to 1 across bands by
+construction (airtime is the only currency, D31), so its mean is pinned at exactly 1/36 for every
+scheduler that ever runs. `staleness`'s old distribution was bimodal rather than small: everything
+visited sat near zero and everything never-visited sat on the 1.0 ceiling, with the p99 landing
+exactly on the ceiling.
+
+**The decisive evidence is that rung 5 already had to correct one of them by hand.**
+`baselines/recency.py` multiplied staleness straight back out by `N_SLOTS / SWEEP_SLOTS` before
+using it, and its docstring records what happens without that step: *"the rung silently collapses
+into rung 4: measured on `config_2` stare, coverage 0.526 against round-robin's 0.895."* The bar
+the RL rungs have to clear was unusable on the raw feature. Since D55 the division happens in
+`_observation()` and every policy gets it, rather than it remaining one heuristic's private
+knowledge. `recency.py`'s `__call__` no longer divides; **rung 5's ranking is unchanged, verified
+on 1,408 of 1,408 steps against an explicit recomputation in the old units.**
+
+**`visit_density` is the one `reward_balance` prices camping off** (D53), so the term meant to
+prevent camping was reading the block with the least resolution in the vector.
+
+### Why `camp_time` went
+
+Measured under a non-camping policy it takes **exactly two values**, 1/600 and 2/600 (std 0.0007) —
+it cannot move unless the agent is already camping, because the streak resets on every action
+change. It is a gauge that only registers once the wrong thing is happening, while `visit_density`
+says the same thing continuously and earlier. Its only consumer, `-1.0 * camp_slots`, was replaced
+in D53. `ScanEnv._camp_slots` is still maintained: every reward candidate takes it in its
+signature (D31's one call shape) and `episode_metrics()` reports it.
+
+### What was deliberately *not* done
+
+- **`current_band` stays**, though it is exactly redundant: `argmin(staleness) == argmax(current_band)`
+  on 1,506 of 1,506 steps, since the band just dwelt on always has minimum staleness. Recovering it
+  costs the network an argmax over 36 dims; 36 input weights per neuron is the cheaper side of that
+  trade. Recorded so nobody re-derives the redundancy and assumes it was missed.
+- **Time since last *hit*, per band, was not added.** `ScanEnv._last_hit_slot` already tracks it and
+  `_observation()` still excludes it. `staleness` says when the agent last *looked*; nothing says
+  when a band was last *active*, and in a restless environment those want opposite actions. It is
+  the obvious next component and it is held back deliberately: bundling it with a rescale would make
+  the retrain unattributable. **Open, and it is the next observation question.**
+
+### The reward is numerically unchanged, on purpose
+
+`reward_balance` reads two of the rescaled arrays, so leaving it alone would have silently
+re-tuned it and invalidated D53's table. It converts both back to the old units at the top of the
+function instead of carrying new coefficients. Verified two ways: per-step reward matches an
+explicit old-units recomputation to **1.6e-7** over 1,408 steps, and D53's two deterministic rows
+reproduce exactly — round-robin **+324.3**, camp-one-band **−1360.9**. The two remaining rows move
+within tie-breaking noise (rung 5 breaks ties randomly) and are not evidence of a change.
+
+D52's requirement still holds and its test still passes: the reward and the observation read the
+same quantities. They now read them in the same units too, and the conversion is one visible line
+rather than a scale mismatch nobody can see.
+
+### What it costs
+
+**Every checkpoint in `runs/checkpoints/` is dead** — all five were 146- or 147-wide against a
+different layout, and the test suite's skip count goes 42 → 66 accordingly. This includes the
+in-flight `lstm_balance_1M` run, which was warned about before the change and accepted. Rungs 7 and
+8 were already dead (D49) and remain so.
+
+**Evidence.** `rfenv/env.py` (`SWEEP_SLOTS`, `_SWEEPS_PER_EPISODE`, `_observation`, the
+`_visit_density_array`/`_staleness_array` writes in `step`, `reward_balance`'s conversion),
+`rfenv/baselines/guard.py`, `rfenv/baselines/recency.py`. Measured this session on
+`ScanEnv(pool=EmitterPool.from_train())` at seeds 0/1/2 under round-robin and rung 5. Pinned by
+`tests/test_env.py::test_spaces_are_the_specified_ones` (which now asserts the two non-unit
+ceilings), `::test_every_episode_starts_cold`,
+`::test_the_reward_reads_the_same_staleness_the_observation_reports`, and
+`tests/test_baselines.py::test_the_observation_slices_match_the_environment`. Suite: 265 passed,
+66 skipped, 1 failed — the pre-existing held-out-split guard.
+
+---
+
+## D56 — `reward_balance` cannot separate rung 5 from round-robin, and that caps what training can reach
+
+**Status:** `OPEN` (2026-09-09) — a measured limitation, recorded rather than fixed. **Not** a
+change to anything; `reward_balance` is untouched by this entry. Raised because it bounds what the
+run logged in `scratch/TRAINING_JOURNEY.md` §9 can possibly achieve, and because it is the next
+reward question after D52 and D53.
+
+**Measured, 8 seeds, sampled scenarios, per seed rather than averaged:**
+
+| policy | reward mean | sd | coverage |
+|---|---|---|---|
+| recency (rung 5) | **+277.2** | 81.6 | 0.768 |
+| round-robin (rung 2) | **+274.9** | 77.7 | 0.932 |
+
+Per-seed difference: **+2.3 ± 11.7**, with rung 5 ahead on **4 of 8 seeds**. Against a
+scenario-to-scenario spread of about 80, the reward's signal between the best deployable heuristic
+and the floor is roughly 3% of its own noise.
+
+**What that implies.** `reward_balance` distinguishes catastrophe from competence with a very large
+margin — camping scores −1361 against round-robin's +324, which is why D53's fix mattered and why an
+agent trained on it should stop camping. It does **not** meaningfully distinguish competence from
+excellence. An agent optimising it has almost no gradient telling it that rung 5's behaviour beats
+round-robin's, so **round-robin is approximately the ceiling this reward can teach**, and D46's
+stated target — hold `recency`'s 3.20 s while multiplying its interception ratio — is not encoded in
+it at all.
+
+Note also that round-robin scores *better* coverage (0.932 against 0.768) while rung 5 wins on
+interception ratio; the reward is weighted toward the spread-out behaviour, so the two nearly cancel.
+
+**Not acted on**, for two reasons. Re-weighting the reward now would confound the next training run
+with D52/D53/D55, and D47's paired-dominance selection rule — the project's own procedure for
+choosing between reward candidates — has still never been run. Any change here should come out of
+that procedure rather than out of one more hand-tuned coefficient.
+
+**Evidence.** Measured this session, 8 seeds, `ScanEnv(pool=EmitterPool.from_train(),
+reward="reward_balance")`, comparing `baselines.make("recency")` against a `t % N_BANDS`
+round-robin and reading `episode_metrics()["total_reward"]`.
 
 ---
 

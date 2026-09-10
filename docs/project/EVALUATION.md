@@ -178,7 +178,9 @@ imprint is the point. `rfenv/compare.py` refuses a scan replay rather than trust
 | 5 | **Recency / activity heuristic** | Simple adaptive benchmark: `argmax(hit rate + gap measured in reference sweeps)` over the D34 observation. |
 | 6a | **Apfeld: Active RFs** | Apfeld's own ablation — the tentative list with no period estimation (D13, D45). |
 | 6 | **Apfeld adaptive** | Published non-learning adaptive strategy (`docs/reference/scheduling/paperSSPD (1).pdf` §II), adapted to a binary-detection receiver (D44). The serious bar. |
-| 7 | **RL scheduler** | Ours. **Does not exist yet.** |
+| 7 | **DQN** | Ours. Built (D48). **No runnable checkpoint** — all six DQN/PPO checkpoints predate D49's observation change and cannot execute. |
+| 8 | **PPO** | Ours. Built (D48). Same: no runnable checkpoint. |
+| 9 | **Recurrent PPO (LSTM)** | Ours. Built (D48). The only RL family with runnable checkpoints; measured below. |
 | — | **Greedy static, truth-fed** | Reference line: D14's camper, which knew where the pulses were. Not a scheduler. |
 | — | **Pulse-capture oracle** | Ceiling **for interception ratio only**. Not a baseline — a reference line. |
 
@@ -221,6 +223,76 @@ as **D46**.
 "Beats round-robin on both" is paired per episode — same scenario, same seed, same truth grid —
 because a mean can clear a mean while losing most scenarios.
 
+### Rung 9 (RL) joins the table — measured 2026-09-09
+
+> **SUPERSEDED 2026-09-09, on both counts — do not quote these rows.** Two defects were found and
+> fixed after this run, and each invalidates it independently. **(1) The reward was wrong** (D52):
+> `reward_balance`'s exploration term used a staleness that was the inverse of the observation's,
+> so it paid most for revisiting the band just left — every checkpoint below was trained against a
+> reward that rewarded camping. **(2) Inference was wrong** (D54): every row was produced by taking
+> the policy's argmax, and the policy is broad, not collapsed — measured mean entropy 2.369 against
+> ln 36 = 3.584, modal band holding 0.206 of the mass. Sampling the same checkpoints takes them
+> from 2 distinct bands to 31 and coverage from 0.247 to 0.603. **The "camping" characterised below
+> is an artefact of the argmax, not a learned policy.** The rows are kept because the heuristic
+> reproduction that licensed them is still sound and because the corrected run has to be compared
+> against something. They are re-run once a checkpoint trained on the corrected reward exists.
+>
+> **A third defect was found afterwards and makes the rows unrunnable as well as unquotable
+> (D55).** Two of the three per-band observation blocks lived in the bottom tenth of their declared
+> range: `visit_density` sums to 1 across bands by construction, pinning its mean at 1/36 = 0.0278
+> for every scheduler that will ever run, and `staleness` was bimodal at mean 0.070 with everything
+> unvisited piled on the 1.0 ceiling. Rung 5 -- the bar in this very table -- already corrected the
+> second by hand, and its docstring records that skipping that correction collapses it into rung 4.
+> `visit_density` now reads in fair shares and `staleness` in reference sweeps, `camp_time` is gone,
+> and the vector is **146** wide. Rung 5's ranking is unchanged (verified on 1,408 of 1,408 steps),
+> so **every heuristic and reference row in the table above still stands**. Every RL checkpoint,
+> however, is now unloadable.
+
+
+`python -m rfenv.compare --seeds 3 --sampled 10 --figures --out runs/baselines`, run
+2026-09-09T20:30:50Z at the same 57 scenarios × 3 seeds, reward `reward_balance`, 13 buildable
+rungs = **2,223 episodes**. **Every heuristic row and both reference lines above reproduce
+exactly**, `recency`'s 70.2% included — that reproduction is what licenses the new rows.
+
+| # | scheduler | interception ratio | censored intercept time (s) | emitter coverage | beats round-robin on **both** |
+|---|---|---|---|---|---|
+| 9a | Recurrent PPO, 100k | 0.1251 | 19.16 | 0.125 | 1.8% |
+| 9b | Recurrent PPO, 200k | 0.2265 | 16.26 | 0.252 | **0.0%** |
+| 9c | Recurrent PPO, 300k | 0.1695 | 16.26 | 0.248 | 1.8% |
+| 9d | Recurrent PPO, 400k | 0.2052 | 15.49 | 0.282 | **0.0%** |
+
+**Rungs 7 and 8 have no row**, and their absence is a result in itself: every DQN and PPO
+checkpoint was trained against a narrower observation vector and cannot run at all (D49). What is
+in the table is rung 9 only.
+
+**The RL rungs beat rung 5 on interception ratio and lose the comparison anyway.** 0.2265 against
+`recency`'s 0.1104, winning that column on 78.9% of paired episodes — while censored intercept time
+is four to five times worse and coverage is a third. Set those rows beside rung 4 (0.2088 / 9.67 /
+0.497 / 1.8%) and rung 6 (0.2455 / 14.86 / 0.367 / 4.1%) and the profile is the same one: the
+rows *look* like the camping exploit rung 4 exists to demonstrate (D14).
+
+**That reading is withdrawn — see the note below and D54.** What produced this profile was taking
+the argmax of a policy that had not collapsed, trained against a reward whose exploration term was
+inverted (D52). Rung 4 was put in the ladder to show a single metric can be gamed; whether an agent
+games it here is now **unmeasured**, because no rung 9 row in this table was produced under
+conditions that could answer it.
+
+This is why §4 prints the three metrics together and never one alone. An RL row reported on
+interception ratio by itself would read as a win over every heuristic in the table.
+
+**That qualification has since been settled, and it goes the other way (D54).** Every number
+above was produced with `deterministic=True` at inference. Reading the action distribution directly
+off `lstm_gamma997` over a full seed-0 episode gives mean entropy **2.369** against `ln 36 = 3.584`
+and a mean max-probability of **0.206** — the policy is broad, and its mode is merely *sticky*
+(argmax on one band for 580 of 586 steps). Sampled instead of argmaxed, the same checkpoint at
+seeds 0 and 1 visits **31 of 36 bands** and scores coverage **0.603 / 0.714** against the argmax's
+**0.247 / 0.041**.
+
+So the paragraph above is withdrawn as a claim about what the agent learned. It stands as a claim
+about what the argmax of an under-trained broad policy does. Both adapters now default to sampling,
+rung 7 excepted (a DQN's greedy action *is* its policy) — see D54 for the full reasoning and for
+why torch's generator is now seeded per rung.
+
 **What the ladder says, and it is not what D14 predicted.**
 
 1. **The tension is real and belongs to the truth-fed camper.** Ratio 0.568 against round-robin's
@@ -237,6 +309,15 @@ because a mean can clear a mean while losing most scenarios.
    70% of episodes and beats the Turing sweep on all three metrics. **The Pareto target is now:
    hold `recency`'s 3.20 s while multiplying its 0.110 interception ratio toward the camper's
    0.209 and the oracle's 0.658.**
+
+   **No registered reward candidate currently encodes that target (D56, open).** Measured over 8
+   seeds, `reward_balance` scores rung 5 at +277.2 and round-robin at +274.9 -- a per-seed
+   difference of **+2.3 +/- 11.7**, with rung 5 ahead on 4 of 8 -- against a scenario-to-scenario
+   spread of about 78. It separates catastrophe from competence by a very large margin (camping
+   -1361) and barely separates competence from excellence, so **round-robin is approximately the
+   ceiling it can teach**. An agent can satisfy the reward completely without approaching the
+   Pareto target this section sets. Recorded rather than fixed: D47's paired-dominance selection
+   rule has still never been run, and it is what should settle the choice.
 
 **Reproduce it with:**
 

@@ -172,6 +172,42 @@ def comparison_scenarios(
 # The comparison
 # --------------------------------------------------------------------------- #
 
+def buildable_rungs(keys: tuple[str, ...], grid: TruthGrid) -> tuple[str, ...]:
+    """`keys`, minus the rungs that cannot be constructed on this machine.
+
+    A rung is unbuildable for three reasons, all of them legitimate and none of
+    them a reason to lose the whole comparison: the training stack is not
+    installed (`stable_baselines3`/`sb3_contrib` are optional -- no heuristic
+    rung needs them), its checkpoint has not been trained yet, or its
+    checkpoint predates an observation change and can no longer run (D49).
+    Before this, the first such rung killed the entire run with a traceback,
+    which meant the headline command did not work at all on a machine without a
+    training stack.
+
+    Probed once, by actually building each policy, rather than by guessing from
+    the rung's name or checking for a file: whether a rung can be built is
+    exactly the question "does building it raise", and only the factory knows.
+
+    Warnings go to stderr, and the dropped rungs are named -- a comparison that
+    quietly contains no RL rows looks like a success and is not one.
+    """
+    ok, dropped = [], []
+    for key in keys:
+        try:
+            B.make(key, seed=0, grid=grid)
+        except Exception as exc:                      # noqa: BLE001
+            dropped.append(key)
+            first = str(exc).splitlines()[0] if str(exc) else type(exc).__name__
+            print(f"  ! rung {B.BY_KEY[key].rung} ({key}) skipped: {first}",
+                  file=sys.stderr)
+        else:
+            ok.append(key)
+    if dropped:
+        print(f"  ! {len(dropped)} of {len(keys)} rungs skipped: "
+              f"{', '.join(dropped)}", file=sys.stderr)
+    return tuple(ok)
+
+
 def compare(
     scenarios: list[Scenario],
     keys: tuple[str, ...],
@@ -543,6 +579,12 @@ def main(argv: list[str] | None = None) -> int:
     seeds = list(range(args.seeds))
 
     scenarios = comparison_scenarios(args.configs, args.sampled)
+    # Settle which rungs can actually be built before announcing the episode
+    # count, so the number printed is the number that will run.
+    if scenarios:
+        keys = buildable_rungs(keys, TruthGrid.from_scenario(scenarios[0]))
+    if not keys:
+        ap.error("no rung could be built -- nothing to compare")
     n_replays = sum(1 for s in scenarios if s.name.startswith("replay:"))
     print(f"{len(keys)} rungs x {len(scenarios)} scenarios x {len(seeds)} seeds "
           f"= {len(keys) * len(scenarios) * len(seeds)} episodes -> {out_root}")
