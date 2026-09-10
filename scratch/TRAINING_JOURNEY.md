@@ -1008,3 +1008,99 @@ snapshots. It is the first evidence, weak as it is, in the direction argued when
 called "unproven rather than rejected": the D62 screen measures discrimination between six fixed
 heuristics, which is a different signal than the gradient a learner actually consumes. Settling it
 for real needs matched seed counts per arm — see D65 for the full accounting.
+
+---
+
+# 15. A crash, a fix it exposed, and the observation grows to 183 (D67) — 2026-09-10
+
+## 15.1 The matched-seed attempt that didn't survive
+
+Following D65, the plan was to settle the control/treatment reversal with matched seed counts:
+`clean_lstm_seed1`/`seed2` and `lstm_balance_improved_seed1`/`seed2`, four runs, launched together
+in the background against the 146-wide observation. The laptop crashed partway through. No
+checkpoint from any of the four had reached its first 100k snapshot (~15-20 min in, well short of
+the ~18 min/100k pace observed on every prior run), so nothing was salvageable and nothing was
+lost beyond the wall-clock time -- confirmed by `runs/checkpoints/` holding no `seed1`/`seed2`
+files after the crash. The instruction that followed: train one model at a time in the background
+from here on, not several in parallel.
+
+## 15.2 Option A lands before the retry (D67)
+
+Discussed the same day, before the crash: whether the trained RecurrentPPO's never-camps behaviour
+(D64-D66) came from a missing signal or a reward that doesn't pay for using one. Agreed plan:
+Option A over Option C (a jointly-learned phase/band action, `docs/project/PHASE_SWITCH_FUTURE_WORK.md`)
+-- add the streak signal, keep the current architecture, retrain. Confirmed spec: both the scalar
+(current-band streak) and the full per-band block together, `146 -> 183`, rather than doing it in
+two separate width-bumping passes later -- "make any changes necessary to the observation space
+now" to minimise future churn.
+
+Landed in `rfenv/env.py`/`guard.py`/`rl/common.py` (full account: D67). The crash happened with
+this code already on disk but before it had been tested end-to-end; re-verified after restart:
+`ScanEnv` builds a self-consistent 183-wide box, `reset()`/`step()` populate `hit_streak`
+correctly, `current_observation_width()` reads it off `guard.py` without a hardcoded literal.
+
+## 15.3 What the first test run after the crash actually found
+
+`pytest tests/test_baselines.py`: **85 failures**, not the clean skips a stale-checkpoint change is
+supposed to produce. Cause: `_unusable_checkpoint`'s hand-maintained rung-number -> checkpoint-path
+table was written for rungs 7-9d and never extended as 9e-9j/10a-d/11a-d were registered across
+this session -- so every checkpoint outside that table hit the observation-width mismatch as a bare
+test failure instead of a skip, even though `load_checkpoint()` already raises the exact
+informative D49 error via `require_loadable()`. Fixed by building each rung directly inside the
+check and catching `(FileNotFoundError, ValueError)`, removing the table: self-healing for any rung
+registered after this one, nothing left to fall behind again. Full suite after: **287 passed / 144
+skipped / 1 pre-existing failure** (up from 60 skipped -- every now-stale RL checkpoint skips
+cleanly instead of erroring).
+
+## 15.4 The retrain, restarted
+
+One model at a time this time. Control arm first:
+
+```
+venv/Scripts/python.exe -m rfenv.rl.recurrent_ppo --reward reward_balance --timesteps 400000 \
+  --seed 0 --hyperparam ent_coef=0.01 --hyperparam gamma=0.997 --hyperparam n_steps=8192 \
+  --checkpoint runs/checkpoints/lstm_balance_d67_control.zip --checkpoint-freq 100000 \
+  --run-name lstm_balance_d67_control \
+  --description "control: reward_balance, D60 split, D67 observation (183-wide, hit_streak)"
+```
+
+Treatment (`reward_balance_improved`) queued to start only once this one finishes, per the
+one-at-a-time instruction. This folds the never-run matched-seed question into the same retrain --
+there was no clean 146-wide answer to preserve, so the question is answered on the current
+observation rather than a superseded one.
+
+## 15.5 Both arms finished, and the answer to the actual question
+
+Control finished first (401,408 timesteps, ~58 min single-run), D61-selected `s3` (300k), net
+dominance +25.0%. Treatment launched immediately after as the sole background job, finished
+cleanly, D61-selected `s1` (100k), net dominance **+33.3%** -- ahead of the control on validation,
+where under the 146-wide setup (D65) the treatment had lost.
+
+**The question Option A exists to answer, checked directly rather than inferred from a metric:**
+does either selected checkpoint actually commit to a band now that it can see a streak signal?
+Same method as D66 -- run an episode, measure the logged band sequence's run-lengths, on
+`config_81`/`config_2`/`config_921`. Both checkpoints: **maximum dwell streak 4-6 slots, on every
+scenario checked.** Identical order of magnitude to every pre-D67 checkpoint (D64/D66 measured max
+6). The feature exists in the input; neither policy learned to act on it by staying put.
+
+**The headline still moved, a little, in both arms, in the same direction as D65:**
+
+```
+venv/Scripts/python.exe -m rfenv.compare --rungs round_robin,recency,\
+  lstm_balance_d67_control_300k_400k,lstm_balance_d67_treatment_100k_400k \
+  --seeds 3 --sampled 10 --figures --out runs/d67_paired_comparison
+```
+
+| | control | treatment |
+|---|---|---|
+| both, D67 (183-wide) | 25.7% | **35.1%** |
+| both, pre-D67 equivalent (D64/D65, 146-wide) | 22.8% | 31.0% |
+
+Both arms up a few points; treatment still ahead of control, same direction D65 found on a wholly
+independent pair of checkpoints. **Read carefully, not triumphantly.** The mechanism this change
+was built to produce -- commitment -- did not appear on either checkpoint, so the few-point gain
+cannot honestly be credited to it. Equally plausible: 17 extra input dimensions gave the network
+marginally more capacity for reasons that have nothing to do with streaks, or this is ordinary
+single-seed noise -- D64's own four snapshots swung by 36 points on this exact measure. What can be
+said without hedging: the streak feature has not, on either checkpoint tried so far, taught a
+policy to camp. Full accounting in D67.

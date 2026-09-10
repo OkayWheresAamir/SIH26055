@@ -23,8 +23,6 @@ proves the enforcement is live.
 
 from __future__ import annotations
 
-from pathlib import Path
-
 import numpy as np
 import pytest
 
@@ -35,58 +33,37 @@ from rfenv.rollout import run_episode
 from rfenv.scenario import Scenario
 from rfenv.truth import TruthGrid
 
-# Rungs whose factory reads a trained artefact from disk, and where. Every other
-# rung in the ladder is self-contained; the RL rungs are the exception. The
-# paths are duplicated from rfenv.rl/rfenv.rl.ppo's DEFAULT_CHECKPOINTs rather
-# than imported, so this file -- imported by many tests that have nothing to do
-# with RL -- never forces stable-baselines3/torch to be installed just to
-# collect tests. Keyed by rung *number*, not the descriptive key string: those
-# churn as checkpoints get renamed/retrained (already happened twice), the
-# number is the stable identity (mirrors tests/test_rl.py's _key_for_rung).
-_UNTRAINED_RUNG_CHECKPOINTS = {
-    "7": Path("runs/checkpoints/deep_q_network.zip"),
-    "7a": Path("runs/checkpoints/deep_q_network_hit_y.zip"),
-    "8": Path("runs/checkpoints/ppo.zip"),
-    "8a": Path("runs/checkpoints/ppo_fi.zip"),
-    "8b": Path("runs/checkpoints/ppo_fi_100k.zip"),
-    "8c": Path("runs/checkpoints/ppo_fi_2M.zip"),
-    "9": Path("runs/checkpoints/recurrent_ppo.zip"),
-    "9a": Path("runs/checkpoints/lstm_ppo4_100000_steps.zip"),
-    "9b": Path("runs/checkpoints/lstm_ppo4_200000_steps.zip"),
-    "9c": Path("runs/checkpoints/lstm_ppo4_300000_steps.zip"),
-    "9d": Path("runs/checkpoints/lstm_ppo4_400000_steps.zip"),
-}
 
 
-def _unusable_checkpoint(key: str) -> str | None:
-    """Why this rung's checkpoint cannot be used here, or None if it can.
+def _unusable_checkpoint(key: str, grid) -> str | None:
+    """Why this rung cannot be built here, or None if it can.
 
-    Two distinct reasons, and the second is the one that used to be missed:
-    the file may be **absent** (never trained on this machine), or it may be
-    **present but stale** -- trained against a narrower observation vector and
-    unable to run in the current environment at all (D49). Only the first was
-    checked before, so restoring a set of stale checkpoints to disk turned ~30
-    clean skips into failures whose message was a bare shape error.
+    **Builds it directly rather than pre-checking a hand-maintained path
+    table.** Every RL-backed factory's `load_checkpoint()` already calls
+    `require_loadable()` before deserialising -- a cheap manifest/archive read,
+    not a full model load -- so `B.make()` already raises exactly the
+    informative error this needs: D49's `ValueError` for an observation-width
+    mismatch, `FileNotFoundError` for a missing checkpoint. A hand-maintained
+    `_UNTRAINED_RUNG_CHECKPOINTS` table lived here before and reliably fell
+    behind -- it covered rungs 7-9d and was never extended as 9e-9j/10a-d/11a-d
+    were registered, so the moment an observation change (D67) made every
+    checkpoint stale at once, those newer rungs' tests failed outright with a
+    bare shape error instead of skipping cleanly (measured: 85 failures the
+    first time). A real `grid` must be passed so a rung that needs one
+    (`needs_grid=True`) doesn't get misread as unusable for lacking it.
     """
-    checkpoint = _UNTRAINED_RUNG_CHECKPOINTS.get(B.BY_KEY[key].rung)
-    if checkpoint is None:
-        return None
-    if not checkpoint.exists():
-        return (f"{key} needs a trained checkpoint at {checkpoint} -- "
-                "run `python -m rfenv.rl` first, or see tests/test_rl.py")
-    from rfenv.rl.common import checkpoint_is_usable
-    if not checkpoint_is_usable(checkpoint):
-        return (f"{key}'s checkpoint {checkpoint} was trained against a "
-                "different observation width and can no longer run (D49) -- "
-                "retrain it to include this rung")
+    try:
+        B.make(key, seed=0, grid=grid)
+    except (FileNotFoundError, ValueError) as exc:
+        return str(exc)
     return None
 
 
-def _skip_if_untrained(key: str) -> None:
+def _skip_if_untrained(key: str, grid) -> None:
     """These generic per-rung tests check a property of ANY rung, not that a
     specific checkpoint exists -- that belongs to tests/test_rl.py, which
     builds its own untrained model and needs no file on disk."""
-    reason = _unusable_checkpoint(key)
+    reason = _unusable_checkpoint(key, grid)
     if reason is not None:
         pytest.skip(reason)
 
@@ -124,8 +101,8 @@ def test_every_rung_plays_a_legal_episode(worlds, key, config_id):
     the assertion; the counts restate D35, which is the property most easily broken
     by a policy that miscounts a two-slot dwell.
     """
-    _skip_if_untrained(key)
     scenario, grid = worlds[config_id]
+    _skip_if_untrained(key, grid)
     bands, env = bands_taken(key, scenario, grid)
     assert len(bands) == K.N_SLOTS
     assert bands.min() >= 0 and bands.max() < K.N_BANDS
@@ -140,8 +117,8 @@ def test_a_rung_never_names_a_band_that_is_not_an_action(worlds, key):
     test here and then fail wherever a policy is called directly -- including in
     whatever drives the RL rung.
     """
-    _skip_if_untrained(key)
     scenario, grid = worlds["config_2"]
+    _skip_if_untrained(key, grid)
     env = ScanEnv(scenario=scenario)
     policy = B.make(key, seed=0, grid=grid)
     obs, info = env.reset(seed=0)
@@ -166,8 +143,8 @@ def test_the_same_seed_reproduces_the_episode_exactly(worlds, key):
     randomness run off the seed, so any tolerance here would be hiding a source of
     randomness that was never seeded.
     """
-    _skip_if_untrained(key)
     scenario, grid = worlds["config_2"]
+    _skip_if_untrained(key, grid)
     a, env_a = bands_taken(key, scenario, grid, seed=7)
     b, env_b = bands_taken(key, scenario, grid, seed=7)
     assert np.array_equal(a, b)
@@ -276,8 +253,8 @@ def test_a_scheduler_never_sees_truth(worlds, key):
     difference between a convention and an enforcement, and D29's asymmetry
     (reward may read truth, observation may not) is only credible as the latter.
     """
-    _skip_if_untrained(key)
     scenario, grid = worlds["config_2"]
+    _skip_if_untrained(key, grid)
     env = ScanEnv(scenario=scenario)
     seen: set[str] = set()
     policy = B.make(key, seed=0, grid=grid)
@@ -306,7 +283,7 @@ def test_a_rung_that_reaches_for_truth_fails(worlds):
 def test_the_observation_slices_match_the_environment(worlds):
     """`baselines.HIT_RATE` and friends still describe what `env` builds (D34).
 
-    A silent reordering of the 146-vector would leave every rung running and every
+    A silent reordering of the 183-vector would leave every rung running and every
     other test passing while rung 5 optimised staleness as though it were hit rate.
     The units matter as much as the order since D55: rung 5 reads staleness as a
     sweep count and would silently collapse into rung 4 if it arrived as an
@@ -324,6 +301,7 @@ def test_the_observation_slices_match_the_environment(worlds):
     visit = np.asarray(obs[B.VISIT_DENSITY], dtype=np.float64)
     stale = np.asarray(obs[B.STALENESS], dtype=np.float64)
     current = np.asarray(obs[B.CURRENT_BAND], dtype=np.float64)
+    streak = np.asarray(obs[B.HIT_STREAK], dtype=np.float64)
 
     slot = info["slot"]
     assert obs[B.CLOCK] == pytest.approx(slot / K.N_SLOTS, abs=1e-6)
@@ -343,6 +321,13 @@ def test_the_observation_slices_match_the_environment(worlds):
     # visit_density[6] above now carries that, and carries it for every band.
     assert 0.0 <= obs[B.MEASURED_DBM] <= 1.0
     assert not hasattr(B, "CAMP_TIME"), "D55 removed camp_time from the observation"
+    # hit_streak (D67): only band 6 was ever visited, so every other band's
+    # streak is still its reset value of 0 -- and current_hit_streak, which
+    # reads whichever band current_band is one-hot on, must agree with
+    # hit_streak[6] exactly, since band 6 is the current band throughout.
+    assert 0.0 <= streak[6] <= 1.0
+    assert streak[np.arange(K.N_BANDS) != 6].sum() == pytest.approx(0.0)
+    assert obs[B.CURRENT_HIT_STREAK] == pytest.approx(streak[6])
 
 
 # --------------------------------------------------------------------------- #
@@ -390,7 +375,7 @@ def test_the_oracle_captures_more_pulses_than_any_scheduler(worlds):
     _, oracle = bands_taken("oracle_pulse", scenario, grid)
     best = oracle.episode_metrics()["interception_ratio"]
     for key in B.SCHEDULERS:
-        if _unusable_checkpoint(key) is not None:
+        if _unusable_checkpoint(key, grid) is not None:
             continue
         _, env = bands_taken(key, scenario, grid)
         assert env.episode_metrics()["interception_ratio"] <= best + 1e-12, key

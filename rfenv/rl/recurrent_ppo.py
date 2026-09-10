@@ -3,8 +3,8 @@
 Plain `stable_baselines3.PPO` has no recurrent policy -- `MlpPolicy` is
 feed-forward only, so it conditions each action on exactly one D34
 observation and nothing else. `sb3_contrib.RecurrentPPO` swaps in
-`MlpL`MlpLstmPolicy`: the same flat 146-vector goes in, but an LSTM inside the
- carries a hidden state across the episode, so the action can in
+`MlpLstmPolicy`: the same flat 183-vector goes in, but an LSTM inside it
+carries a hidden state across the episode, so the action can in
 principle depend on the whole scan history so far, not just the latest look.
 
 Mirrors `ppo.py`'s shape (`train`/`load_checkpoint`/`DEFAULT_CHECKPOINT`/CLI)

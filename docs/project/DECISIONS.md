@@ -3684,3 +3684,119 @@ before spending on.
 **Evidence.** `rfenv/baselines/phase_switch.py`, `rfenv/baselines/ladder.py` rungs 12/13,
 `tests/test_baselines.py` (12 new tests, direct mechanism tests plus real-scenario behaviour).
 `compare.py` output reproduced this session, artefacts in `runs/phase_switch_comparison/`.
+
+---
+
+## D67 — the observation gains a hit-streak feature: 146 → 183 (Option A)
+
+**Status:** `SETTLED` (2026-09-10) — proposed with the exact spec and cost stated up front
+(`docs/project/PHASE_SWITCH_FUTURE_WORK.md`'s Option A), confirmed by the human before `env.py` was
+touched, per the working rule that an observation change is not this agent's call to make alone.
+
+### What changed
+
+Two blocks appended after `measured_dbm` — existing slice offsets (`HIT_RATE`, `VISIT_DENSITY`,
+`STALENESS`, `CURRENT_BAND`, `CLOCK`, `MEASURED_DBM`) are untouched, so no heuristic rung needed
+updating:
+
+- `HIT_STREAK` (36-wide, per band): consecutive declared hits on that band **across visits**, not
+  reset by a visit to a different band — only by an actual miss on this one. Capped at
+  `_STREAK_CAP = 5` and divided down to `[0, 1]`, the same convention D55 already uses for
+  `visit_density`/`staleness`.
+- `CURRENT_HIT_STREAK` (1 scalar): `HIT_STREAK` at whichever band `CURRENT_BAND` is one-hot on.
+  Redundant with the per-band block plus a dot product, kept anyway as a direct scalar for the same
+  reason `current_band` exists alongside `staleness`.
+
+`146 → 183` (`N_BANDS * 5 + 3`). Both `_STREAK_CAP = 5` and the decision to track only the current
+band rather than a full per-band block were fixed before anything was measured, not tuned against
+a score — `5` because it sits comfortably above the (now-removed) D66 gate's own 2-hit commit
+threshold, giving room to distinguish "just crossed that bar" from "been hot a while", while still
+saturating within a revisit cadence a 30 s episode can afford.
+
+### Why
+
+D66 measured that no RecurrentPPO checkpoint trained on the 146-wide vector ever commits to a band
+at all — maximum dwell streak 6 slots, indistinguishable from round-robin's 1-2 — and that
+wrapping a hand-coded gate around the trained policy's own suggestions made things *worse*, not
+better. `hit_rate` is cumulative over the whole episode, so a band hot for five slots and cold
+since reads the same as one that just turned hot; nothing in the 146-wide vector told the agent
+"this specific band, right now, has hit twice in a row" — the exact quantity the deleted heuristic
+gate computed and acted on. This change gives the agent that signal directly and tests whether the
+absence of it, not the reward, was the bottleneck. It changes only what the agent can see, not what
+it is scored on — no reward function's signature changed.
+
+### Cost, paid in full
+
+**Every checkpoint that predates this commit is now permanently unloadable** — `clean_lstm_s4`
+(D64), `lstm_balance_improved_s2` (D65), every snapshot of both arms, every earlier RL checkpoint
+in `runs/checkpoints/`. `require_loadable()` (D49) refuses them with the retrain command rather
+than failing silently, exactly as designed.
+
+**A gap in the guard that this exposed, and closed as part of this change.**
+`tests/test_baselines.py::_unusable_checkpoint` pre-checked a hand-maintained table of rung-number
+→ checkpoint-path, written for rungs 7-9d and never extended as 9e-9j/10a-d/11a-d were registered.
+The moment this observation change made every checkpoint stale at once, the untracked rungs' tests
+**failed outright** (85 failures) instead of skipping cleanly — `load_checkpoint()` already raises
+the correct, informative error via `require_loadable()`, but nothing in the newer rungs' path ever
+called it before the assertion ran. Rewritten to try building the rung directly and catch
+`(FileNotFoundError, ValueError)`, removing the table entirely: self-healing for any future rung,
+nothing left to fall behind.
+
+### What is still open
+
+The D65 matched-seed plan (settling whether `reward_balance` or `reward_balance_improved` really
+differs, or whether the single-seed reversal was noise) was specified for the 146-wide observation
+and has not been run on it — this change superseded it before those runs produced a checkpoint (see
+`scratch/TRAINING_JOURNEY.md` §15 for the crash that interrupted the first attempt). It is folded
+into the retrain this decision requires rather than run separately: fresh training under 183 is
+needed regardless, so the matched-seed question is answered on the current observation, not the
+superseded one.
+
+**Evidence.** `rfenv/env.py` (`_observation`, `reset`, `step`, the `Box` construction),
+`rfenv/baselines/guard.py` (new slice constants), `rfenv/rl/common.py::current_observation_width`.
+Suite after: 287 passed / 144 skipped / 1 pre-existing failure (held-out data absent locally).
+
+### The retrain, measured
+
+Both arms retrained under 183, one at a time (a laptop crash interrupted the first attempt at
+several in parallel — `scratch/TRAINING_JOURNEY.md` §15 — hence the change in practice). D61
+selection, 12 validation configs × 3 seeds:
+
+| arm | selected checkpoint | dominates rung 5 | dominated | net dominance |
+|---|---|---|---|---|
+| control (`reward_balance`) | 300k (`lstm_balance_d67_control_s3`, rung 14c) | 36.1% | 11.1% | +25.0% |
+| treatment (`reward_balance_improved`) | 100k (`lstm_balance_d67_treatment_s1`, rung 15a) | 38.9% | 5.6% | **+33.3%** |
+
+Both lower than their 146-wide predecessors' own validation scores (D64's control +36.1%, D65's
+treatment +25.0%) — not a like-for-like comparison, different observation, but the ordering
+between the two arms held: treatment beats control on validation this time (it lost to control
+under 146).
+
+**Did the streak feature produce the hoped-for commitment behaviour? No.** Measured directly on
+episode logs, both selected checkpoints, three sample scenarios: maximum dwell streak 4–6 slots on
+every one — the same order of magnitude as every pre-D67 checkpoint (D64/D66 measured max 6). The
+feature exists in the observation now; neither policy has learned to act on it by committing to a
+band.
+
+**The headline moved anyway, modestly, in the same direction as D65.**
+`compare.py --rungs round_robin,recency,lstm_balance_d67_control_300k_400k,lstm_balance_d67_treatment_100k_400k --seeds 3 --sampled 10 --figures` — paired against recency:
+
+| scheduler | ratio | cTTI | both | (D65's pre-D67 equivalent) |
+|---|---|---|---|---|
+| control | 62.0% | 39.8% | **25.7%** | 22.8% |
+| treatment | 77.2% | 49.7% | **35.1%** | 31.0% |
+
+Both arms' `both` column ticked up a few points against their 146-wide predecessors, and the
+treatment again beats the control on this measure — the same direction D65 found, now on a second,
+independent pair of checkpoints. **Not read as "Option A worked."** The mechanism it was built to
+test — commitment triggered by the streak signal — did not appear on either checkpoint, so this
+modest gain cannot be attributed to that mechanism specifically; it is at least as plausible that
+17 extra input dimensions gave the value/policy heads marginally more capacity for reasons
+unrelated to the hypothesis, or that this is within the noise a single seed already carries (D64's
+own four snapshots swung by 36 points on this same measure). What is not in question: the streak
+feature has not, so far, taught either policy to camp.
+
+**Evidence.** `runs/checkpoints/lstm_balance_d67_control_s{1,2,3,4}`,
+`lstm_balance_d67_treatment_s{1,2,3,4}` (`.zip`/`.json`), streak analysis and `compare.py` output
+both reproduced this session, artefacts in `runs/d67_paired_comparison/`. Ladder rungs `14a`–`14d`,
+`15a`–`15d`. `docs/project/ITERATION_LEDGER.md`.

@@ -345,6 +345,51 @@ LADDER: tuple[Rung, ...] = (
             _recurrent_ppo_rung_factory(Path("runs/checkpoints/lstm_balance_improved_s4.zip"))),
 
 
+    # D67: the observation gains hit_streak, 146 -> 183. Every rung above this
+    # point trained against the narrower vector and is now permanently
+    # unloadable (D49's rule, paid again). Rungs 14/15 are the first trained
+    # against the current 183-wide observation.
+    Rung("lstm_balance_d67_control_100k_400k", "14a", "Recurrent PPO (reward_balance, D67 obs, 100k-400k)",
+            "Ours. Control arm retrained under D67's 183-wide observation (hit_streak), "
+            "100k out of 400k timesteps.",
+            _recurrent_ppo_rung_factory(Path("runs/checkpoints/lstm_balance_d67_control_s1.zip"))),
+
+    Rung("lstm_balance_d67_control_200k_400k", "14b", "Recurrent PPO (reward_balance, D67 obs, 200k-400k)",
+            "Ours. Control arm retrained under D67's 183-wide observation (hit_streak), "
+            "200k out of 400k timesteps.",
+            _recurrent_ppo_rung_factory(Path("runs/checkpoints/lstm_balance_d67_control_s2.zip"))),
+
+    Rung("lstm_balance_d67_control_300k_400k", "14c", "Recurrent PPO (reward_balance, D67 obs, 300k-400k)",
+            "Ours. Control arm retrained under D67's 183-wide observation (hit_streak), "
+            "300k out of 400k timesteps -- the D61-selected checkpoint.",
+            _recurrent_ppo_rung_factory(Path("runs/checkpoints/lstm_balance_d67_control_s3.zip"))),
+
+    Rung("lstm_balance_d67_control_400k", "14d", "Recurrent PPO (reward_balance, D67 obs, 400k)",
+            "Ours. Control arm retrained under D67's 183-wide observation (hit_streak), "
+            "400k out of 400k timesteps.",
+            _recurrent_ppo_rung_factory(Path("runs/checkpoints/lstm_balance_d67_control_s4.zip"))),
+
+    Rung("lstm_balance_d67_treatment_100k_400k", "15a", "Recurrent PPO (reward_balance_improved, D67 obs, 100k-400k)",
+            "Ours. Treatment arm retrained under D67's 183-wide observation (hit_streak), "
+            "100k out of 400k timesteps -- the D61-selected checkpoint.",
+            _recurrent_ppo_rung_factory(Path("runs/checkpoints/lstm_balance_d67_treatment_s1.zip"))),
+
+    Rung("lstm_balance_d67_treatment_200k_400k", "15b", "Recurrent PPO (reward_balance_improved, D67 obs, 200k-400k)",
+            "Ours. Treatment arm retrained under D67's 183-wide observation (hit_streak), "
+            "200k out of 400k timesteps.",
+            _recurrent_ppo_rung_factory(Path("runs/checkpoints/lstm_balance_d67_treatment_s2.zip"))),
+
+    Rung("lstm_balance_d67_treatment_300k_400k", "15c", "Recurrent PPO (reward_balance_improved, D67 obs, 300k-400k)",
+            "Ours. Treatment arm retrained under D67's 183-wide observation (hit_streak), "
+            "300k out of 400k timesteps.",
+            _recurrent_ppo_rung_factory(Path("runs/checkpoints/lstm_balance_d67_treatment_s3.zip"))),
+
+    Rung("lstm_balance_d67_treatment_400k", "15d", "Recurrent PPO (reward_balance_improved, D67 obs, 400k)",
+            "Ours. Treatment arm retrained under D67's 183-wide observation (hit_streak), "
+            "400k out of 400k timesteps.",
+            _recurrent_ppo_rung_factory(Path("runs/checkpoints/lstm_balance_d67_treatment_s4.zip"))),
+
+
     Rung("camper_oracle", "—", "Greedy static, truth-fed (D14's camper)",
          "Reference line: D14's camper, which knew where the pulses were.",
          lambda rng, grid: OracleCamper(grid, rng),
