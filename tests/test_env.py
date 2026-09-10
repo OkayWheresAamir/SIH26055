@@ -13,7 +13,7 @@ import pytest
 from gymnasium.utils.env_checker import check_env
 
 from rfenv import constants as K
-from rfenv.env import DEFAULT_REWARD, REWARDS, ScanEnv
+from rfenv.env import DEFAULT_REWARD, REWARDS, ScanEnv, make_reward_weighted
 from rfenv.scenario import EmitterPool, Scenario
 from rfenv.truth import TruthGrid
 from tests.test_receiver import grid_of, synthetic
@@ -205,14 +205,15 @@ def test_reward_per_unit_time_is_equal_across_dwell_widths():
 
 
 def test_all_reward_candidates_run_and_differ():
-    """The registered set: hit_z, hit_y, reward_balance -- exactly three (D29).
+    """The registered set: six since D57, which lifted D29's cap of three.
 
     Candidate 3 has been rewritten more than once (`weighted_camp` and two
-    `first_intercept` shapes were each registered and retired); what has held
-    throughout is that there are three, that `DEFAULT_REWARD` names one of
-    them, and that they are genuinely different functions. Those are what this
-    pins. Nothing here ranks them -- the selection rule is open and is the
-    human's (D29, D47).
+    `first_intercept` shapes were each registered and retired), and D57 added
+    `greedy`/`explore`/`weighted` as a designed axis rather than three more
+    guesses. What has held throughout is that `DEFAULT_REWARD` names a
+    registered key and that the candidates are genuinely different functions.
+    Those are what this pins. Nothing here ranks them -- the selection rule is
+    open and is the human's (D29, D47).
 
     `DEFAULT_REWARD` is asserted to be *a key of REWARDS* rather than a
     specific name, because naming one that does not exist is the failure this
@@ -220,7 +221,8 @@ def test_all_reward_candidates_run_and_differ():
     makes every unqualified `ScanEnv()` raise -- which is exactly what happened
     when candidate 3 was renamed and the default was not.
     """
-    assert set(REWARDS) == {"hit_z", "hit_y", "reward_balance"}
+    assert set(REWARDS) == {
+        "hit_z", "hit_y", "reward_balance", "greedy", "explore", "weighted"}
     assert DEFAULT_REWARD in REWARDS
 
     sc = Scenario.replay("config_921", "stare")
@@ -503,3 +505,97 @@ def test_first_intercept_still_reads_as_before():
     episode(env, ROUND_ROBIN)
     assert env.first_intercept == {e: t["first"] for e, t in env.tracks.items()}
     assert all(env.detectable[e][0] <= s for e, s in env.first_intercept.items())
+
+
+def test_the_greedy_explore_axis_has_the_shape_it_claims():
+    """D57's three candidates are an axis, not three guesses, and this pins the
+    axis rather than any coefficient.
+
+    Three properties, each of which is what makes a corner a corner:
+
+      1. `greedy` prefers camping to sweeping. It has no exploration term and no
+         camping cost by design, so a policy that parks on one band must
+         outscore round-robin. If this ever fails, the "pure exploit" corner has
+         quietly acquired an explore term and the axis no longer spans anything.
+      2. `explore` prefers sweeping to camping, by a wide margin.
+      3. `make_reward_weighted` interpolates between them: alpha = 0 reproduces
+         `explore` exactly, and alpha = 1 reproduces `greedy` up to the positive
+         constant `_GREEDY_GAIN` (which cannot reorder policies).
+
+    Asserted as orderings and as an exact-endpoint identity, never against
+    literals -- the totals move with the scenario draw, and pinning them would
+    make this a change-detector rather than a test.
+    """
+    sc = Scenario.replay("config_921", "stare")
+
+    def total(reward_name=None, fn=None, policy="camp"):
+        env = ScanEnv(scenario=sc, reward=reward_name or "hit_z")
+        if fn is not None:
+            env._reward_fn = fn
+        env.reset(seed=0)
+        step = 0
+        while True:
+            action = 18 if policy == "camp" else step % K.N_BANDS
+            _, _, terminated, _, _ = env.step(action)
+            step += 1
+            if terminated:
+                return env.total_reward
+
+    # 1. the exploit corner prefers the exploit
+    assert total("greedy", policy="camp") > total("greedy", policy="sweep")
+
+    # 2. the explore corner prefers the sweep
+    assert total("explore", policy="sweep") > total("explore", policy="camp")
+
+    # 3. the blend's endpoints are its corners
+    at_zero = make_reward_weighted(0.0)
+    assert total(fn=at_zero, policy="sweep") == pytest.approx(
+        total("explore", policy="sweep"))
+    assert total(fn=at_zero, policy="camp") == pytest.approx(
+        total("explore", policy="camp"))
+
+    at_one = make_reward_weighted(1.0)
+    gain_sweep = total(fn=at_one, policy="sweep") / total("greedy", policy="sweep")
+    gain_camp = total(fn=at_one, policy="camp") / total("greedy", policy="camp")
+    assert gain_sweep == pytest.approx(gain_camp)      # a constant, not a reshaping
+    assert gain_sweep > 0                              # positive: ordering preserved
+
+    with pytest.raises(ValueError):
+        make_reward_weighted(1.5)
+
+
+def test_the_registered_blend_outranks_the_degenerate_policies():
+    """D57's registered alpha sits where the reward still orders the ladder.
+
+    The blend has a valid window and `WEIGHTED_ALPHA` is inside it: below it the
+    explore half dominates and round-robin outscores rung 5, above it a 2-band
+    ping-pong outscores round-robin -- D53's failure mode, reintroduced through
+    the greedy half. This asserts the half that would silently un-fix D53: both
+    sweeping policies must beat both degenerate ones.
+
+    Sampled scenarios rather than one replay, because the window was measured
+    that way and a single scenario is a much noisier draw.
+    """
+    def total(policy):
+        out = []
+        for seed in (0, 1, 2):
+            env = ScanEnv(pool=EmitterPool.from_train(), reward="weighted")
+            env.reset(seed=seed)
+            step = 0
+            while True:
+                if policy == "sweep":
+                    action = step % K.N_BANDS
+                elif policy == "alternate":
+                    action = 18 if step % 2 else 19
+                else:
+                    action = 18
+                _, _, terminated, _, _ = env.step(action)
+                step += 1
+                if terminated:
+                    out.append(env.total_reward)
+                    break
+        return sum(out) / len(out)
+
+    sweep = total("sweep")
+    assert sweep > total("alternate"), "a 2-band ping-pong must not outscore a sweep (D53)"
+    assert sweep > total("camp"), "camping must not outscore a sweep (D14)"

@@ -57,6 +57,68 @@ venv/Scripts/python.exe -m rfenv.rl --reward hit_z --timesteps 60000 --seed 0 \
 | `--description` | empty | what this run is trying — recorded in the manifest, and where a rung's label should come from |
 | `--hyperparam` | none | `KEY=VALUE` passed straight to the algorithm's constructor, repeatable (e.g. `--hyperparam ent_coef=0.01`) |
 
+### Screen a reward before you train on it
+
+```
+venv/Scripts/python.exe -m rfenv.reward_gate
+```
+
+Minutes, no GPU, no agent. Scores rungs 2, 4, 5 and 6a under every registered candidate over 8
+seeds and reports PASS/FAIL against criteria fixed in `rfenv/reward_gate.py`. **As of 2026-09-10
+only `reward_balance` passes** -- `hit_z` and `hit_y` both rank rung 4 above every sweeping policy,
+so an agent trained on either cannot be expected to beat the floor (D62). Run it before spending
+hours of compute; that is the entire point of it.
+
+### Pick a checkpoint by the pre-registered rule
+
+```
+venv/Scripts/python.exe -m rfenv.selection runs/checkpoints/myrun_*.zip
+```
+
+Scores each checkpoint on the **12 validation configs** (D60) paired against rung 5 and picks the
+highest `dominates - dominated`, ties toward fewer steps (D61). Do not pick by eye from a compare
+table -- that fits the evaluation set through the choice, and the bias grows every time the lane
+iterates.
+
+### Training now uses the training half automatically
+
+`make_train_env` defaults to `split.training_pool()` -- 35 configs, zero emitters shared with the
+12 validation configs. Nothing to pass; it is the default. `python -m rfenv.split` prints the
+split. Passing `EmitterPool.from_train()` explicitly re-opens the leak D60 closed.
+
+### The reward candidates
+
+Six registered (D29's cap of three was lifted by D57). Run
+`python -c "from rfenv.env import REWARDS, DEFAULT_REWARD; print(DEFAULT_REWARD, sorted(REWARDS))"`
+for the live set.
+
+| `--reward` | what it pays for | measured behaviour |
+|---|---|---|
+| `hit_z` | +1 per true hit `Z`, per slot | ranks camping **above** sweeping |
+| `hit_y` | +1 per declared hit `Y`, per slot | ranks camping **above** sweeping |
+| `reward_balance` | exploit + explore + occupancy − airtime concentration | orders the ladder, but cannot separate rung 5 from round-robin (D56) |
+| `greedy` | declarations + remembered hit rate; no explore term, no camping cost | **camps, by design** — the exploit corner |
+| `explore` | staleness − airtime concentration + new `(emitter, band)` discoveries | **sweeps, by design** — ranks round-robin above rung 5 |
+| `weighted` | `0.3 * greedy * 4.08 + 0.7 * explore` | the only candidate that both orders the ladder **and** separates rung 5 from round-robin |
+
+`greedy` and `explore` are the two corners of D14's tension and are *expected* to fail their
+opposite check — they exist so the axis spans something, not as proposals. `weighted` is the knob
+between them, and `env.make_reward_weighted(alpha)` builds any other point on the curve without
+touching the registry:
+
+```python
+from rfenv.env import make_reward_weighted
+env = ScanEnv(pool=pool, reward="hit_z")
+env._reward_fn = make_reward_weighted(0.4)    # anywhere in [0, 1]
+```
+
+**`WEIGHTED_ALPHA = 0.3` sits in the middle of a measured window.** Below 0.2 the explore half
+dominates and round-robin outscores rung 5; from 0.5 up a 2-band ping-pong outscores round-robin,
+which is D53's failure mode arriving through the greedy half. D57 has the sweep.
+
+**None of this ranks the candidates.** Those are ordering checks against known policies, not D47's
+paired-dominance rule over the evaluation protocol — which has still never been run.
+
 **Always pass `--reward` explicitly.** The CLI's default tracks `env.DEFAULT_REWARD`, and that has
 moved twice (`hit_z` -> `first_intercept` -> `reward_balance`, D50/D53). Rung 7's own registered
 checkpoint was trained with `--reward hit_z`, so reproducing it needs that passed, not left to the

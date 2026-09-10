@@ -828,7 +828,9 @@ judges on `c.peak_dbm`, the emitter's own array.
 
 ## D29 — The reward may read truth; the observation may not. And D28 splits the metrics across that line
 
-**Status:** `SETTLED` (2026-09-03) — not a new decision. Records the answer to a question the
+**Status:** `SETTLED` (2026-09-03). **Its three-candidate cap was lifted 2026-09-09 — see D57;**
+the truth/observation split below is untouched by that and still governs. Not a new decision.
+Records the answer to a question the
 implementation lane raised ("should reward count declared hits `Y` or true hits `Z`?"), which
 D7 and the offline-training workflow already settle, plus a consequence of D28 that does
 change the candidate set.
@@ -1209,7 +1211,7 @@ D26 and D29. Re-measured from `rfenv.receiver` when L2 landed (2026-09-03) — s
 **Status:** `SETTLED` (2026-09-04) — **ratified in the implementation lane, not escalated.**
 Records a choice already made in `ENVIRONMENT_SPEC.md` §L3, built in `rfenv/env.py` and covered
 by `tests/test_env.py`. The human retains a one-line veto; nothing downstream assumes otherwise.
-**EXTENDED 2026-09-09 — see D49, then RESCALED, see D55 (the base three are no longer the whole vector; `current_band`,
+**EXTENDED 2026-09-09 — see D49, RESCALED see D55, and its amplitude exclusion lifted for `measured_dbm` by D59 (the base three are no longer the whole vector; `current_band`,
 `current_band` and `measured_dbm` were added and it is now 36×4+2 = 146 wide, not 109 — D49, D55).**
 
 **Why this did not need escalating, when D30 does.** `CLAUDE.md` gates decisions that shape the
@@ -2020,6 +2022,10 @@ sets under it, all written 2026-09-04.
 
 **Status:** `SETTLED` (2026-09-05) — **decided by the team**, closing D29 item 3, the last thing
 D29 left open. Fixed **before** any training run, which is the whole point of it.
+**GATED 2026-09-10 by D62** — a candidate is only eligible for this rule once it has passed the
+cheap screen, and **as of that date only `reward_balance` has**. Two of the three candidates D29
+registered (`hit_z`, `hit_y`) rank rung 4 above every sweeping policy and are excluded.
+**This rule has still never been run.**
 
 **The question.** D7 says the reward is a hyperparameter chosen after comparison on the PS's own
 metrics. D14 then measured that the PS's two metrics are in direct tension, so "whichever scores
@@ -2352,6 +2358,18 @@ of D52 already fixed in both columns so the two terms are compared on equal foot
 | alternate, 2 bands | 0.1985 | 16.55 s | 0.261 | **−218.9** | −505.4 |
 | camp one band | 0.2350 | 16.84 s | 0.245 | −89,867 | −1,361 |
 
+> **CORRECTED 2026-09-10 — the "round-robin" row above is not rung 2.** It came from a
+> hand-written `step % N_BANDS` sweep rather than `baselines.make("round_robin")`, the same
+> substitution that inverted D56. Re-measured against the ladder's own rungs, 8 seeds, under the
+> final `−3.0 × visit_density × n_slots` term: recency **+276.9**, **rung 2 +217.9**, rung 4
+> (`camper`) **−414.1**, rung 6a **+278.7**, alternate **−560.9**, camp-one-band **−1447.7**.
+>
+> **The conclusion is unchanged and is in fact stronger.** Sweeping policies beat degenerate ones
+> by **+778.8** rather than the +832.1 first reported, and rung 5 now sits **+59.0 ± 19.4 above
+> rung 2 on 8/8 seeds** where the flawed comparison put it at +2.0. The ordering this entry exists
+> to establish — that airtime share fixes a hole a repeat-streak counter left open — holds either
+> way, because both sweeps order the same way against a ping-pong.
+
 **The old term ranked the 2-band ping-pong above round-robin** — coverage 0.261 against 0.921,
 censored intercept time 16.55 s against 2.47 s, and it scored 4% better. There was no gradient
 toward sweeping; what little existed pointed the wrong way. That is the direct explanation for why
@@ -2554,7 +2572,41 @@ ceilings), `::test_every_episode_starts_cold`,
 
 ## D56 — `reward_balance` cannot separate rung 5 from round-robin, and that caps what training can reach
 
-**Status:** `OPEN` (2026-09-09) — a measured limitation, recorded rather than fixed. **Not** a
+> ## WITHDRAWN 2026-09-10 — the measurement was wrong, and the conclusion inverts.
+>
+> **What it scored was not rung 2.** The "round_robin" column below came from a hand-written
+> `step % N_BANDS` sweep, not from `baselines.make("round_robin")`. Rung 2 is
+> `EQUAL_AIRTIME_CYCLE` (D43) — equal *airtime* per band, two slots per 72-slot cycle — while
+> `step % N_BANDS` gives every band one *dwell* per cycle and so hands the seven wide bands twice
+> the airtime. They are different policies, and the naive one scores **+57.0 ± 18.5** higher on
+> `reward_balance` with coverage 0.932 against rung 2's 0.793.
+>
+> Re-measured against the ladder, 8 seeds, sampled scenarios:
+>
+> | quantity | separation | seeds with rung 5 ahead |
+> |---|---|---|
+> | `recency − rung 2` (correct) | **+59.0 ± 19.4** | **8 / 8** |
+> | `recency − step % 36` (what D56 measured) | +2.0 ± 13.5 | 5 / 8 |
+>
+> So the separation is about **three times the seed noise, not three percent of it**, and every
+> claim below built on that ratio falls with it. `reward_balance` distinguishes the bar from the
+> floor perfectly well; it is the only one of six candidates to pass D62's screen.
+>
+> **What survives:** nothing of the conclusion. The instrument was right and the brief that called
+> it "the right instrument, one step short" was right — D62 is what it became. What was wrong was
+> comparing against a stand-in for a rung instead of the rung.
+>
+> **Where it propagated:** `CLAUDE.md`'s build status and `EVALUATION.md` §5 both carried the
+> "round-robin is roughly the ceiling this reward can teach" line; both are corrected. D53 and D57
+> used the same hand-written sweep and are corrected in place — their conclusions survive, only
+> the `round_robin` rows move.
+>
+> **The lesson, which is why this is withdrawn in place rather than deleted:** a rung has a
+> registered implementation for a reason, and a measurement that substitutes an obvious-looking
+> reimplementation is not measuring the ladder.
+> `tests/test_reward_gate.py::test_every_screened_rung_is_a_real_registered_rung` now enforces it.
+
+**Status:** ~~`OPEN` (2026-09-09)~~ **`WITHDRAWN` (2026-09-10)** — a measured limitation, recorded rather than fixed. **Not** a
 change to anything; `reward_balance` is untouched by this entry. Raised because it bounds what the
 run logged in `scratch/TRAINING_JOURNEY.md` §9 can possibly achieve, and because it is the next
 reward question after D52 and D53.
@@ -2589,6 +2641,536 @@ that procedure rather than out of one more hand-tuned coefficient.
 **Evidence.** Measured this session, 8 seeds, `ScanEnv(pool=EmitterPool.from_train(),
 reward="reward_balance")`, comparing `baselines.make("recency")` against a `t % N_BANDS`
 round-robin and reading `episode_metrics()["total_reward"]`.
+
+---
+
+## D57 — the reward set becomes an axis: `greedy`, `explore` and the blend between them
+
+**Status:** `SETTLED` (2026-09-09) — three new candidates registered, and **D29's cap of exactly
+three is formally lifted**. Both are gated changes (the reward), requested and confirmed by the
+human. D47's selection rule is still un-applied and nothing here selects anything.
+
+### What was added
+
+| key | shape | expected to |
+|---|---|---|
+| `greedy` | `+1.0·Y.sum() + 2.0·hit_rate[a]·n_slots` | **camp** — no explore term, no camping cost |
+| `explore` | `+1.0·staleness[a]·n_slots − 0.10·visit_density[a]·n_slots + 2.0·len(newly)` | **sweep** — cannot express the bar |
+| `weighted` | `α·greedy·4.08 + (1−α)·explore`, α = **0.3** | sit between them |
+
+`make_reward_weighted(alpha)` is public, so the whole curve is buildable without touching the
+registry — which is what makes D47's paired-dominance rule runnable over this family rather than
+only arguable about.
+
+### Why lift D29's cap
+
+D29's reason has not gone away: every candidate scored on the same 47 scenarios is another draw,
+and best-of-many is partly selection noise. What changed is that these three are **not three more
+independent guesses competing for one prize**. `greedy` and `explore` are the two corners of D14's
+tension and are *expected to fail* — one camps, the other cannot rank rung 5 above the floor —
+and `weighted` is the single knob between them. The multiple-comparisons argument applies to
+choosing a point on a designed axis, not to six independent tries. D50's precedent stands: a fourth
+candidate was once registered and retired, and that was treated as an exception; this is a change
+to the rule, recorded as one.
+
+### Measured: what each registered candidate actually teaches
+
+Four reference policies — two sweeping, two degenerate — over 3 seeds on sampled scenarios:
+
+| policy | `hit_z` | `hit_y` | `reward_balance` | `greedy` | `explore` | `weighted` |
+|---|---|---|---|---|---|---|
+| recency (rung 5) | 361.0 | 336.0 | 323.0 | 959.6 | 1286.6 | **2075.2** |
+| round-robin | 347.3 | 307.0 | 324.3 | 845.8 | 1384.8 | 2004.7 |
+| alternate, 2 bands | 504.7 | 478.3 | −509.0 | 1443.6 | −909.1 | 1130.6 |
+| camp one band | 582.3 | 573.0 | −1360.9 | 1694.8 | −2078.3 | 619.7 |
+
+> **CORRECTED 2026-09-10 — the "round-robin" row is a hand-written `step % 36`, not rung 2**, and
+> the four policies above include no registered rung at all. Re-measured against the ladder, 8
+> seeds — and with rung 4 and rung 6a in place of the hand-written camper, which is what D62's
+> screen now uses:
+>
+> | rung | `reward_balance` | `greedy` | `explore` | `weighted` (α=0.3) |
+> |---|---|---|---|---|
+> | 5 `recency` | **+276.9** | +776.6 | +1238.1 | **+1817.2** |
+> | 2 `round_robin` | +217.9 | +459.0 | +1277.0 | +1455.7 |
+> | 4 `camper` | **−414.1** | **+1198.3** | −205.2 | +1323.0 |
+> | 6a `apfeld_active_rfs` | +278.7 | +984.2 | +1034.0 | +1928.4 |
+>
+> **Every conclusion in this entry survives.** `greedy` still ranks the camper top (now against
+> the real rung 4, which is the stronger statement); `explore` still puts round-robin above rung 5
+> (−38.9, 0/8 seeds); `weighted` still orders the ladder. What changed is that `reward_balance` now
+> separates rung 5 from rung 2 by +59.0 rather than −1.3 — see D56, withdrawn.
+
+Two checks, neither of them a performance metric — both ask only whether the reward orders policies
+the way the ladder already does:
+
+| candidate | sweeps beat degenerate? | rung 5 − round-robin |
+|---|---|---|
+| `hit_z` | **no** (−235.0) | +13.7 |
+| `hit_y` | **no** (−266.0) | +29.0 |
+| `reward_balance` | yes (+832.1) | **−1.3** |
+| `greedy` | **no** (−849.0) | +113.8 |
+| `explore` | yes (+2195.7) | **−98.2** |
+| **`weighted`** | **yes (+874.0)** | **+70.5** |
+
+**`weighted` is the only registered candidate that passes both.**
+
+> **AMENDED 2026-09-10 — under D62's screen, against the real rungs, this reverses.** With rung 4
+> in place of the hand-written camper, `weighted` puts the camper at +1323.0 against rung 2's
+> +1455.7 — only 0.4σ below, where the screen requires 1.0σ — and it **fails**. `reward_balance`
+> is the only candidate of the six that passes. `weighted` remains registered and remains the
+> knob it was built to be; it is not currently a candidate D47 may consider. `hit_z` and `hit_y` rank camping
+above sweeping, which is D14's tension and exactly why the ladder carries rung 4. `reward_balance`
+orders the ladder correctly but cannot separate rung 5 from round-robin at all (D56).
+`greedy` and `explore` each fail the check their corner is defined by failing.
+
+### How α = 0.3 was chosen
+
+Swept 0.0 → 1.0 in 0.1 steps over the same four policies and seeds:
+
+| α | recency | round-robin | alternate | camp | sweeps > degenerate | rung 5 top |
+|---|---|---|---|---|---|---|
+| 0.0 | 1286.6 | 1384.8 | −909.1 | −2078.3 | yes | no |
+| 0.1 | 1549.5 | 1591.4 | −229.2 | −1179.0 | yes | no |
+| **0.2** | 1812.3 | 1798.0 | 450.7 | −279.7 | **yes** | **yes** |
+| **0.3** | 2075.2 | 2004.7 | 1130.6 | 619.7 | **yes** | **yes** |
+| **0.4** | 2338.0 | 2211.3 | 1810.5 | 1519.0 | **yes** | **yes** |
+| 0.5 | 2600.9 | 2417.9 | 2490.4 | 2418.3 | **no** | yes |
+| 0.6–1.0 | — | — | — | — | **no** | no |
+
+> **CORRECTED 2026-09-10 — re-derived against rung 2 and rung 5** rather than the hand-written
+> sweep. The window *widens* and α = 0.3 stays comfortably inside it:
+>
+> | α | 0.0 | 0.1 | 0.2 | **0.3** | 0.4 | 0.5 | 0.6+ |
+> |---|---|---|---|---|---|---|---|
+> | sweeps > degenerate | yes | yes | yes | **yes** | yes | no | no |
+> | rung 5 > rung 2 | 0/8 | **8/8** | 8/8 | **8/8** | 8/8 | 8/8 | 8/8 |
+>
+> Valid range **[0.1, 0.4]**, not [0.2, 0.4] — the lower bound moves because the flawed sweep
+> scored too high and made rung 5 look beatable by the floor at α = 0.1. The upper bound is
+> unchanged: from 0.5 the greedy half lets a 2-band ping-pong outscore rung 2, which is D53's
+> failure mode arriving through a different term. **`WEIGHTED_ALPHA = 0.3` is unchanged and is
+> still the middle of the window.**
+
+**The window closes from both ends.** Below 0.2 the explore half dominates and round-robin
+outscores rung 5, so the reward cannot express the bar it is supposed to teach toward. From 0.5 up,
+a 2-band ping-pong outscores round-robin — **D53's exact failure mode, reintroduced through the
+greedy half rather than through a streak counter**. Only 0.2–0.4 satisfies both; 0.3 is its middle.
+
+**This is a sanity constraint, not tuning against a score.** Nothing was chosen to make a policy
+perform better on D27's metrics. What was checked is that two known-good policies outrank two
+known-degenerate ones — the same check D53 applied. Which candidate to actually *select* remains
+D47's paired-dominance rule over the full protocol, and it has still never been run.
+
+### Two things fixed during the work, recorded because they were nearly shipped
+
+**`explore`'s density coefficient started at 2.0 and produced a 43,000-wide range.**
+`visit_density` reads in fair shares since D55, reaching 36.0 on a camped band, so 2.0 charged 72
+per slot and gave a camped episode roughly −43,000 against a good episode's few hundred. That is
+the same unfittable-scale failure D53 removed from `reward_balance`, reintroduced from the other
+direction. Measured and corrected to 0.10 before registration; the range is now ~3,500.
+
+**`_GREEDY_GAIN` was initially a guess of 2.5 in the wrong direction**, which made α = 0.5 roughly
+a 10:1 explore-dominated blend rather than half-and-half. It is now 4.08, the measured ratio of the
+two halves' spreads across the four reference policies (explore 3463.1, greedy 849.0). It is a
+units correction, not a coefficient: multiplying a reward by a positive constant cannot change its
+optimal policy, so nothing about `greedy` or `explore` alone depends on its value.
+
+### What this does not do
+
+- **It does not change `DEFAULT_REWARD`**, which is still `reward_balance`. `weighted` scoring
+  better on both sanity checks is an argument for running D47, not a substitute for having run it.
+- **It does not invalidate any checkpoint.** The observation is untouched; only the registry grew.
+- **It does not rank the candidates.** The tables above are ordering checks against known policies,
+  not paired-dominance measurements over the evaluation protocol.
+
+**Evidence.** `rfenv/env.py` (`reward_greedy`, `reward_explore`, `make_reward_weighted`,
+`WEIGHTED_ALPHA`, `_GREEDY_GAIN`, `REWARDS`). Measured this session on
+`ScanEnv(pool=EmitterPool.from_train())` at seeds 0/1/2, reading
+`episode_metrics()["total_reward"]` for each of the four reference policies under each candidate.
+Pinned by `tests/test_env.py::test_the_greedy_explore_axis_has_the_shape_it_claims` (the corners
+prefer their corner; α = 0 reproduces `explore` exactly and α = 1 reproduces `greedy` up to a
+single positive constant) and
+`::test_the_registered_blend_outranks_the_degenerate_policies` (the half that would silently
+un-fix D53). Suite: 267 passed, 84 skipped, 1 failed — the pre-existing held-out-split guard.
+
+---
+
+## D58 — the Pareto figure plots medians with interquartile whiskers, not means
+
+**Status:** `SETTLED` (2026-09-09) — a change to how a published figure reports the §4 metrics,
+requested and confirmed by the human after the mean-based version was found to be actively
+misleading. **The metrics themselves are untouched**, and so is the printed table: `_report_md`
+still reports `mean` over the IQR and `EVALUATION.md` §5's ratified rows are still means. Only the
+figure's collapse changed.
+
+### What the mean-based figure said, and why it was wrong
+
+`render.pareto` draws one marker per scheduler. A marker cannot show a distribution, so the
+statistic it collapses to has to be one a minority of episodes cannot move. For every rung on the
+ladder except one that is a detail; for **rung 4 it decides what the figure says**.
+
+Measured over 47 stare replays, seed 0 (`runs/smoke3_all_scenarios`, re-scored from the per-episode
+logs this session):
+
+| scheduler | ratio **mean** | ratio **median** | p25 | p75 | std |
+|---|---|---|---|---|---|
+| `camper` | **0.2065** | **0.1257** | 0.0538 | 0.3228 | **0.1909** |
+| `lstm_balance_100k_1M` | 0.1247 | 0.1234 | 0.1038 | 0.1427 | 0.0388 |
+| `lstm_balance_200k_1M` | 0.1259 | 0.1258 | 0.0996 | 0.1512 | 0.0390 |
+| `lstm_balance_300k_1M` | 0.1172 | 0.1209 | 0.0956 | 0.1431 | 0.0373 |
+| `recency` | 0.1134 | 0.1062 | 0.0958 | 0.1222 | 0.0404 |
+| `round_robin` | 0.0589 | 0.0562 | 0.0544 | 0.0592 | 0.0110 |
+
+**The camper's mean sits 64% above its own median**, and its standard deviation is roughly five
+times every adaptive rung's. The mechanism is rung 4's whole design: it picks one band and holds
+it, so it either lands on a busy one and scores 0.32 or a quiet one and scores 0.05. The mean is
+dragged up by the lucky half.
+
+**And because the axis limits are taken from the maximum, that inflated mean stretched the y-axis
+for everybody else.** Positions on the drawn figure, as fractions of the axis:
+
+| scheduler | height, means | height, medians |
+|---|---|---|
+| `camper` | **82%** | 78% |
+| `lstm_balance_200k_1M` | 50% | **78%** |
+| `lstm_balance_300k_1M` | 47% | **75%** |
+| `recency` | 45% | 66% |
+| `round_robin` | 23% | 35% |
+
+Under means the figure read as "the RL rungs are well below the camper on interception ratio."
+Under medians they are level with it, which is what every other artefact in the same run already
+said: paired per-episode, the RL rungs beat the camper on censored intercept time on **97.9–100%**
+of episodes and split the ratio column near 50/50. The figure was the only thing disagreeing, and
+it was disagreeing because of one statistic.
+
+This surfaced as a reported inconsistency between `comparison.md` and `pareto.png` — the table's
+"wins on both" column (paired against `round_robin`) versus the figure's mean positions. Those two
+were always answering different questions and both were correct; the figure was nonetheless giving
+a false impression, which is what this fixes.
+
+### What changed
+
+- `compare._means` becomes `compare._centres`: it reads `median` from each aggregate instead of
+  `mean`, and carries `p25`/`p75` alongside every headline metric.
+- `render.pareto` draws interquartile whiskers when those keys are present, and takes its axis
+  limits from the whisker tips so a wide rung is not clipped out of its own interval. Whiskers are
+  optional — a caller passing only the three headline metrics still gets bare points, which is what
+  `tests/test_compare.py` does.
+- `render._iqr_arm` converts absolute percentiles into the arm lengths matplotlib wants, clamping
+  at zero rather than raising: a p25 above the centre can only mean a caller mixed statistics, and
+  one degenerate whisker is more useful than no figure.
+
+**The whiskers are not decoration.** A median point alone has the same failure mode a mean point
+does — one dot, no spread — and the camper's vertical arm being four times longer than any other
+rung's is now the single most informative mark on the figure. It shows the reader *why* the camper
+cannot be trusted at a glance, which two tables and a decision entry had been saying in prose.
+
+### What this does not do
+
+- **It does not change any metric.** D27's definitions, §4's rule that the three are printed
+  together, and the paired-dominance counts are all untouched.
+- **It does not change the printed table or `EVALUATION.md` §5.** Those keep means, because a table
+  has room for an interval beside every number and a scatter plot does not. The two collapse
+  differently on purpose, and `_centres`'s docstring says so.
+- **It does not re-run anything.** The figure above was redrawn from the existing run's
+  `summary.json`, which already carried the percentiles.
+
+**Evidence.** `rfenv/compare.py::_centres`, `rfenv/render/comparison.py::pareto` and `::_iqr_arm`.
+Measured this session by re-scoring all 282 per-episode artefacts under
+`runs/smoke3_all_scenarios/` through `metrics.read_run` + `metrics.scheduler_metrics` and comparing
+mean against median per scheduler. `tests/test_compare.py` and `tests/test_render.py`: 31 passed.
+
+---
+
+## D59 — `measured_dbm` stays in the observation; D34's amplitude exclusion is lifted for it
+
+**Status:** `SETTLED` (2026-09-10) — **ratified by the human**, who is the only one who could:
+D49 added the component on D19 observability grounds and never addressed the exclusion it was
+reversing, and that gap was flagged as owing a decision rather than built on further.
+
+**What D34 excluded.** D34's base observation deliberately left out "peak amplitude within the
+dwell". `measured_dbm` is a *clamped mean* over the dwell's 1–2 slots rather than a peak — softer,
+bounded, and averaged — but it is the same class of quantity, so the exclusion had to be answered
+rather than sidestepped.
+
+**What it is, precisely.** `receiver.dwell` computes `measured = S + N(0, sigma)` per slot and
+declares `Y = measured >= gamma` (`rfenv/receiver.py`). `measured_dbm` is the mean of that
+`measured` array, clamped to `[-120, -20]` dBm and rescaled to `[0, 1]` — **the quantity one step
+before the binary declaration**, noise included. It is observable in D19's sense: a fielded
+receiver has this number. `S` alone would be truth-side and is not exposed.
+
+**Why it earns a slot.** Every other component of the observation is built from `Y`, which is
+thresholded. `hit_rate` cannot distinguish an empty band from one holding an emitter sitting just
+under gamma. `measured_dbm` is the only component carrying sub-threshold information.
+
+**What is measured and what is not.** Over 1,506 round-robin dwells it reads **0.406** when the
+dwell declared a hit against **0.0135** when it did not — it tracks the declaration cleanly, which
+a threshold detector guarantees. **What was never measured is whether it adds anything beyond
+`hit_rate`**: the sub-threshold case is the entire argument for the component, and how often a band
+sits detectable-but-undeclared was not quantified before ratification. Recorded as a known gap, not
+as evidence. Anyone claiming the component helps still owes that measurement, or an ablation.
+
+**Scope.** One scalar, global rather than per-band: it reports only the band just left, the same
+scope `current_band` has. Making it per-band is a separate change and is not authorised here.
+
+**Evidence.** `rfenv/env.py::ScanEnv._observation` (the clamp and rescale), `rfenv/receiver.py`
+(`measured = S + noise`, `Y = measured >= gamma`), `rfenv/baselines/guard.py::MEASURED_DBM`.
+Conditional means measured 2026-09-09 this session under round-robin, seeds 0/1/2.
+
+---
+
+## D60 — the development split: 35 configs train, 12 validate, and the pool is rebuilt from the training half
+
+**Status:** `SETTLED` (2026-09-10) — closes a train/evaluation leak that made every RL margin over
+rung 5 unsafe. **The rule was written into `rfenv/split.py` before anyone looked at which configs
+landed on which side**, which is the whole value of the entry; D39's reasoning about thresholds
+applies unchanged to splits.
+
+### The leak
+
+RL training sampled `EmitterPool.from_train()` — every emitter in all 47 development configs.
+Evaluation ran `compare.py` over those same 47 stare replays **plus sampled scenarios drawn from
+that same pool**. The heuristic rungs do not train, so the asymmetry ran one way only: our agent
+had seen the evaluation emitters and rung 5 had not. Any margin that produced is not a real
+advantage, and it is exactly the kind that evaporates on the held-out split.
+
+### The rule, fixed in advance
+
+Order the 47 train configs by detectable-emitter count ascending, ties broken by config id. Take
+every 4th from index 1 into validation; the rest train. `VALIDATION_EVERY = 4`,
+`VALIDATION_OFFSET = 1`, both pinned as literals by `tests/test_split.py`.
+
+**Systematic sampling along the difficulty variable, not a hash or a uniform draw.** Scenario
+difficulty spans 2 to 99 emitters and dominates every §4 metric, so a random split can hand
+validation a systematically easier or harder set and nobody would know which. Every-4th along the
+sorted order makes coverage of the difficulty range structural rather than lucky. Offset 1 rather
+than 0 keeps the single easiest config in training, where a degenerate 2-emitter scenario is less
+able to distort a 12-config validation set.
+
+### What it produced, reported as it fell
+
+|  | n | min | median | max | mean |
+|---|---|---|---|---|---|
+| training | 35 | 1 | 38 | 82 | **40.9** |
+| validation | 12 | 1 | 37 | 80 | **40.2** |
+
+Validation configs: `config_81`, `config_418`, `config_535`, `config_658`, `config_706`,
+`config_719`, `config_940`, `config_1635`, `config_1776`, `config_1902`, `config_2027`,
+`config_2445`.
+
+**The split was not re-drawn after seeing this.** It fell balanced; had it fallen lopsided that
+would have been reported as a limitation, because re-rolling until a split looks good is the same
+error the rule exists to prevent.
+
+### Splitting the config list is not enough, and that is the part that matters
+
+`EmitterPool` is assembled *from* the configs, so a scenario sampled from a pool built over all 47
+can contain an emitter belonging to a held-back config. Disjoint config lists over a shared pool
+would look like a split and behave like none. `EmitterPool.from_configs(...)` is the new
+constructor; `split.training_pool()` and `split.validation_pool()` are built through it.
+
+**Measured: 2,600 contributions / 1,431 distinct emitters in training, 843 / 482 in validation,
+and 0 emitters shared.** `tests/test_split.py::test_the_pools_share_no_emitters` asserts it.
+
+### What changed, and what deliberately did not
+
+- `rl.common.make_train_env` now defaults to `split.training_pool()`. Its `pool` argument is
+  injectable so checkpoint selection can score against `validation_pool()` without routing around
+  the function. Passing `EmitterPool.from_train()` re-opens the leak, which is why it is no longer
+  the default, and a test asserts the default did not drift back.
+- **`compare.py` still samples from all 47, and that is correct.** The headline is reported over
+  the whole development set; it is *training* that must not see it. Reporting the headline on the
+  training half would be a different and equally wrong result.
+- The 45 held-out test pairs are untouched and remain sealed behind D8's explicit flag.
+  `from_configs` refuses any config outside the development set.
+
+### Consequences to state plainly
+
+**Every RL result recorded before this date was produced under the leak**, including the
+2,223-episode acceptance run of 2026-09-10 (`runs/acceptance_2026-09-10/`), where rung 9c
+Pareto-dominated rung 5 on 48.0% of episodes against being dominated on 13.5%. That measurement is
+sound as arithmetic and is **not** evidence of a real advantage over rung 5, because the agent
+trained on the emitters it was scored against. It is not written into `EVALUATION.md` §5. The
+number to chase is the same comparison re-measured after a retrain on the training half.
+
+**Evidence.** `rfenv/split.py`, `rfenv/scenario.py::EmitterPool.from_configs`,
+`rfenv/rl/common.py::make_train_env`. Counts measured 2026-09-10 this session. Pinned by
+`tests/test_split.py` (7 tests: rule literals, partition, zero shared emitters, difficulty
+coverage, the `make_train_env` default, held-out refusal, determinism).
+
+---
+
+## D61 — the checkpoint-selection rule, fixed before the run that uses it
+
+**Status:** `SETTLED` (2026-09-10) — the quantity it maximises was **ratified by the human** after
+a first proposal was corrected (see "the correction", below). Fixed in `rfenv/selection.py` and
+pinned by `tests/test_selection.py`.
+
+### The problem it closes
+
+A 1M-step run at `--checkpoint-freq 100000` produces ten checkpoints, and they differ enormously —
+on the 2026-09-10 acceptance run, one run's 100k/200k/300k/400k snapshots scored 30.4% / 43.9% /
+48.0% / 25.7% paired-both against rung 5. Picking among them *after* seeing evaluation numbers
+fits the evaluation set through the choice: ten hypotheses are tried, the best is reported, and the
+reported figure carries an optimistic bias of roughly the spread across checkpoints — tens of
+percentage points here — which is invisible in the number itself. It is D39's argument about
+thresholds applied to model selection, and it gets monotonically worse the more the lane iterates.
+
+### The rule
+
+For each checkpoint, over the **12 validation configs** (D60 — zero emitters shared with the
+training pool) at seeds (0, 1, 2), stare replays only (D36), paired per episode against rung 5 on
+the same scenario, same seed, same truth grid:
+
+```
+net dominance = P(checkpoint Pareto-dominates recency) - P(recency Pareto-dominates checkpoint)
+```
+
+Highest net dominance wins. Ties break toward **fewer** training steps.
+
+Four choices, each load-bearing:
+
+1. **Against `recency`, not `round_robin`.** Rung 5 is the bar (`EVALUATION.md` §5). Selecting on
+   the floor picks whichever checkpoint is best at clearing something the project does not care
+   about.
+2. **Pareto-dominance, not means.** A mean can clear a mean while losing most scenarios, and D14's
+   finding is that no trivial strategy is good at both objectives — so "wins on both" is the
+   question and either axis alone is not.
+3. **Net, not the raw win rate.** See below.
+4. **Ties toward fewer steps.** Given two checkpoints validation cannot separate, the less-trained
+   one has had less opportunity to memorise the training pool and is cheaper to reproduce.
+
+### The correction, recorded because the human approved the wrong version first
+
+The rule was first proposed as *"highest paired-both against recency, ties broken by fewest
+episodes where recency dominates"*, together with the claim that it would have picked the 200k
+checkpoint over the 300k one. **That claim was false.** The tie-break only fires on an exact tie,
+and 48.0% > 43.9% is not a tie, so the win-rate version picks 300k:
+
+| checkpoint | dominates rung 5 | dominated by rung 5 | net |
+|---|---|---|---|
+| 200k | 43.9% | **4.7%** | **+39.2** |
+| 300k | **48.0%** | 13.5% | +34.5 |
+
+The human had approved the rule on the strength of a statement about its behaviour that did not
+hold, so the discrepancy was raised rather than quietly resolved, and **net dominance was ratified
+in its place**. Being strictly beaten is a real cost: 300k is dominated three times as often as
+200k, and a model that rarely loses outright is the better bet for surviving a held-out run than
+one that sometimes wins bigger.
+
+### First execution — machinery only, not a valid selection
+
+Run against the three `lstm_balance_1M_s*` checkpoints, 12 validation configs × 3 seeds:
+
+| checkpoint | steps | dominates | dominated | **net** |
+|---|---|---|---|---|
+| `lstm_balance_1M_s2` | 200,000 | 55.6% | 8.3% | **+47.2%** ← selected |
+| `lstm_balance_1M_s3` | 300,000 | 36.1% | 5.6% | +30.6% |
+| `lstm_balance_1M_s1` | 100,000 | 36.1% | 11.1% | +25.0% |
+
+**This selects nothing.** All three were trained before D60, on a pool built from all 47 configs
+including the 12 now called validation, so the model has seen these emitters. The table
+demonstrates the rule executes; it is not evidence about any checkpoint. Note also that 200k and
+300k **tie on win rate** here at 36.1% — under the rejected version this would have fallen to the
+tie-break, which is the fragility net dominance removes.
+
+Worth recording: validation net dominance reads +47.2% for 200k against +39.2% on the full
+development set. Different scenario sets, so not a clean comparison — but it runs in the direction
+expected if the policy is partly recalling emitters rather than generalising, which is why D60 had
+to come before this entry.
+
+### What is deliberately not covered
+
+- **The rule does not choose hyperparameters, rewards or algorithms.** It picks among checkpoints
+  *within* one run. Choosing across runs is the same failure mode one level up and needs the
+  iteration ledger to be honest about how many configurations were tried.
+- **It does not report anything.** The selected checkpoint's headline is measured on the full 47 by
+  `compare.py`, with the number of configurations tried stated alongside.
+
+**Evidence.** `rfenv/selection.py` (`SELECTION_REFERENCE`, `SELECTION_SEEDS`, `SELECTION_SOURCE`,
+`Candidate.net_dominance`, `select`). Pinned by `tests/test_selection.py` — 7 tests including one
+asserting `evaluate` cannot reach `EmitterPool.from_train` (the D60 leak arriving by a different
+door) and one asserting the *direction* of each metric literally, because reversing "lower
+intercept time is better" would silently select the worst checkpoint every time with the whole
+suite green. Table above measured 2026-09-10 this session.
+
+---
+
+## D62 — every reward candidate is screened against the ladder before anything trains on it
+
+**Status:** `SETTLED` (2026-09-10) — a new gate in front of D47, requested by the human. Criteria
+fixed in `rfenv/reward_gate.py` before the first run and pinned by `tests/test_reward_gate.py`.
+
+### Why a screen in front of D47
+
+D47 fixed the rule for *selecting* a reward: the candidate beating round-robin on both headline
+metrics on the most paired episodes. It has never been run, and it is expensive — it needs a
+trained agent per candidate, hours each. This screen needs no agent at all.
+
+The argument is short. If a reward cannot rank rung 5 above rung 2 — two fixed, known policies,
+one measurably better on the metrics that decide the project — then no policy trained on it can be
+expected to discover the difference either, whatever the hyperparameters. Gradient descent
+optimises the reward it is given; it cannot recover an ordering the reward does not encode. Such a
+candidate is excluded in minutes on a CPU instead of after a 1M-step run.
+
+### The criteria, fixed in advance
+
+Score rungs **2, 4, 5 and 6a** under each candidate, 8 seeds, paired per seed rather than averaged.
+A candidate passes only if:
+
+- `mean(rung5 − rung2) / std(rung5 − rung2) >= 2.0` — separation in units of its own noise, because
+  absolute gaps are meaningless across candidates whose scales run from hundreds to thousands;
+- rung 5 above rung 2 on **>= 7 of 8 seeds** — large on average is not enough if it is inconsistent;
+- the camper **>= 1.0σ below both** sweeping policies.
+
+Rung 6a is in the set precisely because we did not write it: a reward tuned until it happens to
+like our own two policies would still be caught out by one that arrived from a paper (D45).
+
+**The criteria are literals in the file and asserted by a test**, exactly as `validate.py::GATES`
+is asserted against D39, and for the same reason: a threshold chosen once the measurement is
+visible is not a threshold. If a candidate we like fails, the answer is to change the candidate.
+
+### Measured, 6 candidates × 4 rungs × 8 seeds
+
+| candidate | rung 2 | rung 5 | rung 4 | rung 6a | sep | seeds | camper | verdict |
+|---|---|---|---|---|---|---|---|---|
+| `reward_balance` | 217.9 | 276.9 | **−414.1** | 278.7 | 3.0σ | 8/8 | 7.3σ | **PASS** |
+| `weighted` | 1455.7 | 1817.2 | 1323.0 | 1928.4 | 2.6σ | 8/8 | 0.4σ | FAIL |
+| `hit_z` | 196.4 | 299.1 | **409.8** | 376.6 | 3.1σ | 8/8 | −2.3σ | FAIL |
+| `hit_y` | 165.4 | 270.5 | **372.4** | 332.0 | 2.6σ | 8/8 | −1.9σ | FAIL |
+| `greedy` | 459.0 | 776.6 | **1198.3** | 984.2 | 2.7σ | 8/8 | −2.7σ | FAIL |
+| `explore` | 1277.0 | 1238.1 | −205.2 | 1034.0 | **−2.5σ** | **0/8** | 31.5σ | FAIL |
+
+**`reward_balance` is the only survivor**, and it is what every current rung 9 checkpoint was
+trained on.
+
+### The finding that matters most
+
+**`hit_z` and `hit_y` — D29's original two candidates, carried since 2026-09-03 — both fail.** They
+rank rung 4 above every sweeping policy, which is D14's tension stated in reward form: a reward
+that pays only for hits pays most for camping on the densest band. No agent trained on either can
+be expected to beat the floor, and both have been live options for the RL lane the entire time. The
+screen cost minutes and would have saved every DQN and PPO run in this repository, all of which
+trained on `hit_z` or `hit_y` (D48).
+
+`greedy` failing is by construction — D57 built it as the exploit corner and predicted exactly
+this. `explore` fails from the other side: it is the only candidate that ranks rung 2 *above* rung
+5, on 0/8 seeds, because nothing in it rewards finding the busy bands faster.
+
+### What the screen does not do
+
+- **It is a necessary condition, not a sufficient one.** A reward can order four fixed policies
+  perfectly and still be unlearnable, badly scaled, or wrong at the margin. Passing is not evidence
+  a candidate is good.
+- **It does not rank the survivors.** D47 does that, and D47 still has not been run — the screen
+  only decides what D47 is allowed to consider.
+- **It says nothing about hyperparameters.** A candidate that passes can still fail to train.
+
+**Evidence.** `rfenv/reward_gate.py`. Measured 2026-09-10 this session over
+`EmitterPool.from_train()` at seeds 0–7. Pinned by `tests/test_reward_gate.py` — 6 tests, including
+`test_every_screened_rung_is_a_real_registered_rung`, which exists because D56 was inverted by
+scoring a hand-written stand-in instead of a registered rung.
 
 ---
 

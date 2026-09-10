@@ -288,6 +288,21 @@ def discovery_curves(
     return _save(fig, path)
 
 
+def _iqr_arm(row: dict, metric: str, centre: float):
+    """`[[lower], [upper]]` arm lengths for one axis, or None if not supplied.
+
+    matplotlib wants distances from the point, not absolute positions, and it
+    rejects negative arms. A p25 above the centre (or p75 below it) can only mean
+    the caller mixed statistics -- passing means with somebody else's percentiles
+    is exactly how that happens -- so clamp at zero rather than raise: a figure
+    with one degenerate whisker is more useful than no figure.
+    """
+    lo, hi = row.get(f"{metric}_p25"), row.get(f"{metric}_p75")
+    if lo is None or hi is None:
+        return None
+    return [[max(0.0, centre - float(lo))], [max(0.0, float(hi) - centre)]]
+
+
 def pareto(
     points,
     path: str | Path | None = None,
@@ -298,11 +313,30 @@ def pareto(
     """Interception ratio against censored intercept time, one point per scheduler.
 
     **This is D14's finding as a picture** and the reason §4 forbids publishing
-    either axis alone: the camper sits top-right (captures the pulses, finds
+    either axis alone: the camper sits far right (captures the pulses, finds
     nobody) and round-robin bottom-left (finds everybody, captures nothing), and
     no trivial strategy is in the top-left corner. Up and to the left is better,
     so the target for an adaptive scheduler is stated by the geometry rather than
     by a sentence.
+
+    **Points are medians and the whiskers are the interquartile range (D58).**
+    A single marker cannot show a distribution, so the statistic it collapses to
+    must be one a minority of episodes cannot move -- and drawn as means this
+    figure said something false. The camper's interception ratio has mean 0.2065
+    against median 0.1257 over 47 stare replays, because it either lands on a
+    busy band and scores 0.32 or a quiet one and scores 0.05 (IQR
+    [0.0538, 0.3228], std 0.19 against every adaptive rung's 0.04). Since the
+    axis limits come from the maximum, that inflated mean also stretched the
+    y-axis and pushed every other rung into the lower half of the plot: rung 9
+    read as "worse on ratio than the camper" when its median is level with it and
+    it wins the paired per-episode count on intercept time nearly 100% of the
+    time.
+
+    The whiskers are the honest part. A median point alone has the same failure
+    mode as a mean point -- one dot, no spread -- and the camper's arm being four
+    times longer than anyone else's is the single most informative mark on the
+    figure. They are optional: a caller passing only the three headline metrics
+    gets bare points, which is what the tests do.
 
     Coverage is drawn as marker area, because §4's rule is that it is always
     printed beside the two headline metrics -- here it is impossible to read one
@@ -337,6 +371,19 @@ def pareto(
         rung = str(row.get("rung", i))
         x = row["censored_mean_intercept_time_s"]
         y = row["interception_ratio"]
+
+        # Interquartile whiskers, drawn first so the marker sits on top of them.
+        # Optional: a caller passing only the three headline metrics still gets a
+        # bare point, which is what the tests and any ad-hoc caller do.
+        xerr = _iqr_arm(row, "censored_mean_intercept_time_s", x)
+        yerr = _iqr_arm(row, "interception_ratio", y)
+        if xerr is not None or yerr is not None:
+            ax.errorbar(
+                x, y, xerr=xerr, yerr=yerr,
+                fmt="none", ecolor="#888", elinewidth=0.9,
+                capsize=2.5, capthick=0.9, alpha=0.55, zorder=2,
+            )
+
         ax.scatter(
             x, y, s=60 + 340 * coverage,
             facecolors="none" if reference else None,
@@ -350,15 +397,23 @@ def pareto(
 
     ax.set_xlabel("censored mean intercept time (s)   ->  worse")
     ax.set_ylabel("interception ratio   ->  better")
-    # Headroom, and room for the legend outside the axes.
-    xs = [r["censored_mean_intercept_time_s"] for r in points.values()] or [1.0]
-    ys = [r["interception_ratio"] for r in points.values()] or [1.0]
+    # Headroom, and room for the legend outside the axes. Taken from the whisker
+    # tips where there are whiskers, so a wide rung is not clipped out of its own
+    # interval -- the camper's p75 is what needs the room, and it is exactly the
+    # rung whose spread the reader has to see.
+    xs = [r.get("censored_mean_intercept_time_s_p75",
+                r["censored_mean_intercept_time_s"]) for r in points.values()] or [1.0]
+    ys = [r.get("interception_ratio_p75",
+                r["interception_ratio"]) for r in points.values()] or [1.0]
     ax.set_xlim(0.0, max(xs) * 1.12 + 0.5)
     ax.set_ylim(0.0, max(ys) * 1.12 + 0.02)
     ax.grid(alpha=0.25)
     ax.legend(loc="center left", bbox_to_anchor=(1.02, 0.5), fontsize=8,
               frameon=False, labelspacing=0.9, borderpad=0.0,
               title="rung (hollow = reference line)", title_fontsize=8)
-    ax.set_title(f"{title}\nbetter is up and to the left; marker area is coverage",
-                 fontsize=10)
+    ax.set_title(
+        f"{title}\n"
+        "median over the run, whiskers are the interquartile range\n"
+        "better is up and to the left; marker area is coverage",
+        fontsize=9)
     return _save(fig, path)
