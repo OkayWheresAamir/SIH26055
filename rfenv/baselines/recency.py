@@ -6,8 +6,6 @@ import numpy as np
 
 from rfenv.baselines._util import _argmax_random_tie
 from rfenv.baselines.guard import HIT_RATE, STALENESS
-from rfenv.baselines.simple import SWEEP_SLOTS
-from rfenv.constants import N_SLOTS
 
 
 class RecencyActivity:
@@ -20,7 +18,7 @@ class RecencyActivity:
     rung 4 or rung 2.
 
     **The explore term is measured in sweeps, and that is what makes the rung
-    work.** D34's staleness is normalised by the *episode* (600 slots), so it is
+    work.** D34's staleness was normalised by the *episode* (600 slots), so it was
     at most 1.0 -- the same range as the hit rate. Added with unit weight, a band
     declaring on every look scores 1 + 0.002 one slot after being visited, which
     no other band can ever beat, and the rung silently collapses into rung 4:
@@ -28,6 +26,12 @@ class RecencyActivity:
     fix is the denominator, not a weight. A gap divided by the frozen 43-slot
     reference sweep is unbounded, so a neglected band always eventually outranks a
     perfect one, and the policy is restless rather than greedy.
+
+    **This rung is where that was first worked out, and D55 moved the fix into
+    the environment.** `env._observation` now reports staleness in sweeps for
+    every policy, so `__call__` no longer divides anything and the RL rungs get
+    the same well-scaled number this one needed. The score is unchanged; what
+    changed is that the correction is no longer this class's private knowledge.
 
     **The unit weight is then a statement, not a knob**: one sweep of neglect is
     worth as much as a band that declares on every look. Its effect is legible --
@@ -48,7 +52,10 @@ class RecencyActivity:
         self.rng = rng
 
     def __call__(self, obs, info) -> int:
-        # staleness is (t - last visit) / N_SLOTS (D34); re-express it in sweeps.
-        gap_sweeps = np.asarray(obs[STALENESS], dtype=np.float64) * N_SLOTS / SWEEP_SLOTS
+        # staleness arrives already in sweeps (D55 moved the division into
+        # `env._observation`, for the reasons this class's docstring gives). The
+        # `* N_SLOTS / SWEEP_SLOTS` that used to be on this line is gone because
+        # the environment now does it -- the score is unchanged.
+        gap_sweeps = np.asarray(obs[STALENESS], dtype=np.float64)
         score = np.asarray(obs[HIT_RATE], dtype=np.float64) + self.weight * gap_sweeps
         return _argmax_random_tie(score, self.rng)

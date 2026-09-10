@@ -63,7 +63,12 @@ def _dqn_rung_factory(checkpoint_path: Path) -> Callable:
     def factory(rng, grid):
         from rfenv.rl import RLScheduler
         from rfenv.rl.dqn import load_checkpoint
-        return RLScheduler(load_checkpoint(checkpoint_path))
+        # `deterministic=True`, against `RLScheduler`'s own default, and the one
+        # rung that should be: a DQN has no stochastic policy to sample from, so
+        # SB3's `deterministic=False` means epsilon-greedy *exploration* noise
+        # (`exploration_final_eps`, 0.05 by default) -- a training artefact, not
+        # a learned distribution. The greedy argmax is this rung's policy.
+        return RLScheduler(load_checkpoint(checkpoint_path), deterministic=True)
     return factory
 
 
@@ -74,17 +79,57 @@ def _ppo_rung_factory(checkpoint_path: Path) -> Callable:
     def factory(rng, grid):
         from rfenv.rl import RLScheduler
         from rfenv.rl.ppo import load_checkpoint
+        _seed_torch(rng)
         return RLScheduler(load_checkpoint(checkpoint_path))
     return factory
 
 
-# Literals, not imports from rfenv.rl.dqn/ppo.DEFAULT_CHECKPOINT -- importing
-# anything from rfenv.rl here would make torch/stable-baselines3 a hard
-# dependency of this module for everyone, even those who never touch rungs 7/8.
-# tests/test_baselines.py's _UNTRAINED_RUNG_CHECKPOINTS duplicates the same
-# paths for the same reason.
+def _recurrent_ppo_rung_factory(checkpoint_path: Path) -> Callable:
+    """A `Rung` factory for one trained RecurrentPPO checkpoint (rung 9).
+
+    Same parameterised-checkpoint shape as `_dqn_rung_factory`/`_ppo_rung_factory`,
+    but wraps the checkpoint in `RecurrentRLScheduler`, not `RLScheduler` -- a
+    recurrent policy's `.predict()` takes and returns hidden state across
+    calls, which `RLScheduler` has no slot for (see `common.py`). sb3-contrib,
+    not plain stable-baselines3, is what `rfenv.rl.recurrent_ppo.load_checkpoint`
+    pulls in -- lazy-imported here for the same reason torch/SB3 are.
+    """
+    def factory(rng, grid):
+        from rfenv.rl.common import RecurrentRLScheduler
+        from rfenv.rl.recurrent_ppo import load_checkpoint
+        _seed_torch(rng)
+        return RecurrentRLScheduler(load_checkpoint(checkpoint_path))
+    return factory
+
+
+def _seed_torch(rng) -> None:
+    """Fold this episode's rung stream into torch's RNG, so a sampled policy
+    still reproduces from `(seed, rung key)` alone.
+
+    `RLScheduler`/`RecurrentRLScheduler` default to sampling rather than taking
+    the argmax (see `common.py` for the measurement behind that), and SB3's
+    `.predict()` draws that sample from torch's *global* generator -- it takes no
+    generator argument. Without this, two runs of `compare.py` at the same seed
+    would give a sampled rung different actions, and `EVALUATION.md` §7's
+    "identical scenarios and seeds" would quietly stop holding for rungs 8 and 9.
+
+    Global state, unavoidably, which is why it is set here per rung rather than
+    once per process: `make()` already derives `rng` from the episode seed and
+    the rung's own key, so each rung re-seeds torch from its own stream and no
+    rung's draw depends on where it sits in the ladder.
+    """
+    import torch
+    torch.manual_seed(int(rng.integers(2 ** 31)))
+
+
+# Literals, not imports from rfenv.rl.dqn/ppo/recurrent_ppo.DEFAULT_CHECKPOINT --
+# importing anything from rfenv.rl here would make torch/stable-baselines3 (and,
+# for rung 9, sb3-contrib) a hard dependency of this module for everyone, even
+# those who never touch an RL rung. tests/test_baselines.py's
+# _UNTRAINED_RUNG_CHECKPOINTS duplicates the same paths for the same reason.
 _DQN_DEFAULT_CHECKPOINT = Path("runs/checkpoints/deep_q_network.zip")
 _PPO_DEFAULT_CHECKPOINT = Path("runs/checkpoints/ppo.zip")
+_RECURRENT_PPO_DEFAULT_CHECKPOINT = Path("runs/checkpoints/recurrent_ppo.zip")
 
 
 LADDER: tuple[Rung, ...] = (
@@ -144,16 +189,57 @@ LADDER: tuple[Rung, ...] = (
                 "Ours. Second naive pass: untuned SB3 PPO, trained on first_intercept (D29). "
                 "Sees only the D34 observation.",
                 _ppo_rung_factory(Path("runs/checkpoints/ppo_fi_2M.zip"))),
-    Rung("ppo_weighted_camp", "8d", "PPO (weighted_camp, 1M)",
-        "Ours. Second naive pass: untuned SB3 PPO, trained on weighted_camp (D29). "
-        "Sees only the D34 observation.",
-        _ppo_rung_factory(Path("runs/checkpoints/ppo_wt_cmp_1M.zip"))),
+    # Commented out, not deleted: weighted_camp (the reward this was trained on)
+    # was retired from REWARDS (env.py), and the observation shape has since
+    # moved past what this checkpoint was trained against too. Re-enable only
+    # after re-registering weighted_camp and retraining runs/checkpoints/ppo_wt_cmp_1M.zip.
+    # Rung("ppo_weighted_camp", "8d", "PPO (weighted_camp, 1M)",
+    #     "Ours. Second naive pass: untuned SB3 PPO, trained on weighted_camp (D29). "
+    #     "Sees only the D34 observation.",
+    #     _ppo_rung_factory(Path("runs/checkpoints/ppo_wt_cmp_1M.zip"))),
     # More trained PPO variants register the same way, one Rung(...) line each
     # using _ppo_rung_factory (rungs "8d", "8e", ...) -- give each a label that
     # names what's different about it (D29 candidate, timestep count, ...), not
     # a shared "PPO scheduler": two rungs with the same label collapse to one
     # point in render.pareto() and one row anywhere else keyed by label, since
     # compare.py's `_means`/figure-building code keys by label, not by key.
+
+    Rung("recurrent_ppo_first_intercept_1M", "9", "Recurrent PPO (LSTM),1M",
+         "Ours. Third algorithm: sb3-contrib RecurrentPPO (MlpLstmPolicy), "
+         "trained on hit_z (D29). Sees the same D34 observation as every "
+         "other rung, but the policy carries an LSTM hidden state across "
+         "the episode instead of acting on each look alone.",
+         _recurrent_ppo_rung_factory(_RECURRENT_PPO_DEFAULT_CHECKPOINT)),
+    Rung("recurrent_ppo_first_intercept_100k", "9a", "Recurrent PPO (LSTM),100k",
+            "Ours. Third algorithm: sb3-contrib RecurrentPPO (MlpLstmPolicy), "
+            "trained on hit_z (D29). Sees the same D34 observation as every "
+            "other rung, but the policy carries an LSTM hidden state across "
+            "the episode instead of acting on each look alone.",
+            _recurrent_ppo_rung_factory(Path("runs/checkpoints/lstm_ppo5_100000_steps.zip"))),
+    Rung("recurrent_ppo_first_intercept_200k", "9b", "Recurrent PPO (LSTM),200k",
+            "Ours. Third algorithm: sb3-contrib RecurrentPPO (MlpLstmPolicy), "
+            "trained on hit_z (D29). Sees the same D34 observation as every "
+            "other rung, but the policy carries an LSTM hidden state across "
+            "the episode instead of acting on each look alone.",
+            _recurrent_ppo_rung_factory(Path("runs/checkpoints/lstm_ppo5_200000_steps.zip"))),
+    Rung("recurrent_ppo_first_intercept_300k", "9c", "Recurrent PPO (LSTM),300k",
+            "Ours. Third algorithm: sb3-contrib RecurrentPPO (MlpLstmPolicy), "
+            "trained on hit_z (D29). Sees the same D34 observation as every "
+            "other rung, but the policy carries an LSTM hidden state across "
+            "the episode instead of acting on each look alone.",
+            _recurrent_ppo_rung_factory(Path("runs/checkpoints/lstm_ppo4_300000_steps.zip"))),
+    Rung("recurrent_ppo_first_intercept_400k", "9d", "Recurrent PPO (LSTM),400k",
+            "Ours. Third algorithm: sb3-contrib RecurrentPPO (MlpLstmPolicy), "
+            "trained on hit_z (D29). Sees the same D34 observation as every "
+            "other rung, but the policy carries an LSTM hidden state across "
+            "the episode instead of acting on each look alone.",
+            _recurrent_ppo_rung_factory(Path("runs/checkpoints/lstm_ppo4_400000_steps.zip"))),
+
+    Rung("lstm_balance_100k_1M", "9", "Recurrent PPO (reward_balance, 100k)",
+     "Ours. Trained on reward_balance after D52/D53/D55, 100k timesteps.",
+     _recurrent_ppo_rung_factory(Path("runs/checkpoints/lstm_balance_1M_s1.zip"))),
+
+
 
     Rung("camper_oracle", "—", "Greedy static, truth-fed (D14's camper)",
          "Reference line: D14's camper, which knew where the pulses were.",

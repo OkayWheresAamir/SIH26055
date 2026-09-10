@@ -41,10 +41,10 @@ from __future__ import annotations
 from rfenv.baselines.apfeld import Apfeld, ApfeldParams
 from rfenv.baselines.camper import GreedyCamper, OracleCamper, PROBE_SWEEPS
 from rfenv.baselines.guard import (
-    CAMP_TIME,
     CLOCK,
     CURRENT_BAND,
     HIT_RATE,
+    MEASURED_DBM,
     OBSERVABLE_INFO,
     STALENESS,
     VISIT_DENSITY,
@@ -77,7 +77,6 @@ __all__ = [
     "ApfeldParams",
     "BAND_AT_SLOT",
     "BY_KEY",
-    "CAMP_TIME",
     "CLOCK",
     "CURRENT_BAND",
     "EQUAL_AIRTIME_CYCLE",
@@ -85,6 +84,7 @@ __all__ = [
     "GreedyCamper",
     "HIT_RATE",
     "LADDER",
+    "MEASURED_DBM",
     "OBSERVABLE_INFO",
     "OracleCamper",
     "PROBE_SWEEPS",

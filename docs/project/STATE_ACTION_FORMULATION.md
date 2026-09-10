@@ -3,6 +3,26 @@
 **Version 1 · 2026-09-06 · Owner: Aamir.**
 **Audience:** the RL lane, as the input to the reward / PPO work.
 
+> **AMENDED 2026-09-09 — three things below are now out of date; see D52, D53 and D54.**
+> **(1)** The registered reward candidates are `hit_z`, `hit_y`, `reward_balance`. The key
+> `first_intercept` no longer exists — candidate 3 was renamed and rewritten (D50, D53), so any
+> command here that passes `--reward first_intercept` will be refused by `ScanEnv.__init__`.
+> **(2)** `reward_balance`'s camping cost is charged against airtime share
+> (`-3.0 * visit_density[action] * n_slots`), not a consecutive-repeat streak — the streak version
+> was defeated for free by alternating between two bands, and measurably ranked a 2-band ping-pong
+> above round-robin (D53).
+> **(3)** Inference **samples** the policy; it no longer takes the argmax. `RLScheduler` and
+> `RecurrentRLScheduler` take `deterministic`, defaulting to `False`, so every code snippet below
+> showing `deterministic=True` is stale except for rung 7 (a DQN's greedy action *is* its policy).
+> **(4)** The observation is **146 wide, not 147**, and its box is no longer `[0, 1]` (D55):
+> `camp_time` was dropped as measurably inert, `visit_density` now reads in fair shares (ceiling
+> 36.0) and `staleness` in reference sweeps (ceiling 13.95). Every checkpoint that predates this is
+> unloadable. **(5)** `reward_balance` separates catastrophe from competence but not competence from
+> excellence — measured, it scores rung 5 and round-robin within +2.3 +/- 11.7 of each other over 8
+> seeds, so round-robin is roughly the ceiling it can teach (D56, open).
+> The PDF beside this file is older still and does not carry these amendments.
+
+
 > **Read this before designing anything against it.** This document is **not a proposal**. The
 > state and action spaces described here are **already built, tested and running** — they are what
 > `rfenv/env.py` has exposed since 2026-09-04, what all seven baseline schedulers were measured on
@@ -24,10 +44,11 @@ entry's own recorded measurement and are labelled as such, not re-measured here.
 ```
 Current situation  →  What the agent knows (STATE)  →  What it can do (ACTION)
 ──────────────────────────────────────────────────────────────────────────────
- t slots elapsed       109 floats in [0,1], built ONLY       pick 1 of 36 bands
- of 600 (30 s);        from its own past looks:              to point the receiver
- 36 bands, unknown     per-band hit rate, visit              at next. That is the
- who is transmitting   density, staleness, + clock           entire action space.
+ t slots elapsed       146 floats, built ONLY from its       pick 1 of 36 bands
+ of 600 (30 s);        from its own past looks: per-band      to point the receiver
+ 36 bands, unknown     hit rate, visit density, staleness,    at next. That is the
+ who is transmitting   current band, + clock, camp time,      entire action space.
+                       last measured level
 ```
 
 The problem statement calls interception *"a two dimensional search problem since it involves
@@ -69,12 +90,17 @@ band that was empty a second ago may be busy now. That is the whole problem.
 ### 2.1 The observation space
 
 ```python
-observation_space = spaces.Box(low=0.0, high=1.0, shape=(109,), dtype=np.float32)   # rfenv/env.py:162
+observation_space = spaces.Box(low=low, high=high, dtype=np.float32)   # shape (146,)
 ```
 
-**109 = 36 × 3 + 1.** Every component is natively a fraction, so the box is the unit interval and
-**no scaling or normalisation layer is needed anywhere** — verified at runtime, `obs.min() = 0.0`,
-`obs.max() = 1.0`. Ratified as **D34** (`SETTLED`).
+**146 = 36 × 4 + 2, and the box is NOT the unit interval (D55).** Two blocks declare ceilings above 1.0 so that 1.0 means something inside each — `visit_density` reaches `N_BANDS` = 36.0 (a fully camped episode) and `staleness` reaches `N_SLOTS / SWEEP_SLOTS` = 13.95 (a band untouched all episode). Everything else is a fraction or a one-hot and
+**no scaling or normalisation layer is needed anywhere**.
+
+D34 ratified the base **109 = 36 × 3 + 1** (hit rate, visit density, staleness, clock). **D49
+extended it** with `current_band` (36-wide one-hot of the band just dwelt on), `camp_time` (consecutive slots on that band / N_SLOTS) and `measured_dbm` (the last dwell's mean measured level, clamped and rescaled); **D55 then dropped `camp_time` as measurably inert and rescaled `visit_density` and `staleness`** — 109 → 145 → 146 → 147 → 146, in that
+order. D34 remains the base; D49 is the extension and the reason for the current width. Note that
+**every trained checkpoint breaks at each such change**: SB3 sizes a policy's input layer at
+construction, so a width change is a retrain, not a reload.
 
 Layout, in order (`rfenv/env.py::_observation`):
 
@@ -82,10 +108,10 @@ Layout, in order (`rfenv/env.py::_observation`):
 |---|---|---|---|
 | `0:36` | **per-band hit rate** | `hits[b] / slots_looked[b]`; `0.0` if band never looked at | float32, `[0, 1]` |
 | `36:72` | **per-band visit density** | `slots_looked[b] / max(t, 1)` — fraction of spent airtime given to band *b*. Sums to exactly 1 across bands once `t ≥ 1`; all-zero in the `reset()` observation | float32, `[0, 1]` |
-| `72:108` | **per-band staleness** | `(t − last_slot[b]) / 600`; **`1.0` if never visited** | float32, `[0, 1]` |
+| `72:108` | **per-band staleness** | `(t − last_slot[b]) / 43`, i.e. in reference sweeps (D55); **`600/43 = 13.95` if never visited** | float32, `[0, 13.95]` |
 | `108` | **normalised episode time** | `t / 600` | float32, `[0, 1]` |
 
-Never-visited bands read staleness `1.0` — maximally stale (verified: at `reset()`, all 36 staleness
+Never-visited bands read staleness `13.95` — maximally stale, the whole episode expressed in sweeps (verified: at `reset()`, all 36 staleness
 components are exactly 1.0). So an unexplored band looks at least as attractive as one last seen at
 *t* = 0. That is a deliberate exploration prior baked into the encoding.
 
@@ -95,7 +121,7 @@ components are exactly 1.0). So an unexplored band looks at least as attractive 
 |---|---|---|---|---|---|
 | **Hit rate** (36) | What a scheduler needs to **estimate detection probability** for a band — how likely a look here pays off. It is the exploit signal | **Yes**, computed from the agent's own dwell outcomes only | **Indirectly** — the agent moves it by choosing where to look | float32 `[0,1]`, one per band | PS figure of merit *probability of detection*. And directly PS: *"The model should then be trained based on hits and misses"* — this is literally that |
 | **Visit density** (36) | How the agent's **airtime** is being spent. Airtime is the only currency in this problem (§3.2), so this is the agent's own budget, made legible | **Yes**, from own scan history | **Yes** — it is a direct summary of its own past actions | float32 `[0,1]`, sums to 1 for `t ≥ 1` (0 at reset) | PS figure of merit *Avg intercept rate*; supports **high interception rate** |
-| **Staleness** (36) | **What makes this restless rather than a plain bandit.** A band ignored for 10 s may have become busy without telling you. The payoff distribution moves while you are not looking. It is the explore signal | **Yes**, from own scan history | **Yes** — looking at a band resets its staleness to 0 | float32 `[0,1]` | PS: scheduling *"against spatially scanning and frequency agile emitters"*; drives **minimise intercept time** |
+| **Staleness** (36) | **What makes this restless rather than a plain bandit.** A band ignored for 10 s may have become busy without telling you. The payoff distribution moves while you are not looking. It is the explore signal | **Yes**, from own scan history | **Yes** — looking at a band resets its staleness to 0 | float32 `[0, 13.95]`, in sweeps (D55) | PS: scheduling *"against spatially scanning and frequency agile emitters"*; drives **minimise intercept time** |
 | **Normalised time** (1) | Lets the policy behave differently early (explore) and late (exploit). The episode is finite and **terminates** — there is no state past slot 600 | **Yes**, trivially | **No** — the clock advances regardless of what it picks | float32 `[0,1]` | Both objectives; intercept time is measured against a fixed 30 s horizon |
 
 **All four are built from the agent's own scan history and nothing else.** No prior emitter
@@ -110,7 +136,7 @@ This is **D29**, and it is the single most important rule for this lane:
 
 Training is offline and the policy is frozen before deployment, so the reward is a **training-time
 construct discarded at inference**. It may read the truth grid `Z`, per-emitter signal levels,
-`first_e` — anything. The **observation** may not, because the 109-vector is all a fielded receiver
+`first_e` — anything. The **observation** may not, because the 146-vector is all a fielded receiver
 would actually have.
 
 This is enforced in code, not by convention. `rfenv/baselines.py:69`:
@@ -217,7 +243,7 @@ them: assigning each pulse to the emitter with the nearest median bearing scored
 **The case against.** That accuracy is a **ceiling**, not an achievable figure — it used true labels
 and whole-episode medians. It degrades exactly where the problem is hardest (96.7% → 86.1% going
 from 19 to 99 emitters). And it costs real structure: L1's grid combines cells by `max`, which is
-meaningless on per-emitter bearings, and the fixed-width 109-vector would need a variable-length
+meaningless on per-emitter bearings, and the fixed-width observation vector would need a variable-length
 bearing set encoded by binning or online clustering.
 
 **The trigger that decides it:** a trained agent failing to explore in a way that hit rate, visit
@@ -267,7 +293,7 @@ from rfenv.baselines import OBSERVABLE_INFO
 env = ScanEnv(pool=EmitterPool.from_train(), reward='hit_z')
 obs, info = env.reset(seed=0)
 print('action_space     ', env.action_space)          # Discrete(36)
-print('observation_space', env.observation_space)     # Box(0.0, 1.0, (109,), float32)
+print('observation_space', env.observation_space)     # Box((146,), float32); high is per-dim, D55
 print('obs shape/range  ', obs.shape, obs.min(), obs.max())
 print('rewards available', sorted(REWARDS))
 print('observable info  ', sorted(OBSERVABLE_INFO))
