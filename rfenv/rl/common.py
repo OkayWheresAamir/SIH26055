@@ -412,13 +412,20 @@ class RLScheduler:
     DQN and PPO (see `dqn.py`/`ppo.py`), but nothing here is specific to either.
     Stateless: any instance can be reused, or shared, across episodes, because
     a feed-forward policy carries nothing forward between calls.
+
+    `deterministic` defaults to False -- see `RecurrentRLScheduler` for the
+    measurement that settled that default. It applies to any policy whose action
+    distribution stays broad, which is every on-policy algorithm here; a DQN's
+    greedy argmax *is* its policy, so passing `deterministic=True` is the honest
+    choice for rung 7 and the flag exists to say so explicitly.
     """
 
-    def __init__(self, model: DQN):
+    def __init__(self, model: DQN, *, deterministic: bool = False):
         self.model = model
+        self.deterministic = deterministic
 
     def __call__(self, obs, info) -> int:
-        action, _ = self.model.predict(obs, deterministic=True)
+        action, _ = self.model.predict(obs, deterministic=self.deterministic)
         return int(action)
 
 
@@ -446,10 +453,24 @@ class RecurrentRLScheduler:
     episodes still works correctly (the `episode_start` signal resets the
     policy's own hidden state every time), but a fresh instance per episode is
     cheap and avoids ever wondering whether stale state leaked across a reset.
+
+    **`deterministic` defaults to False, and that is load-bearing.** This class
+    hardcoded `deterministic=True`, and every "the agent learned to camp" result
+    on this rung came from it. Measured on `lstm_gamma997` over a seed-0
+    episode, the policy's own action distribution has mean entropy 2.369 against
+    3.584 for uniform-over-36 and a mean max-probability of 0.206 -- it has not
+    collapsed, it is broad. But its argmax is *sticky*: the mode landed on the
+    same band for 580 of 586 steps, so taking the argmax turns a broad policy
+    into a one-band camper. Same checkpoint, same seeds: argmax visits 2 distinct
+    bands and scores coverage 0.247/0.041, while sampling visits 31 and scores
+    0.603/0.714. PPO optimises expected return under the sampled policy and never
+    evaluates the mode, so sampling is also what the reported training return
+    actually measured. Pass `deterministic=True` only to reproduce an older row.
     """
 
-    def __init__(self, model):
+    def __init__(self, model, *, deterministic: bool = False):
         self.model = model
+        self.deterministic = deterministic
         self._lstm_state = None
 
     def __call__(self, obs, info) -> int:
@@ -458,7 +479,7 @@ class RecurrentRLScheduler:
             obs,
             state=self._lstm_state,
             episode_start=episode_start,
-            deterministic=True,
+            deterministic=self.deterministic,
         )
         return int(action)
 

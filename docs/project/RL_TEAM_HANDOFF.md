@@ -2,6 +2,26 @@
 
 **Version 1 · 2026-09-05 · Owner: Aamir (`itsaamirhashmi@gmail.com`)**
 
+> **AMENDED 2026-09-09 — three things below are now out of date; see D52, D53 and D54.**
+> **(1)** The registered reward candidates are `hit_z`, `hit_y`, `reward_balance`. The key
+> `first_intercept` no longer exists — candidate 3 was renamed and rewritten (D50, D53), so any
+> command here that passes `--reward first_intercept` will be refused by `ScanEnv.__init__`.
+> **(2)** `reward_balance`'s camping cost is charged against airtime share
+> (`-3.0 * visit_density[action] * n_slots`), not a consecutive-repeat streak — the streak version
+> was defeated for free by alternating between two bands, and measurably ranked a 2-band ping-pong
+> above round-robin (D53).
+> **(3)** Inference **samples** the policy; it no longer takes the argmax. `RLScheduler` and
+> `RecurrentRLScheduler` take `deterministic`, defaulting to `False`, so every code snippet below
+> showing `deterministic=True` is stale except for rung 7 (a DQN's greedy action *is* its policy).
+> **(4)** The observation is **146 wide, not 147**, and its box is no longer `[0, 1]` (D55):
+> `camp_time` was dropped as measurably inert, `visit_density` now reads in fair shares (ceiling
+> 36.0) and `staleness` in reference sweeps (ceiling 13.95). Every checkpoint that predates this is
+> unloadable. **(5)** `reward_balance` separates catastrophe from competence but not competence from
+> excellence — measured, it scores rung 5 and round-robin within +2.3 +/- 11.7 of each other over 8
+> seeds, so round-robin is roughly the ceiling it can teach (D56, open).
+> The PDF beside this file is older still and does not carry these amendments.
+
+
 **Read `RL_LANE_HANDOFF.md` too.** That document is the *technical and domain* brief: what the
 problem is, what the metrics mean, why the bar is where it is. **This document is the *operating
 contract*:** how to set up, how to work in the repository, what to do, and — the part that
@@ -428,8 +448,13 @@ obs, reward, terminated, truncated, info = env.step(action)
 **Action space:** `Discrete(36)`. Choose one of 36 frequency bands to listen to.
 **All 36 are legal at every step — no action masking is needed.**
 
-**Observation space:** `Box(0.0, 1.0, shape=(147,), dtype=float32)`. That is 36×4 + 3. D34
-ratified the base 36×3 + 1; **D49 extended it** with `current_band` (36-wide one-hot of the band just dwelt on), `camp_time` (consecutive slots on that band / N_SLOTS) and `measured_dbm` (the last dwell's mean measured level, clamped and rescaled). Every component is natively a fraction, so **no scaling layer is
+**Observation space:** `Box(shape=(146,), dtype=float32)`, with a **per-dimension** `high`. That is
+36×4 + 2. D34 ratified the base 36×3 + 1; **D49 extended it** with `current_band` (36-wide one-hot
+of the band just dwelt on), `camp_time` and `measured_dbm` (the last dwell's mean measured level,
+clamped and rescaled); **D55 dropped `camp_time`** as measurably inert and **rescaled two blocks so
+that 1.0 means something** — `visit_density` is airtime share over fair share (ceiling 36.0) and
+`staleness` is neglect in reference sweeps (ceiling 13.95). The box is therefore **not** the unit
+interval any more, deliberately. Everything else is a fraction or a one-hot, so **no scaling layer is
 needed anywhere**. The slice table below covers the base three — see `rfenv/baselines/guard.py`
 for the full current layout:
 
@@ -454,7 +479,7 @@ slots** (D31), so a 100 ms dwell can earn up to +2:
 |---|---|---|
 | `hit_z` *(default)* | +1 per **true** occupied cell — prices opportunity | interception ratio |
 | `hit_y` | +1 per **declared** hit — weights cells by loudness | censored intercept time |
-| `first_intercept` | +1 per emitter intercepted for the **first** time | coverage / discovery |
+| `reward_balance` | exploit + explore + occupancy − airtime-concentration cost, priced against the agent's own observation (D53) | balances all three |
 
 **The set stays at three (D29).** Do not invent a fourth. Every candidate scored on the same
 scenarios is another draw, and best-of-many is partly selection noise.
@@ -645,8 +670,8 @@ decision with no "why" is not reusable, and "why" is what the SIH deck is made o
 | **D-2** | **Policy network architecture.** `net_arch`, activation, whether the value head is shared. Anything other than the library default needs a reason. | 1 |
 | **D-3** | **The full hyperparameter set, as exact numbers.** γ_RL, learning rate, entropy coefficient, `n_steps`, `batch_size`, `n_epochs`, `clip_range`, `gae_lambda`, `vf_coef`, `max_grad_norm`, `total_timesteps`. **A range is not an answer** — a range means Aamir picks, which is the thing this document exists to prevent. | 1 |
 | **D-4** | **The training scenario draw.** `pool=EmitterPool.from_train()` confirmed, `n_envs`, vec-env type (`SubprocVecEnv` vs `DummyVecEnv`), the training seed, and how to reproduce the exact run. | 1 |
-| **D-5** | **Which reward.** One of `hit_z`, `hit_y`, `first_intercept`, chosen by **D47's rule**: the candidate beating round-robin on *both* headline metrics on the most paired episodes. Within 5 pp, nothing is selected — report both and escalate. Show the `both` column that decided it. | 1 |
-| **D-6** | **Inference-time action selection.** `deterministic=True` or sampled? This changes the reported numbers, so it is a decision, not a detail. State it and use the same setting everywhere. | 1 |
+| **D-5** | **Which reward.** One of `hit_z`, `hit_y`, `reward_balance` (candidate 3 was renamed and rewritten — D50, D53), chosen by **D47's rule**: the candidate beating round-robin on *both* headline metrics on the most paired episodes. Within 5 pp, nothing is selected — report both and escalate. Show the `both` column that decided it. | 1 |
+| **D-6** | ~~**Inference-time action selection.**~~ **ANSWERED 2026-09-09 — D54: sampled.** Measured on `lstm_gamma997`, the policy's action distribution has mean entropy 2.369 against `ln 36 = 3.584` and a modal band holding 0.206 of the mass — broad, not collapsed — while its argmax sat on one band for 580 of 586 steps. Argmaxed it visits 2 bands, sampled it visits 31 and triples coverage. Both adapters now default to `deterministic=False`; **rung 7 (DQN) is the exception** and passes `True`, because SB3's `deterministic=False` on a DQN is ε-greedy exploration noise, not a learned distribution. torch's generator is seeded per rung so seeded runs stay reproducible. | — |
 | **D-7** | **Checkpoint-selection criterion, fixed *before* any run.** Which checkpoint is "the" one, judged on **train** scenarios only. Picking the best checkpoint after seeing evaluation numbers is the same failure as choosing a gate threshold after the measurement (D39) — and a judge will ask. | 1 |
 | **D-8** | **D30 — do AoA and PulseWidth enter the observation? Yes or no.** With the paired comparison that decided it. If **yes**, you also owe: the exact fixed-width encoding, the new observation length, which files change, and confirmation that `tests/test_baselines.py`'s slice assertions still pass. **D30 is explicitly owned by the RL lane** and is currently the only `OPEN` decision blocking the freeze. | 1 |
 | **D-9** | **Observation preprocessing — any wrappers?** If you used `VecNormalize`, frame stacking, or any observation transform, **the statistics become part of the policy** and must ship with the checkpoint and be applied identically at evaluation. Say explicitly if the answer is "none, the observation is already in [0,1]" — that is the expected answer and it is the simplest one. | 1 |

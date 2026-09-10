@@ -46,7 +46,7 @@ venv/Scripts/python.exe -m rfenv.rl --reward hit_z --timesteps 60000 --seed 0 \
 
 | Flag | Default | Meaning |
 |---|---|---|
-| `--reward` | `env.DEFAULT_REWARD` (currently `first_intercept`) | one of `REWARDS` (D29) — run `python -c "from rfenv.env import REWARDS, DEFAULT_REWARD; print(DEFAULT_REWARD, sorted(REWARDS))"` for the live set and default |
+| `--reward` | `env.DEFAULT_REWARD` (currently `reward_balance`) | one of `REWARDS` (D29) — run `python -c "from rfenv.env import REWARDS, DEFAULT_REWARD; print(DEFAULT_REWARD, sorted(REWARDS))"` for the live set and default |
 | `--timesteps` | `20000` | `model.learn(total_timesteps=...)` |
 | `--seed` | `0` | SB3 model seed |
 | `--checkpoint` | `runs/checkpoints/deep_q_network.zip` | where the final `.zip` is written |
@@ -57,13 +57,22 @@ venv/Scripts/python.exe -m rfenv.rl --reward hit_z --timesteps 60000 --seed 0 \
 | `--description` | empty | what this run is trying — recorded in the manifest, and where a rung's label should come from |
 | `--hyperparam` | none | `KEY=VALUE` passed straight to the algorithm's constructor, repeatable (e.g. `--hyperparam ent_coef=0.01`) |
 
-**Rung 7's own registered checkpoint was trained with `--reward hit_z` specifically** — the CLI's
-`--reward` default tracks `env.DEFAULT_REWARD`, which has since moved to `first_intercept`, so
-reproducing rung 7's base variant needs `--reward hit_z` passed explicitly, not left to the default.
+**Always pass `--reward` explicitly.** The CLI's default tracks `env.DEFAULT_REWARD`, and that has
+moved twice (`hit_z` -> `first_intercept` -> `reward_balance`, D50/D53). Rung 7's own registered
+checkpoint was trained with `--reward hit_z`, so reproducing it needs that passed, not left to the
+default. The manifest beside each `.zip` records which reward a checkpoint was actually trained on
+-- when a rung key and a manifest disagree, the manifest is right.
 
 `runs/` is gitignored; checkpoints are rebuilt locally, never committed. A checkpoint's shape is
 tied to `ScanEnv`'s observation vector (D34) — if `env.py`'s observation changes (adding a
 component, for instance), every existing checkpoint stops loading and needs retraining.
+
+**This has happened four times** (109 → 145 → 146 → 147 → 146; D49, D55), so assume it will happen
+again: `--run-name` and `--description` are what make a dead checkpoint's manifest still tell you
+what it was, and they cost nothing to pass. As of D55 the vector is **146** wide and its box is
+**not** `[0, 1]` — `visit_density` reads in fair shares (ceiling 36.0) and `staleness` in reference
+sweeps (ceiling 13.95), so a policy that assumed unit-interval inputs needs retraining, not
+rescaling.
 
 ### Every checkpoint carries a manifest
 
@@ -80,7 +89,7 @@ checkpoint nor the reason. `load_checkpoint()` now reads the manifest first and 
 instead, quoting the training command that would rebuild it:
 
 ```
-ppo_fi.zip was trained against a 145-wide observation, but ScanEnv now builds a 147-wide one --
+ppo_fi.zip was trained against a 145-wide observation, but ScanEnv now builds a 146-wide one --
 this checkpoint cannot be used and will fail inside predict() if forced.
   run:       ppo_fi
   reward:    hit_z
@@ -122,8 +131,8 @@ venv/Scripts/python.exe -c "import json,sys; m=json.load(open(sys.argv[1])); pri
 ## Training a PPO scheduler (rung 8)
 
 ```
-venv/Scripts/python.exe -m rfenv.rl.ppo --reward first_intercept --timesteps 100000 --seed 0 \
-    --checkpoint runs/checkpoints/ppo_fi.zip
+venv/Scripts/python.exe -m rfenv.rl.ppo --reward reward_balance --timesteps 100000 --seed 0 \
+    --checkpoint runs/checkpoints/ppo_balance.zip
 ```
 
 Same flags as `rfenv.rl`, plus:
@@ -163,6 +172,26 @@ which runs without error but defeats the entire point of the LSTM.
 
 `--check-env` works identically to the other two CLIs.
 
+### Inference samples; it does not take the argmax (D54)
+
+`RecurrentRLScheduler` and `RLScheduler` both take a `deterministic` argument, **defaulting to
+`False`**. This matters more than it sounds: an on-policy algorithm optimises expected return under
+its sampled distribution and never evaluates its own mode, so nothing in training constrains where
+the argmax lands. Measured on `lstm_gamma997`, the policy's action distribution has mean entropy
+2.369 against `ln 36 = 3.584` and a modal band holding 0.206 of the mass — broad, not collapsed —
+yet the argmax sat on one band for 580 of 586 steps. Argmaxed it visits 2 bands; sampled it visits
+31.
+
+- **Rungs 8 and 9 sample.** Leave the default alone.
+- **Rung 7 (DQN) passes `deterministic=True`** in its ladder factory, deliberately: a DQN's greedy
+  action *is* its policy, and SB3's `deterministic=False` there means ε-greedy exploration noise
+  (`exploration_final_eps`, 0.05) — a training artefact.
+- **Seeded runs stay reproducible.** SB3 samples from torch's *global* generator and takes no
+  generator argument, so `ladder._seed_torch(rng)` folds each rung's own seeded stream into torch
+  before the scheduler is built. Same seed gives a byte-identical action sequence.
+
+Pass `deterministic=True` only to reproduce a row from before 2026-09-09.
+
 ## Registering a trained checkpoint as a rung
 
 Training writes a `.zip`; it isn't compared until it has a `Rung(...)` entry in
@@ -176,9 +205,9 @@ Rung("deep_q_network_hit_y", "7b", "DQN (hit_y)",
 ```
 
 ```python
-Rung("ppo_first_intercept_100k", "8b", "PPO (first_intercept, 100k)",
-     "Ours. Trained on first_intercept (D29), 100k timesteps.",
-     _ppo_rung_factory(Path("runs/checkpoints/ppo_fi_100k.zip"))),
+Rung("ppo_balance_100k", "8b", "PPO (reward_balance, 100k)",
+     "Ours. Trained on reward_balance (D29, D53), 100k timesteps.",
+     _ppo_rung_factory(Path("runs/checkpoints/ppo_balance_100k.zip"))),
 ```
 
 ```python
@@ -217,15 +246,15 @@ lines excluded by construction) over every stare replay plus `--sampled` extra s
 | `--configs` | all | limit to the first N stare replays (smoke test) |
 | `--sampled` | `0` | add N scenarios drawn fresh from the train pool |
 | `--rungs` | all schedulers | comma-separated subset, e.g. `--rungs round_robin,deep_q_network_z_60k,ppo_hit_z_60k` |
-| `--reward` | `env.DEFAULT_REWARD` (currently `first_intercept`) | **one shared reward for every rung's `ScanEnv` this run** — affects the printed reward column only, not what any RL model was trained on (D7) |
+| `--reward` | `env.DEFAULT_REWARD` (currently `reward_balance`) | **one shared reward for every rung's `ScanEnv` this run** — affects the printed reward column only, not what any RL model was trained on (D7) |
 | `--figures` | off | write `pareto.png`, `timeline_*.png`, `discovery_*.png`, and `animation_*.gif` per scenario |
 | `--gif-stride` | `8` | slots between animation frames, `--figures` only |
 | `--gif-fps` | `12` | `--figures` only |
 
 **`--reward` is a trap if misread**: it sets the reward every `ScanEnv` in *this comparison run*
 uses to compute the printed reward number — it does not change what a trained RL checkpoint
-learned from. A `ppo_fi` model trained on `first_intercept` still gets scored on `hit_z`'s numbers
-unless you pass `--reward first_intercept` to this specific `compare` invocation.
+learned from. A model trained on `reward_balance` still gets scored on `hit_z`'s numbers unless
+you pass `--reward reward_balance` to this specific `compare` invocation.
 
 Smoke test before a full run:
 

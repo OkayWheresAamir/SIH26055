@@ -39,20 +39,53 @@ episodes.
 sweeps)`) Pareto-dominates the floor on **70.2%** of episodes; round-robin is beaten by almost
 everything.
 
-**RL is now on the ladder, and it lost — informatively (2026-09-09).** Rungs 7 (DQN), 8 (PPO) and
-9 (Recurrent PPO) are built and registered (**D48**). Measured over 2,223 episodes, rung 9 beats
-rung 5 on interception ratio (0.227 against 0.110, winning that column on 78.9% of paired
-episodes) and scores **0.0–1.8% on the `both` column** against `recency`'s 70.2%, because its
-intercept time is five times worse and its coverage a third. That profile is rung 4's: **the agent
-converged on the camping exploit rung 4 exists to demonstrate is available** (D14). `EVALUATION.md`
-§5 carries the rows.
+**RL is on the ladder. Its first result was withdrawn, and the two reasons are both fixed
+(2026-09-09).** Rungs 7 (DQN), 8 (PPO) and 9 (Recurrent PPO) are built and registered (**D48**).
+The 2,223-episode run in `EVALUATION.md` §5 showed rung 9 with rung 4's camping profile — high
+interception ratio, five times the intercept time, a third of the coverage, 0.0–1.8% on the paired
+`both` column. **That is now known to be an artefact of two defects, not a finding about the
+agent**, and both rows and conclusion are marked superseded in place:
 
-Two caveats on that result, both live. **Rungs 7 and 8 have no row at all** — every DQN/PPO
-checkpoint predates D49's observation change and cannot execute. And every RL number here was
-produced with `deterministic=True`; on one episode, the same checkpoints queried with *sampled*
-actions spread airtime over 27–32 of 36 bands instead of 1–2, with coverage tripling. The learned
-distribution is broad and its argmax is not, so the camping may be an inference artefact rather
-than a learned policy. **Unmeasured at scale — do not quote the camping result as settled.**
+- **D52 — the reward was inverted.** `reward_balance`'s exploration term read a staleness that was
+  the *inverse* of the observation's (*when* a band was last seen, not *how long ago*), so the one
+  term meant to pull the agent toward neglected bands paid most for revisiting the band it had just
+  left. Measured: +0.419 for the band just left against −0.0025 for one untouched for 500 slots.
+- **D53 — the camping penalty had a free workaround.** `-1.0 * camp_slots` resets whenever the
+  action changes, so a 2-band ping-pong paid exactly what a full sweep paid. Measured over 3 seeds,
+  that term ranked the ping-pong (coverage 0.261) **above** round-robin (0.921). It is now charged
+  against airtime share: `-3.0 * visit_density[action] * n_slots`.
+- **D54 — inference took the argmax of a policy that had not collapsed.** Mean entropy 2.369
+  against `ln 36 = 3.584`, modal band holding 0.206 of the mass, argmax on one band for 580 of 586
+  steps. Sampling the same checkpoint visits 31 of 36 bands and triples coverage. Both adapters now
+  default to sampling; rung 7 (DQN) is the deliberate exception, and torch's generator is seeded
+  per rung so seeded runs stay reproducible.
+
+A third change followed from looking at the observation itself. **D55 — two of the three per-band
+blocks lived in the bottom tenth of their declared range.** `visit_density` sums to 1 across bands
+by construction, pinning its mean at 1/36 = 0.0278 for every scheduler that will ever run;
+`staleness` was bimodal, measured mean 0.070 with everything unvisited piled on the 1.0 ceiling.
+The decisive evidence was that **rung 5 already corrected one of them by hand** — `recency.py`
+multiplied staleness back out by `N_SLOTS / SWEEP_SLOTS`, and its docstring records that skipping
+that step collapses the rung into rung 4. That correction now lives in `_observation()` where every
+policy gets it. `visit_density` reads in fair shares (1.0 = equal airtime, ceiling 36.0),
+`staleness` in reference sweeps (1.0 = one pass overdue, ceiling 13.95), **the box is deliberately
+no longer the unit interval**, and `camp_time` is gone — measured, it took exactly two values under
+any non-camping policy. **The vector is 146 wide.** Rung 5's ranking is unchanged (verified on
+1,408 of 1,408 steps) and `reward_balance` is numerically unchanged (verified to 1.6e-7), so D53's
+table survives.
+
+**Every checkpoint in `runs/checkpoints/` is now dead**, rungs 7 and 8 included — they predated
+D49 and D55 finished the job. **No RL row currently in `EVALUATION.md` §5 was produced under
+conditions that can answer whether an agent games this ladder.** The training record is
+`scratch/TRAINING_JOURNEY.md` §9.
+
+**One open reward question, measured but not acted on (D56).** `reward_balance` scores rung 5 and
+round-robin within **+2.3 ± 11.7** of each other over 8 seeds — rung 5 ahead on 4 of 8 — against a
+scenario-to-scenario spread of about 80. It separates catastrophe from competence by a huge margin
+(camping −1361 against round-robin +324) but barely separates competence from excellence, so
+**round-robin is approximately the ceiling this reward can teach**. D46's stated Pareto target is
+not encoded in it. Left alone deliberately: D47's paired-dominance selection rule has still never
+been run, and any change should come out of that rather than another hand-tuned coefficient.
 
 **The environment was frozen on 2026-09-04 (D42).** `rfenv/constants.py` is closed — band
 geometry, slot clock, dwell schedule, `N₀`, `σ`, `γ`, `PD_POPULATION` — and

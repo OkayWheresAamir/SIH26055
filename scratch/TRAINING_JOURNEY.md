@@ -384,11 +384,350 @@ touched — `data/turing/**/test_*` is off limits.
 
 - **Which reward each LSTM series trained on** — `[UNRECOVERABLE]`, and the reason the manifest now
   exists. Only the human can supply it.
-- **Sampled vs deterministic inference at `--seeds 3 --sampled 10`** — §4.2 is one episode. This is
-  the single highest-value measurement outstanding, and it is ~15 minutes of compute.
+- **Sampled vs deterministic inference** — **RESOLVED 2026-09-09, see §9.1a and D54.** The
+  distribution itself was read rather than inferred from behaviour: mean entropy 2.369 against
+  `ln 36 = 3.584`, modal band holding 0.206 of the mass. The camping was the argmax, not the policy.
+  Still outstanding is the *protocol-scale* re-run (`--seeds 3 --sampled 10`) against a checkpoint
+  trained on the corrected reward — §9.3's run is that checkpoint.
 - **`measured_dbm` against D34's exclusion list** — flagged for human review; D49 justifies the
   addition on D19 grounds and never cites the exclusion it reverses. Nothing is being built on it
   meanwhile.
 - **Rungs 7 and 8 are permanently dead** at 145/146 wide. Retraining is hours, not days (§8.2's
   manifest records ~100k RecurrentPPO steps per 18–20 min, CPU-only) — a compute decision, not a
   technical one.
+
+---
+
+# 9. The collapse diagnosed, and the first run on a corrected reward — 2026-09-09
+
+§4 left the camping unexplained and §8.6 named the sampled-vs-deterministic measurement as the
+highest-value thing outstanding. Both are now resolved, and the answer was three separate defects
+stacked on each other. Every number in this section was measured this session; none is carried over
+from a document.
+
+## 9.1 The three defects
+
+**(a) Inference took the argmax of a policy that had not collapsed — D54.**
+
+Reading the action distribution directly off `model.policy.get_distribution` for
+`runs/checkpoints/lstm_gamma997.zip`, over a full seed-0 episode:
+
+```
+steps                586
+mean entropy         2.369   (uniform over 36 = ln 36 = 3.584; fully collapsed = 0)
+min / max entropy    2.293 / 3.553
+mean max-probability 0.206   (min 0.044, max 0.215)
+argmax histogram     band 5 on 580 steps, band 3 on 6
+```
+
+The policy is **broad**. Its mode is merely sticky, and `RecurrentRLScheduler` hardcoded
+`deterministic=True`, so every rung 9 row in `EVALUATION.md` §5 reported that sticky mode rather
+than the policy. Same checkpoint, same seeds, both ways:
+
+| inference | distinct bands | interception ratio | coverage | episode reward |
+|---|---|---|---|---|
+| `deterministic=True`, seed 0 | 2 | 0.1042 | 0.247 | −167,871 |
+| `deterministic=True`, seed 1 | 2 | 0.0003 | 0.041 | −178,922 |
+| `deterministic=False`, seed 0 | **31** | 0.0618 | **0.603** | **+114.0** |
+| `deterministic=False`, seed 1 | **31** | 0.2006 | **0.714** | **+52.7** |
+
+PPO optimises expected return under the sampled policy — the +114, not the −167,871 — so it had no
+gradient pointing at the mode and no reason to fix it. **§4's "the agent rediscovered the camper"
+is withdrawn.**
+
+**(b) The reward's exploration term was inverted — D52.**
+
+`ScanEnv.step` stored `_staleness_array[action] = _last_slot[action] / N_SLOTS` — *when* a band was
+last seen — while `_observation()` reports `(t - _last_slot) / N_SLOTS`, *how long ago*. Those run
+in opposite directions over an episode. Sampled scenario, seed 0, at `t = 503`, after one dwell on
+band 0 at slot 0 and 250 on band 18:
+
+| band | exploration term `(1.5 − visit_density) × staleness`, before | after |
+|---|---|---|
+| 18, just left | **+0.419** | +0.00084 |
+| 0, untouched for 500 slots | **−0.0025** | +1.5 |
+
+The negative came from the `-1` sentinel: a band chosen once and never again kept `-1/600` for the
+rest of the episode. Nothing caught this because `_observation()` recomputes from the raw counters
+and was always right — only the reward-facing copy was wrong, so the agent's *inputs* were correct
+and only its *incentives* were backwards.
+
+**(c) The camping penalty had a free workaround — D53.**
+
+`-1.0 * camp_slots` resets the instant the action changes, so a 2-band ping-pong and a full 36-band
+sweep both pay exactly `N_SLOTS`. Four fixed policies, 3 sampled scenarios each (seeds 0/1/2), with
+(b) already fixed in both columns:
+
+| policy | ratio | cTTI | coverage | `−1.0 × camp_slots` | `−3.0 × visit_density × n_slots` |
+|---|---|---|---|---|---|
+| recency (rung 5) | 0.0995 | 6.49 s | 0.782 | −206.6 | **+329.5** |
+| round-robin | 0.1179 | 2.47 s | **0.921** | −228.5 | **+324.3** |
+| alternate, 2 bands | 0.1985 | 16.55 s | 0.261 | **−218.9** | −505.4 |
+| camp one band | 0.2350 | 16.84 s | 0.245 | −89,867 | −1,361 |
+
+**The old term ranked the ping-pong above round-robin.** Coverage 0.261 against 0.921. So there was
+no gradient toward sweeping at all, which is the direct explanation for (a)'s entropy of 2.369
+after 100k steps: "do not repeat the same band twice consecutively" is the only coherent thing that
+reward taught, and a near-uniform policy already satisfies it.
+
+## 9.2 What changed in the code
+
+| file | change |
+|---|---|
+| `rfenv/env.py` | `_staleness_array` uses the observation's formula (D52); three dead locals holding the *correct* formula removed |
+| `rfenv/env.py` | `reward_balance`'s fourth term is `-3.0 * visit_density[action] * n_slots` (D53) |
+| `rfenv/rl/common.py` | `RLScheduler` / `RecurrentRLScheduler` take `deterministic`, default `False` (D54) |
+| `rfenv/baselines/ladder.py` | DQN factory passes `deterministic=True`; `_seed_torch(rng)` in the PPO and RecurrentPPO factories |
+| `tests/test_env.py` | two regressions: staleness pinned to the observation, sweep pinned above ping-pong |
+
+Suite after: **289 passed, 42 skipped, 1 failed** — the failure is
+`test_heldout_split_is_refused_without_an_explicit_flag`, unchanged and environment-dependent as
+§8.5 records.
+
+**Reproducibility check:** with `_seed_torch`, a sampled rung 9 at the same seed gives a
+byte-identical action sequence across runs (verified, seeds 0 and 1), so `EVALUATION.md` §7's
+"identical scenarios and seeds" still holds now that inference is stochastic.
+
+## 9.3 The run in flight
+
+> **VOID — killed by D55, see §10.** The observation was rescaled from 147 to 146 while this run
+> was training, so its checkpoint cannot load. The command and the reading table below still stand
+> as the recipe for the *next* run; only this particular execution of it is gone. Note §10.4's
+> correction to the table: **+325 is both the target and roughly the cap.**
+
+
+Started 2026-09-09, on the corrected reward. This is the first RecurrentPPO run whose exploration
+term points the right way and whose camping cost cannot be alternated around.
+
+```
+venv/Scripts/python.exe -m rfenv.rl.recurrent_ppo \
+  --reward reward_balance --timesteps 1000000 --seed 0 \
+  --hyperparam ent_coef=0.01 --hyperparam gamma=0.997 --hyperparam n_steps=2048 \
+  --checkpoint runs/checkpoints/lstm_balance_1M.zip --checkpoint-freq 200000 \
+  --run-name lstm_balance_1M --description "first run on the corrected reward_balance"
+```
+
+Hyperparameters carried over from `lstm_gamma997` unchanged, deliberately: §4.3 tested them and
+found them not to be the problem, and changing them in the same run as the reward would confound
+the two. `gamma=0.997` gives a ~333-slot horizon against a 300–600-step episode; `n_steps=2048` is
+roughly four episodes per rollout; `ent_coef=0.01` against sb3-contrib's default of 0.0.
+
+Snapshots land at 200k/400k/600k/800k plus the final, so the series is comparable the way §1's
+recurrent family is — but this time every one carries a manifest naming its reward (§8.2).
+
+**The number to watch is `ep_rew_mean`**, and it now has a meaningful scale, which is new. Under
+this reward the ladder's own rows sit at **round-robin +324.3 and recency +329.5** (§9.1c). So:
+
+| `ep_rew_mean` | reading |
+|---|---|
+| below 0 | still concentrating airtime; the reward is dominated by the density penalty |
+| ~0 to +300 | spreading out, not yet matching the floor |
+| **~+325** | **matched round-robin on its own reward** |
+| **above +330** | **beat rung 5, the actual bar** (D46) |
+
+`lstm_gamma997` sampled scored +114.0 and +52.7 on single episodes, so that is the gap to close.
+Note these are single-episode and 3-seed sampled-scenario figures, **not** the `--seeds 3
+--sampled 10` protocol — they set a scale to read training against, they are not ladder rows.
+
+### Result
+
+*Pending — the run was still in flight when this section was written. Fill in from the manifest at
+`runs/checkpoints/lstm_balance_1M.json` (wall clock, resolved hyperparameters, sha256) and from the
+compare run against the snapshots.*
+
+## 9.4 What this run cannot settle
+
+- **Nothing here is a protocol-scale result.** `EVALUATION.md` §5's rung 9 table is superseded on
+  both counts and needs `python -m rfenv.compare --seeds 3 --sampled 10 --figures` re-run against
+  the new checkpoint before any row is quoted.
+- **D47's selection rule is still un-applied.** D53 shows the new camping term orders two known
+  policies correctly; it does not claim `reward_balance` is the right candidate. That is a
+  paired-dominance measurement nobody has run.
+- **Rungs 7 and 8 remain dead** at 145/146 wide, unchanged from §8.6. Any retrain of them should
+  now use `reward_balance` and will need `--reward` passed explicitly.
+- **D30 (AoA / pulse width) stays `PROPOSED`** — the human's answer on 2026-09-09 was that neither
+  is in scope for now, which closes it as a live question without changing its status line.
+
+---
+
+# 10. The observation rescaled, and what it cost — 2026-09-09
+
+**§9.3's run is void.** It was killed mid-flight by the change in this section, with the cost
+stated in advance and accepted: D55 takes the vector from 147 to 146, so that checkpoint could not
+have loaded. Nothing in §9.1's diagnosis or §9.2's fixes is affected — those are about the reward
+and about inference, and both survive D55 numerically intact (see 10.3).
+
+## 10.1 Why the observation was looked at at all
+
+§9 fixed what the agent was *paid*. This section is about what it was *shown*. Measured over 1,506
+round-robin steps and 1,409 rung-5 steps, 3 seeds each:
+
+| block | mean | p99 | max | verdict |
+|---|---|---|---|---|
+| `hit_rate` | 0.399 | 1.000 | 1.000 | healthy, full range |
+| `visit_density` | **0.0278** | 0.065 | 1.000 | bottom tenth of its range |
+| `staleness` | **0.0697** | **1.000** | 1.000 | bimodal, not small |
+| `current_band` | 0.0278 | 1.000 | 1.000 | one-hot, fine |
+| `camp_time` | 0.0020 | — | **0.0033** | **two distinct values** |
+| `measured_dbm` | 0.183 | — | 1.000 | discriminates: 0.406 on a declared hit, 0.0135 without |
+
+`visit_density`'s 0.0278 is exactly 1/36 and is not a property of the policy: the block sums to 1
+across bands by construction, so its mean is pinned there for **every** scheduler that will ever
+run. `staleness`'s p99 landing exactly on 1.0 is the giveaway that it was bimodal rather than
+merely compressed — everything visited near zero, everything never-visited on the ceiling.
+
+**The decisive evidence was already in the repository.** `baselines/recency.py` multiplied
+staleness straight back out by `N_SLOTS / SWEEP_SLOTS` before scoring with it, and its docstring
+records what happens otherwise: *"the rung silently collapses into rung 4: coverage 0.526 against
+round-robin's 0.895."* The policy the RL rungs have to beat could not use the feature as shipped.
+
+Two further findings, both verified rather than assumed:
+
+- **`current_band` is exactly redundant.** `argmin(staleness) == argmax(current_band)` on
+  **1,506 of 1,506** steps. Kept anyway — recovering it costs the network an argmax over 36 dims,
+  and 36 input weights per neuron is the cheaper side of that trade.
+- **`camp_time` cannot move under good behaviour.** Exactly `{0.001667, 0.003333}` — one or two
+  slots over 600 — because the streak resets on every action change. Its only consumer was removed
+  by D53.
+
+## 10.2 What changed (D55)
+
+The vector is **146** wide and its box is **no longer the unit interval**, deliberately:
+
+| block | before | after | 1.0 now means |
+|---|---|---|---|
+| `visit_density` | slots / elapsed | **× `N_BANDS`** | an equal cut of airtime (ceiling 36.0) |
+| `staleness` | (t − last) / `N_SLOTS` | **/ `SWEEP_SLOTS`** | one full pass overdue (ceiling 13.95) |
+| `camp_time` | streak / `N_SLOTS` | **removed** | — |
+
+After: `visit_density` mean **1.0000**, p99 2.32; `staleness` mean **0.9720**, p99 13.95. Both now
+centre near 1.0 instead of 0.028 and 0.070.
+
+`recency.py` no longer divides — the correction moved into `_observation()`, so the heuristic and
+the agent read the same well-scaled number and the agent no longer has to rediscover a constant
+that follows from the frozen dwell schedule.
+
+## 10.3 The two invariants, verified
+
+A rescale that quietly moved rung 5 or the reward would invalidate D46 and D53 without anyone
+noticing, so both were checked against explicit recomputations in the old units:
+
+| invariant | result |
+|---|---|
+| rung 5's ranking identical to the pre-D55 formula | **1,408 / 1,408 steps** |
+| `reward_balance` per-step vs old-units recomputation | max abs error **1.6e-7** |
+| D53's round-robin row | **+324.3**, reproduces exactly |
+| D53's camp-one-band row | **−1360.9**, reproduces exactly |
+
+`reward_balance` converts both rescaled inputs back at the top of the function rather than carrying
+re-tuned coefficients — that is the only way D53's measurement survives an observation change.
+D52's requirement still holds: the reward and the observation read the same quantities, now in the
+same units with one visible conversion line.
+
+D53's other two rows move slightly (rung 5 +324.8, ping-pong −509.0). Rung 5 breaks ties randomly,
+and the ping-pong's band pair is not recorded in D53, so neither is evidence of a change.
+
+## 10.4 What it cost, and one thing it exposed
+
+**Every checkpoint in `runs/checkpoints/` is dead.** The suite's skip count goes 42 → 66. Rungs 7
+and 8 were already unloadable (D49); rung 9's four now join them, as does the killed §9.3 run.
+Suite: **265 passed, 66 skipped, 1 failed** — the pre-existing held-out-split guard.
+
+**And the measurement that matters most for the next run — D56.** Checking whether the reward could
+tell the ladder's two best policies apart, over 8 seeds:
+
+| policy | reward mean | sd | coverage |
+|---|---|---|---|
+| recency (rung 5) | +277.2 | 81.6 | 0.768 |
+| round-robin | +274.9 | 77.7 | 0.932 |
+
+Per-seed difference **+2.3 ± 11.7**, rung 5 ahead on **4 of 8 seeds**. The signal between the best
+deployable heuristic and the floor is about 3% of the reward's own scenario-to-scenario noise.
+
+**So the ceiling on the next run is round-robin, not rung 5.** `reward_balance` separates
+catastrophe from competence by a huge margin — camping −1361 against round-robin +324, which is
+what D53 fixed and what should stop the agent camping — and barely separates competence from
+excellence. An agent that reaches ~+325 has learned everything this reward can teach it. The
+§9.3 reading table should be understood that way: **+325 is the target and also roughly the cap**,
+and D46's actual Pareto goal is not encoded in the reward at all.
+
+Not acted on, deliberately: re-weighting now would confound a fourth change into the next run, and
+D47's paired-dominance rule — the project's own procedure for choosing a reward — has still never
+been run. That procedure, not another coefficient, is what should settle it.
+
+## 10.5 Still open after this section
+
+- **D56.** The reward cannot express D46's target. Highest-value open question in the lane.
+- **Time since last *hit*, per band.** `_last_hit_slot` is already tracked and still excluded.
+  `staleness` says when the agent last *looked*; nothing says when a band was last *active*. Held
+  back from D55 on purpose so a retrain stays attributable.
+- **D47 has never been run.** Unchanged from §9.4.
+- **Rungs 7 and 8** need retraining from scratch at 146 wide, with `--reward` passed explicitly.
+
+---
+
+# 11. Training readiness, measured before the next 1M run — 2026-09-09
+
+§10 left the environment changed and every checkpoint dead. This section is the check that the
+next run can actually start, plus the two numbers that say what it can be expected to reach.
+
+## 11.1 The pipeline runs
+
+A 4,000-step RecurrentPPO run on the 146-wide environment, `reward_balance`, seed 0,
+`ent_coef=0.01 gamma=0.997 n_steps=2048`. It trained, wrote a checkpoint, and wrote a manifest
+beside it. Two readings from its own log worth keeping:
+
+- `entropy_loss = -3.58` at initialisation, which is exactly `ln 36 = 3.584` — a perfectly uniform
+  policy. With `ent_coef=0.01` opposing collapse this is the right starting point given D54.
+- `explained_variance = 0.036` after 10 updates — the value head has fitted essentially nothing
+  yet, which is expected this early and is the number to watch for the reward being learnable at
+  all.
+
+## 11.2 What the reward's scale actually allows
+
+Measured this session, 8 seeds, sampled scenarios, `reward_balance`:
+
+| policy | reward | sd |
+|---|---|---|
+| SB3's first `ep_rew_mean`, untrained | ~+169 | — |
+| uniform random | **+211.9** | 68.6 |
+| round-robin | **+274.9** | 77.7 |
+| recency (rung 5) | +277.2 | 81.6 |
+
+**Total learnable headroom is about 65 points**, from a random policy to the effective ceiling,
+against a per-episode standard deviation of about 78. The whole signal is under one standard
+deviation of episode-to-episode noise. That is the practical form of D56: the reward is not merely
+unable to separate rung 5 from round-robin, it gives the optimiser a narrow target relative to the
+noise it has to average through.
+
+**Consequence for `n_steps`.** At roughly 500 steps per episode, `n_steps=2048` is about four
+episodes per rollout, so the noise on a rollout's return estimate is about `78/sqrt(4) = 39` —
+around 60% of the entire 65-point signal. Raising it to 8192 (~16 episodes) puts that at ~20, and
+16384 (~32 episodes) at ~14. Fewer, cleaner updates is the right trade here now that D52 and D53
+have made the reward point the right way; the previous runs' problem was never a shortage of
+updates.
+
+**Not a decision, and not applied to any recorded run.** This is arithmetic on a measured standard
+deviation, offered as a starting point rather than a tuned value. No `n_steps` sweep was run --
+that would be tuning against the metric, and §9.3's rule about changing one thing at a time still
+applies.
+
+## 11.3 A small API change, recorded because it is easy to misread
+
+`make_train_env` gained a `render_mode` parameter, threaded to `ScanEnv`. It is **inert for
+training**: all three trainers call `make_train_env(reward=reward)` and none passes it, and
+`model.learn()` never calls `env.render()` regardless. Setting it does not produce frames during
+training -- it only makes `render()` legal if something calls it. The path that actually produces a
+visual of a policy is `compare --figures`/`--animate`, which writes `animation_<config>.gif`.
+
+Kept rather than reverted: it is the correct hook for a future recording callback, and it changes
+nothing today.
+
+## 11.4 The next run
+
+Register the resulting checkpoint as a rung before comparing -- a `.zip` with no `Rung(...)` entry
+is not in the ladder, and the intermediate `--checkpoint-freq` snapshots each want their own
+lettered rung so the series shows whether the policy is still improving at 1M or plateaued earlier.
+
+The reading table from §9.3 stands, with §10.4's correction: **~+275 is both the target and roughly
+the cap.** Stalling near +212 means it is not beating random.
