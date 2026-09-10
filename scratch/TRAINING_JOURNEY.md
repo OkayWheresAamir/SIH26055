@@ -852,3 +852,36 @@ fallen to the tie-break.
   `make_train_env` now defaults to the training half.
 - **Still open:** the iteration ledger (one row per run, including failures, with a command to
   re-run any past run from its manifest alone), and D47, which has never been run.
+
+---
+
+# 13. `hit_z`/`hit_y` retired from `REWARDS` — 2026-09-10
+
+Following directly from §12.4's screen: `reward_hit_z` and `reward_hit_y` (D29's original two
+candidates) removed from `rfenv/env.py` entirely, by direct edit, confirmed when raised. `REWARDS`
+now holds four keys: `reward_balance`, `greedy`, `explore`, `weighted`. Recorded as **D63**, with
+D62 (the screen that produced the finding) cross-referenced forward to it.
+
+**Consequence, not cause.** D62 measured both at −2.3σ and −1.9σ against the 1.0σ camper-margin
+bar — both rank the camper above every sweeping policy. Every DQN and PPO checkpoint in this
+repository trained on one of the two, but both were already permanently unloadable from D49's
+observation-width change, so nothing currently loadable is lost.
+
+**Blast radius, all fixed, suite green (323 passed / 60 skipped / 1 pre-existing failure):**
+
+- Two `test_env.py` tests pinned D31's per-slot invariant to `hit_z` specifically, since it was a
+  bare per-slot `Z` count and none of the four survivors is. Rewritten to inject a raw reward
+  function directly via `env._reward_fn`, testing the environment's slot-summation mechanics
+  independent of registry contents — more durable than depending on which candidates exist.
+- `test_reward_gate.py`'s known-bad control swapped from `hit_z` to `greedy` (D57's exploit corner,
+  which fails the same check by construction).
+- ~35 other test failures were generic fixtures that happened to default to `reward="hit_z"` with
+  no dependency on its shape; swapped to `DEFAULT_REWARD`.
+- `rfenv/baselines/ladder.py` (rungs 7/7a/8 docstrings), `rfenv/rl/__init__.py` (usage examples,
+  which used `--reward hit_z` as a copy-pasteable command that now raises), `run.md`,
+  `ENVIRONMENT_SPEC.md`, `EVALUATION.md`, `EDGE_LANE_HANDOFF.md`, and the three RL handoff docs'
+  amendment banners all corrected.
+
+**Not touched**: the deep historical worked-examples inside the three long handoff documents
+(day-by-day task tables, file-tree listings) — those already carry a top-of-document amendment
+banner saying to read it before trusting anything below.

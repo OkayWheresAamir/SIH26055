@@ -50,7 +50,8 @@ def _dqn_rung_factory(checkpoint_path: Path) -> Callable:
     -- then add one `Rung(...)` line below using this factory, e.g.
 
         Rung("deep_q_network_hit_y", "7a", "DQN (hit_y)",
-             "Same algorithm, trained on hit_y instead of hit_z (D29).",
+             "Same algorithm, trained on hit_y -- retired from REWARDS "
+             "after failing D62's screen (D29).",
              _dqn_rung_factory(Path("runs/checkpoints/deep_q_network_hit_y.zip"))),
 
     A different algorithm gets its own equivalent factory -- see
@@ -155,14 +156,21 @@ LADDER: tuple[Rung, ...] = (
          "Published non-learning adaptive strategy. The serious bar.",
          lambda rng, grid: Apfeld(rng, use_period_estimation=True)),
 
+    # Rungs 7 and 7a were both trained on `hit_z`/`hit_y`, D29's original two
+    # candidates -- retired from `REWARDS` after both failed D62's screen
+    # (each ranks the camper above every sweeping policy). Already permanently
+    # unloadable regardless, since their checkpoints predate D49's observation
+    # width change; kept registered so the ladder's skip-with-a-warning path
+    # (`checkpoint_is_usable`) is what reports that, rather than a KeyError.
     Rung("deep_q_network_z_60k", "7", "DQN scheduler",
-         "Ours. First naive pass: untuned SB3 DQN, trained on hit_z (D29). "
-         "Sees only the D34 observation.",
+         "Ours. First naive pass: untuned SB3 DQN, trained on hit_z -- a "
+         "candidate retired from REWARDS after failing D62's screen (D29).",
          _dqn_rung_factory(_DQN_DEFAULT_CHECKPOINT)),
 
     Rung("deep_q_network_hit_y_20k", "7a", "DQN (hit_y)",
-         "Same algorithm as rung 7, trained on hit_y instead of hit_z (D29) -- "
-         "a worked example of the variant-registration pattern this docstring "
+         "Same algorithm as rung 7, trained on hit_y instead of hit_z -- both "
+         "retired from REWARDS after failing D62's screen (D29). A worked "
+         "example of the variant-registration pattern this docstring "
          "describes, not yet a tuned comparison (5,000 timesteps).",
          _dqn_rung_factory(Path("runs/checkpoints/deep_q_network_hit_y.zip"))),
 
@@ -171,8 +179,8 @@ LADDER: tuple[Rung, ...] = (
     # mirroring how 6/6a already coexist for Apfeld's two forms).
 
     Rung("ppo_hit_z_60k", "8", "PPO scheduler",
-         "Ours. First naive pass: untuned SB3 PPO, trained on hit_z (D29). "
-         "Sees only the D34 observation.",
+         "Ours. First naive pass: untuned SB3 PPO, trained on hit_z -- a "
+         "candidate retired from REWARDS after failing D62's screen (D29).",
          _ppo_rung_factory(_PPO_DEFAULT_CHECKPOINT)),
 
     Rung("ppo_first_intercept_800k", "8a", "PPO (first_intercept, 800k)",
@@ -291,8 +299,6 @@ LADDER: tuple[Rung, ...] = (
     Rung("lstm_balance_1M", "9f", "Recurrent PPO (reward_balance, 1M)",
                 "Ours. Trained on reward_balance after D52/D53/D55, 1M timesteps.",
                 _recurrent_ppo_rung_factory(Path("runs/checkpoints/lstm_balance_1M.zip"))),
-        
-        
         
         
     Rung("camper_oracle", "—", "Greedy static, truth-fed (D14's camper)",

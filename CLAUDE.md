@@ -84,13 +84,16 @@ corner: declarations plus remembered hit rate, no explore term, no camping cost)
 (explore corner: staleness minus airtime concentration plus new `(emitter, band)` discoveries) are
 the two ends of D14's tension and are *expected* to fail their opposite check — measured, `greedy`
 ranks camping above sweeping and `explore` ranks round-robin above rung 5. `weighted` is the single
-knob between them at `alpha = 0.3`, and it is **the only registered candidate that both orders the
-ladder correctly (+874.0) and separates rung 5 from round-robin (+70.5)** — the gap D56 identifies
-in `reward_balance`. The alpha was set from a measured window (0.2–0.4; below it the explore half
-dominates, from 0.5 up a 2-band ping-pong outscores round-robin — D53's failure mode through the
-greedy half), which is an ordering sanity check and **not** tuning against a score. `DEFAULT_REWARD`
-is unchanged at `reward_balance`: `weighted` scoring better on both checks is an argument for
-running D47, not a substitute for having run it.
+knob between them at `alpha = 0.3`, chosen from a measured sanity window (**[0.1, 0.4]** once
+re-measured against the real rungs, D57's correction below) rather than tuned against a score.
+
+**Corrected 2026-09-10: `weighted` is not the reward to build on.** The original claim here — that
+it uniquely separates rung 5 from round-robin — was measured against a hand-written stand-in for
+`round_robin` (see D56, directly below) and does not survive being re-measured against the real
+rungs. Under D62's screen, `weighted` puts the camper only **0.4σ** below the sweeps, short of the
+1.0σ bar, and **fails**. `reward_balance` is the only one of six registered candidates that passes
+the screen. `DEFAULT_REWARD` is unchanged at `reward_balance`; `weighted` remains registered as the
+axis's midpoint but is not currently a candidate D47 may consider.
 
 **D56 was measured wrong and is withdrawn (2026-09-10).** It reported that `reward_balance`
 separates rung 5 from round-robin by only +2.3 ± 11.7 — because it scored a hand-written
@@ -104,10 +107,13 @@ now enforces it.
 **Every reward candidate is now screened before anything trains on it (D62).** Score rungs 2, 4, 5
 and 6a under each candidate, 8 seeds, paired per seed: a candidate passes only if it puts rung 5
 clearly above rung 2 relative to seed noise and rung 4 clearly below both. No agent needed, minutes
-on a CPU. **`reward_balance` is the only one of six that passes** — and the finding that matters is
-that **`hit_z` and `hit_y`, D29's original two, both fail**: they rank the camper above every
-sweeping policy, which is D14's tension in reward form. Every DQN and PPO run in this repository
-trained on one of those two. D47 is now gated behind this screen and **has still never been run**.
+on a CPU. **`hit_z` and `hit_y`, D29's original two, both failed** — they rank the camper above
+every sweeping policy, D14's tension in reward form — **and were removed from `REWARDS` entirely
+as a consequence (D63).** `REWARDS` now holds four keys: `reward_balance` (the only one that
+passes D62), `greedy`, `explore`, `weighted`. Every DQN and PPO run in this repository trained on
+one of the two removed candidates; they were already permanently unloadable from D49's observation
+change, so nothing currently loadable is lost. D47 is gated behind this screen and **has still
+never been run**.
 
 **The train/evaluation leak is closed (D60).** Training sampled `EmitterPool.from_train()` — all 47
 development configs — while evaluation ran those same 47 replays plus scenarios sampled from that

@@ -5,8 +5,12 @@ and `make_train_env` needed nothing changed to support it, since any SB3 algorit
 exposes the same `.predict()` API and trains on the same env. Mirrors `dqn.py`'s
 shape exactly. First pass, deliberately naive (RL_TEAM_HANDOFF.md §15 Day 1):
 library-default hyperparameters, nothing tuned. The registered checkpoint
-(rung 8's base variant) was specifically trained with `reward="hit_z"` -- pass
-that explicitly to reproduce it; `env.DEFAULT_REWARD` has since moved off `hit_z`.
+(rung 8's base variant) was specifically trained with `reward="hit_z"` --
+historically true, but no longer reproducible: `hit_z` was retired from
+`REWARDS` 2026-09-10 after failing D62's screen (D63), so `--reward hit_z` now
+raises rather than training. The checkpoint itself was already permanently
+unloadable from D49's observation change. `env.DEFAULT_REWARD` is
+`reward_balance`.
 """
 
 from __future__ import annotations

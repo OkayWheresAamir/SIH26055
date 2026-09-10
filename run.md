@@ -40,9 +40,11 @@ trained first.
 ## Training a DQN scheduler (rung 7)
 
 ```
-venv/Scripts/python.exe -m rfenv.rl --reward hit_z --timesteps 60000 --seed 0 \
+venv/Scripts/python.exe -m rfenv.rl --reward reward_balance --timesteps 60000 --seed 0 \
     --checkpoint runs/checkpoints/deep_q_network.zip
 ```
+
+**`hit_z` and `hit_y` are retired from `REWARDS`** (2026-09-10, D62 -- both fail the reward screen, ranking the camper above every sweeping policy), so `--reward hit_z`/`hit_y` now raises rather than training. `reward_balance` is the only candidate that currently passes; run `python -m rfenv.reward_gate` before training on anything else.
 
 | Flag | Default | Meaning |
 |---|---|---|
@@ -92,23 +94,29 @@ Six registered (D29's cap of three was lifted by D57). Run
 `python -c "from rfenv.env import REWARDS, DEFAULT_REWARD; print(DEFAULT_REWARD, sorted(REWARDS))"`
 for the live set.
 
-| `--reward` | what it pays for | measured behaviour |
-|---|---|---|
-| `hit_z` | +1 per true hit `Z`, per slot | ranks camping **above** sweeping |
-| `hit_y` | +1 per declared hit `Y`, per slot | ranks camping **above** sweeping |
-| `reward_balance` | exploit + explore + occupancy − airtime concentration | orders the ladder, but cannot separate rung 5 from round-robin (D56) |
-| `greedy` | declarations + remembered hit rate; no explore term, no camping cost | **camps, by design** — the exploit corner |
-| `explore` | staleness − airtime concentration + new `(emitter, band)` discoveries | **sweeps, by design** — ranks round-robin above rung 5 |
-| `weighted` | `0.3 * greedy * 4.08 + 0.7 * explore` | the only candidate that both orders the ladder **and** separates rung 5 from round-robin |
+**Verdicts below are `python -m rfenv.reward_gate`'s (D62), not the earlier by-hand table** — run
+it yourself before trusting a stale copy.
 
-`greedy` and `explore` are the two corners of D14's tension and are *expected* to fail their
-opposite check — they exist so the axis spans something, not as proposals. `weighted` is the knob
+| `--reward` | what it pays for | D62 screen |
+|---|---|---|
+| `hit_z` | +1 per true hit `Z`, per slot | **FAIL** — ranks the camper above every sweeping policy |
+| `hit_y` | +1 per declared hit `Y`, per slot | **FAIL** — same failure |
+| `reward_balance` | exploit + explore + occupancy − airtime concentration | **PASS** — the only survivor of six |
+| `greedy` | declarations + remembered hit rate; no explore term, no camping cost | FAIL — camps, by design, the exploit corner |
+| `explore` | staleness − airtime concentration + new `(emitter, band)` discoveries | FAIL — ranks round-robin above rung 5, by design |
+| `weighted` | `0.3 * greedy * 4.08 + 0.7 * explore` | FAIL — against the real rung 4, camper sits only 0.4σ below the sweeps, short of the 1.0σ bar |
+
+`reward_balance` separates rung 5 from round-robin by **+59.0 +/- 19.4 on 8/8 seeds** (re-measured
+against the real rung — the earlier `-1.3` figure came from scoring a hand-written stand-in and is
+withdrawn, D56). `greedy` and `explore` are the two corners of D14's tension and are *expected* to
+fail their opposite check — they exist so the axis spans something, not as proposals. `weighted` is
+the knob
 between them, and `env.make_reward_weighted(alpha)` builds any other point on the curve without
 touching the registry:
 
 ```python
 from rfenv.env import make_reward_weighted
-env = ScanEnv(pool=pool, reward="hit_z")
+env = ScanEnv(pool=pool, reward="reward_balance")   # any registered key -- overwritten below
 env._reward_fn = make_reward_weighted(0.4)    # anywhere in [0, 1]
 ```
 
@@ -121,9 +129,11 @@ paired-dominance rule over the evaluation protocol — which has still never bee
 
 **Always pass `--reward` explicitly.** The CLI's default tracks `env.DEFAULT_REWARD`, and that has
 moved twice (`hit_z` -> `first_intercept` -> `reward_balance`, D50/D53). Rung 7's own registered
-checkpoint was trained with `--reward hit_z`, so reproducing it needs that passed, not left to the
-default. The manifest beside each `.zip` records which reward a checkpoint was actually trained on
--- when a rung key and a manifest disagree, the manifest is right.
+checkpoint was trained with `--reward hit_z`, so its manifest names a reward that **no longer
+exists in `REWARDS`** -- `hit_z` was retired 2026-09-10 (D62), and reproducing that specific
+checkpoint is no longer possible without reinstating it. The manifest beside each `.zip` still
+records which reward a checkpoint was actually trained on -- when a rung key and a manifest
+disagree, the manifest is right, even for a reward that has since been retired.
 
 `runs/` is gitignored; checkpoints are rebuilt locally, never committed. A checkpoint's shape is
 tied to `ScanEnv`'s observation vector (D34) — if `env.py`'s observation changes (adding a
@@ -159,6 +169,8 @@ this checkpoint cannot be used and will fail inside predict() if forced.
   retrain:   venv/Scripts/python.exe -m rfenv.rl.ppo --reward hit_z --timesteps 600000 ...
 ```
 
+The `retrain:` line is quoted verbatim from the manifest and is now itself stale: `hit_z` was retired from `REWARDS` 2026-09-10 (D62), so running it raises immediately rather than retraining. This is illustrative of the refusal message's format, not a command to run.
+
 A checkpoint with no manifest is *not* refused — everything trained before manifests existed is
 legitimate and still loads. It only means the width check cannot run for that file.
 
@@ -169,7 +181,7 @@ indistinguishable inside the archive. Keep the `.json` with the `.zip`.
 ### Comparing checkpoints from different points in one training run
 
 ```
-venv/Scripts/python.exe -m rfenv.rl --reward hit_z --timesteps 1000000 --seed 0 \
+venv/Scripts/python.exe -m rfenv.rl --reward reward_balance --timesteps 1000000 --seed 0 \
     --checkpoint runs/checkpoints/deep_q_network.zip --checkpoint-freq 200000
 ```
 
@@ -208,7 +220,7 @@ Same flags as `rfenv.rl`, plus:
 ## Training a RecurrentPPO scheduler (rung 9)
 
 ```
-venv/Scripts/python.exe -m rfenv.rl.recurrent_ppo --reward hit_z --timesteps 20000 --seed 0 \
+venv/Scripts/python.exe -m rfenv.rl.recurrent_ppo --reward reward_balance --timesteps 20000 --seed 0 \
     --checkpoint runs/checkpoints/recurrent_ppo.zip
 ```
 
@@ -262,7 +274,8 @@ variant, so multiple checkpoints coexist instead of overwriting each other:
 
 ```python
 Rung("deep_q_network_hit_y", "7b", "DQN (hit_y)",
-     "Same algorithm as rung 7, trained on hit_y instead of hit_z (D29).",
+     "Same algorithm as rung 7, trained on hit_y instead of hit_z -- both "
+     "retired from REWARDS after failing D62's screen (D29).",
      _dqn_rung_factory(Path("runs/checkpoints/deep_q_network_hit_y.zip"))),
 ```
 
@@ -274,7 +287,8 @@ Rung("ppo_balance_100k", "8b", "PPO (reward_balance, 100k)",
 
 ```python
 Rung("recurrent_ppo_hit_y_20k", "9a", "Recurrent PPO (hit_y)",
-     "Same algorithm as rung 9, trained on hit_y instead of hit_z (D29).",
+     "Same algorithm as rung 9, trained on hit_y instead of hit_z -- both "
+     "retired from REWARDS after failing D62's screen (D29).",
      _recurrent_ppo_rung_factory(Path("runs/checkpoints/recurrent_ppo_hit_y.zip"))),
 ```
 
@@ -315,7 +329,7 @@ lines excluded by construction) over every stare replay plus `--sampled` extra s
 
 **`--reward` is a trap if misread**: it sets the reward every `ScanEnv` in *this comparison run*
 uses to compute the printed reward number — it does not change what a trained RL checkpoint
-learned from. A model trained on `reward_balance` still gets scored on `hit_z`'s numbers unless
+learned from. A model trained on `reward_balance` still gets scored on `round_robin`'s numbers unless
 you pass `--reward reward_balance` to this specific `compare` invocation.
 
 Smoke test before a full run:

@@ -34,7 +34,7 @@ from rfenv import baselines as B
 from rfenv import rl
 from rfenv.rl import common, dqn, ppo, recurrent_ppo
 from rfenv.rl.common import RecurrentRLScheduler
-from rfenv.env import ScanEnv
+from rfenv.env import DEFAULT_REWARD, ScanEnv
 from rfenv.rollout import run_episode
 from rfenv.scenario import Scenario
 
@@ -80,7 +80,7 @@ def scenario():
 
 @pytest.fixture(scope="module")
 def untrained_model():
-    env = rl.make_train_env(reward="hit_z")
+    env = rl.make_train_env(reward=DEFAULT_REWARD)
     return DQN("MlpPolicy", env, seed=0)
 
 
@@ -94,11 +94,12 @@ def test_make_train_env_builds_a_valid_scan_env():
 
 def test_make_train_env_threads_reward_through():
     """Any registered candidate, not a hardcoded one: candidate 3 has been
-    renamed more than once, and pinning its name here only re-breaks this test
-    each time. `hit_y` is picked because it is not the default, so threading is
-    what is being observed rather than the default leaking through."""
-    env = rl.make_train_env(reward="hit_y")
-    assert env.reward_name == "hit_y"
+    renamed more than once (and `hit_z`/`hit_y` were retired entirely after
+    D62), so pinning a specific name here only re-breaks this test each time.
+    `greedy` is picked because it is not the default, so threading is what is
+    being observed rather than the default leaking through."""
+    env = rl.make_train_env(reward="greedy")
+    assert env.reward_name == "greedy"
     with pytest.raises(ValueError):
         rl.make_train_env(reward="not_a_reward")
 
@@ -175,7 +176,7 @@ def test_checkpoint_round_trips(tmp_path, untrained_model):
 
 def test_train_produces_a_loadable_checkpoint(tmp_path):
     path = tmp_path / "ckpt.zip"
-    rl.train(reward="hit_z", total_timesteps=10, seed=0, checkpoint=path)
+    rl.train(reward=DEFAULT_REWARD, total_timesteps=10, seed=0, checkpoint=path)
     assert path.exists()
     model = rl.load_checkpoint(path)
     action, _ = model.predict(np.zeros(OBS_WIDTH, dtype=np.float32), deterministic=True)
@@ -190,7 +191,7 @@ def test_print_episode_metrics_prints_a_real_episode(tmp_path, capsys):
     steps) within the budget.
     """
     path = tmp_path / "ckpt.zip"
-    dqn.train(reward="hit_z", total_timesteps=700, seed=0, checkpoint=path,
+    dqn.train(reward=DEFAULT_REWARD, total_timesteps=700, seed=0, checkpoint=path,
               print_episode_metrics=True)
     out = capsys.readouterr().out
     assert "n_steps" in out
@@ -208,7 +209,7 @@ def test_checkpoint_freq_saves_intermediate_checkpoints(tmp_path):
     manifest, where it is read rather than transcribed.
     """
     path = tmp_path / "deep_q_network.zip"
-    dqn.train(reward="hit_z", total_timesteps=1000, seed=0, checkpoint=path,
+    dqn.train(reward=DEFAULT_REWARD, total_timesteps=1000, seed=0, checkpoint=path,
               checkpoint_freq=300)
     assert path.exists()
     intermediate = tmp_path / "deep_q_network_s1.zip"
@@ -228,7 +229,7 @@ def test_training_writes_a_manifest_beside_every_checkpoint(tmp_path):
     and the observation width the env had at training time.
     """
     path = tmp_path / "run_a.zip"
-    dqn.train(reward="hit_z", total_timesteps=1000, seed=0, checkpoint=path,
+    dqn.train(reward=DEFAULT_REWARD, total_timesteps=1000, seed=0, checkpoint=path,
               checkpoint_freq=300, description="a test run",
               hyperparameters={"learning_rate": 5e-4})
 
@@ -236,7 +237,7 @@ def test_training_writes_a_manifest_beside_every_checkpoint(tmp_path):
         manifest = common.read_manifest(zipped)
         assert manifest is not None, f"no manifest for {zipped.name}"
         assert manifest["run"] == "run_a"
-        assert manifest["reward"] == "hit_z"
+        assert manifest["reward"] == DEFAULT_REWARD
         assert manifest["seed"] == 0
         assert manifest["observation_width"] == common.current_observation_width()
         assert manifest["algorithm"] == "DQN"
@@ -257,7 +258,7 @@ def test_load_checkpoint_refuses_a_checkpoint_of_the_wrong_observation_width(tmp
     (D49: an observation change invalidates every checkpoint that predates it).
     """
     path = tmp_path / "run_b.zip"
-    dqn.train(reward="hit_z", total_timesteps=300, seed=0, checkpoint=path)
+    dqn.train(reward=DEFAULT_REWARD, total_timesteps=300, seed=0, checkpoint=path)
 
     manifest = common.read_manifest(path)
     manifest["observation_width"] = manifest["observation_width"] - 2
@@ -276,7 +277,7 @@ def test_a_checkpoint_without_a_manifest_still_loads(tmp_path):
     manifest is allowed through -- it only means the width check cannot run.
     """
     path = tmp_path / "run_c.zip"
-    dqn.train(reward="hit_z", total_timesteps=300, seed=0, checkpoint=path)
+    dqn.train(reward=DEFAULT_REWARD, total_timesteps=300, seed=0, checkpoint=path)
     common.manifest_path(path).unlink()
     assert dqn.load_checkpoint(path) is not None
 
@@ -299,7 +300,7 @@ def test_parse_hyperparameters_types_values_rather_than_passing_strings():
 
 @pytest.fixture(scope="module")
 def ppo_untrained_model():
-    env = rl.make_train_env(reward="hit_z")
+    env = rl.make_train_env(reward=DEFAULT_REWARD)
     return PPO("MlpPolicy", env, seed=0)
 
 
@@ -341,7 +342,7 @@ def test_ppo_checkpoint_round_trips(tmp_path, ppo_untrained_model):
 
 def test_ppo_train_produces_a_loadable_checkpoint(tmp_path):
     path = tmp_path / "ckpt.zip"
-    ppo.train(reward="hit_z", total_timesteps=64, seed=0, checkpoint=path)
+    ppo.train(reward=DEFAULT_REWARD, total_timesteps=64, seed=0, checkpoint=path)
     assert path.exists()
     model = ppo.load_checkpoint(path)
     action, _ = model.predict(np.zeros(OBS_WIDTH, dtype=np.float32), deterministic=True)
@@ -356,7 +357,7 @@ def test_ppo_train_produces_a_loadable_checkpoint(tmp_path):
 
 @pytest.fixture(scope="module")
 def recurrent_untrained_model():
-    env = rl.make_train_env(reward="hit_z")
+    env = rl.make_train_env(reward=DEFAULT_REWARD)
     return RecurrentPPO("MlpLstmPolicy", env, seed=0)
 
 
@@ -401,7 +402,7 @@ def test_recurrent_ppo_checkpoint_round_trips(tmp_path, recurrent_untrained_mode
 
 def test_recurrent_ppo_train_produces_a_loadable_checkpoint(tmp_path):
     path = tmp_path / "ckpt.zip"
-    recurrent_ppo.train(reward="hit_z", total_timesteps=64, seed=0, checkpoint=path)
+    recurrent_ppo.train(reward=DEFAULT_REWARD, total_timesteps=64, seed=0, checkpoint=path)
     assert path.exists()
     model = recurrent_ppo.load_checkpoint(path)
     action, _ = model.predict(
