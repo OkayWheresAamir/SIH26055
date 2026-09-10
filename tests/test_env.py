@@ -231,7 +231,8 @@ def test_all_reward_candidates_run_and_differ():
     makes every unqualified `ScanEnv()` raise -- which is exactly what happened
     when candidate 3 was renamed and the default was not.
     """
-    assert set(REWARDS) == {"reward_balance", "greedy", "explore", "weighted"}
+    assert set(REWARDS) == {"reward_balance", "reward_balance_improved",
+                           "greedy", "explore", "weighted"}
     assert DEFAULT_REWARD in REWARDS
 
     sc = Scenario.replay("config_921", "stare")

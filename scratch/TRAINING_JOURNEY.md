@@ -845,13 +845,14 @@ fallen to the tie-break.
 ## 12.6 Where this leaves the lane
 
 - **No clean RL number exists.** Every checkpoint predates D60.
-- **The human declined a retrain** on 2026-09-10 (cost), and will train `greedy` to 500k instead.
-  `greedy` **fails** D62's screen at −2.7σ, so the screen predicts a camper — rung 4's profile.
-  That run is therefore the screen's **first falsification test** and is worth doing as a control
-  with the prediction recorded first. It also runs under D60 automatically, since
-  `make_train_env` now defaults to the training half.
+- ~~**The human declined a retrain** on 2026-09-10 (cost), and will train `greedy` to 500k
+  instead.~~ **Superseded by §14, same day** — a clean retrain on `reward_balance` was run after
+  all, and a second, on `reward_balance_improved`, followed it as a paired comparison. Neither
+  trained `greedy`.
 - **Still open:** the iteration ledger (one row per run, including failures, with a command to
-  re-run any past run from its manifest alone), and D47, which has never been run.
+  re-run any past run from its manifest alone), and D47, which has never been run. The ledger is
+  now started — see `docs/project/ITERATION_LEDGER.md` — beginning with the D60-forward runs;
+  every run before D60 trained on a leaking pool and is narrated above instead of re-tabulated.
 
 ---
 
@@ -885,3 +886,125 @@ observation-width change, so nothing currently loadable is lost.
 **Not touched**: the deep historical worked-examples inside the three long handoff documents
 (day-by-day task tables, file-tree listings) — those already carry a top-of-document amendment
 banner saying to read it before trusting anything below.
+
+---
+
+# 14. The first clean retrain, and a paired reward comparison — 2026-09-10
+
+## 14.1 The control run
+
+`reward_balance`, 400k timesteps, under D60/D61 for the first time — the earliest run in this
+repository to start (commit `176e6a9`) after **both** the split (D60, `36405b1`) and the reward
+screen (D62/D63, `36405b1`/`46d8449`) were already in the tree. Every RL checkpoint before this one
+predates at least one of the two.
+
+```
+venv/Scripts/python.exe -m rfenv.rl.recurrent_ppo --reward reward_balance --timesteps 400000 \
+  --seed 0 --hyperparam ent_coef=0.01 --hyperparam gamma=0.997 --hyperparam n_steps=8192 \
+  --checkpoint runs/checkpoints/lstm_balance_clean.zip --checkpoint-freq 100000 \
+  --run-name clean_lstm --description "attempt 1 under D60 split, D61 selection"
+```
+
+Four snapshots, `clean_lstm_s1`–`s4` at 100k/200k/300k/400k, 4,419 s wall clock for the full run
+(~74 min).
+
+## 14.2 Selection (D61), run for real
+
+Against the 12 validation configs, 3 seeds, paired per episode against rung 5 — the rule fixed in
+`rfenv/selection.py` before this run existed:
+
+```
+venv/Scripts/python.exe -m rfenv.selection runs/checkpoints/clean_lstm_s1.zip \
+  runs/checkpoints/clean_lstm_s2.zip runs/checkpoints/clean_lstm_s3.zip \
+  runs/checkpoints/clean_lstm_s4.zip --reward reward_balance
+```
+
+| checkpoint | steps | dominates | dominated | net |
+|---|---|---|---|---|
+| `clean_lstm_s4` | 400k | 47.2% | 11.1% | **+36.1%** ← selected |
+| `clean_lstm_s2` | 200k | 41.7% | 11.1% | +30.6% |
+| `clean_lstm_s1` | 100k | 36.1% | 11.1% | +25.0% |
+| `clean_lstm_s3` | 300k | 19.4% | 19.4% | +0.0% |
+
+Monotonic in steps except a dip at 300k (net dominance drops to zero, then recovers at 400k) —
+noted, not chased; the rule picks the checkpoint it picks. **This is the first result this
+repository has produced that is both clean (post-D60 pool) and pre-registered (D61's rule, not a
+number picked after looking at the comparison).**
+
+## 14.3 What was still outstanding for the control arm at this point in the session
+
+D61 answers "which checkpoint," not "how good is it." The headline — `compare.py`'s full run over
+all 47 stare replays plus sampled scenarios, on `clean_lstm_s4` specifically — had not yet been run
+here. It has since (§14.6 below). An earlier comparison (`runs/clean_baseline_100k`, `--seeds 1 --rungs
+round_robin,recency,lstm_balance_clean_100k_500k,lstm_balance_200k_1M,lstm_balance_300k_1M
+--figures`) was run *before* selection completed, scored the **100k** snapshot only (rung `10a`
+was still registered against `clean_lstm_s1.zip`, not the eventual winner), and mixed it with two
+pre-D60 checkpoints (`lstm_balance_200k_1M`, `lstm_balance_300k_1M`) that trained on the pool these
+same 47 replays are drawn from. Read on its own terms: `lstm_balance_clean_100k_500k` (i.e.
+`clean_lstm_s1`, 100k steps) scored 74.5%/68.1%/51.1% (ratio/cTTI/both) paired against recency —
+ahead of both contaminated checkpoints despite an order of magnitude less training — but that run
+is **not** a substitute for scoring the D61-selected winner, and the two contaminated rows in it
+are not evidence about anything (same status as every pre-D60 number: sound arithmetic,
+contaminated comparison).
+
+`rfenv/baselines/ladder.py` registers all four checkpoints as their own rungs, `10a`–`10d`
+(`clean_lstm_s1`…`s4` respectively). `10d` is the D61-selected checkpoint, and §14.6 below is that
+comparison run for real.
+
+## 14.4 The treatment run, launched in parallel
+
+To settle whether `reward_balance_improved` (§ below D63, in `rfenv/env.py`) helps a learner rather
+than just passing the D62 screen more narrowly, the human launched a second
+run identical to the control in everything but the reward:
+
+```
+python -m rfenv.rl.recurrent_ppo --reward reward_balance_improved --timesteps 400000 --seed 0 \
+  --hyperparam ent_coef=0.01 --hyperparam gamma=0.997 --hyperparam n_steps=8192 \
+  --checkpoint runs/checkpoints/lstm_balance_improved.zip --checkpoint-freq 100000 \
+  --run-name lstm_balance_improved --description "treatment: density-weighted occupancy, D60 split"
+```
+
+Same seed, same hyperparameters, same split — the only variable that differs from §14.1 is the
+reward function. **This is a single seed per arm.** A difference between the two arms is
+suggestive, not conclusive: the control run's own trajectory swings by double digits between
+adjacent 100k checkpoints (§14.2), so an effect smaller than that swing is inside seed noise, not
+evidence about the reward.
+
+## 14.5 The treatment arm, selected
+
+Finished the same day. D61 selection on its four checkpoints, same rule, same validation set:
+
+| checkpoint | steps | dominates | dominated | net |
+|---|---|---|---|---|
+| `lstm_balance_improved_s2` | 200k | 36.1% | 11.1% | **+25.0%** ← selected |
+| `lstm_balance_improved_s4` | 400k | 33.3% | 11.1% | +22.2% |
+| `lstm_balance_improved_s1` | 100k | 22.2% | 11.1% | +11.1% |
+| `lstm_balance_improved_s3` | 300k | 36.1% | 27.8% | +8.3% |
+
+Selected `lstm_balance_improved_s2` (200k) — **below** the control's +36.1% (§14.2) on validation.
+Both arms registered on the ladder: `10a`–`10d` (control), `11a`–`11d` (treatment).
+
+## 14.6 The headline, both winners together — and a reversal
+
+```
+venv/Scripts/python.exe -m rfenv.compare --rungs round_robin,recency,lstm_balance_clean_400k,\
+  lstm_balance_improved_200k_400k --seeds 3 --sampled 10 --figures --out runs/clean_paired_comparison
+```
+
+684 episodes (4 rungs × 57 scenarios × 3 seeds), the full development set per D60. Paired against
+recency:
+
+| scheduler | ratio | cTTI | both |
+|---|---|---|---|
+| `round_robin` | 7.0% | 28.7% | 3.5% |
+| control (`reward_balance`, 400k) | 73.7% | 31.6% | 22.8% |
+| treatment (`reward_balance_improved`, 200k) | **83.0%** | **39.8%** | **31.0%** |
+
+Both clean checkpoints clear rung 5 comfortably. **The treatment is ahead on the headline; the
+control was ahead on validation.** Not read as "the improved reward wins" — one training seed per
+arm, the winning checkpoints sit at different step counts (400k vs 200k), and the control's own
+checkpoints alone swing by more than the 8.2-point gap between the two arms across their four
+snapshots. It is the first evidence, weak as it is, in the direction argued when the reward was
+called "unproven rather than rejected": the D62 screen measures discrimination between six fixed
+heuristics, which is a different signal than the gradient a learner actually consumes. Settling it
+for real needs matched seed counts per arm — see D65 for the full accounting.

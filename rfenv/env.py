@@ -201,6 +201,128 @@ def reward_balance(
     reward -= 3.0 * visit_density * dwell.n_slots
 
     return float(reward)
+
+
+# The pulse count at which `reward_balance_improved`'s occupancy term pays
+# exactly what `reward_balance`'s flat one does. Measured over the **training
+# half only** (D60): `expm1(mean(log1p(C)))` across all 252,270 occupied cells of
+# the 35 training configs is 62.80, rounded to 64 so the constant reads as a
+# chosen reference rather than a fitted decimal -- the rounding moves every
+# weight by under 1%.
+#
+# Fitting it on the validation half instead would give 77.66, and using that
+# number would bake twelve held-back scenarios into the environment itself.
+# Which is why it is not used, and why the difference is recorded here.
+_DENSITY_REF_PULSES = 64.0
+
+# How far the occupancy term moves from flat toward fully density-weighted.
+#
+#     weight = Z * [ 1 + lambda * (log1p(C)/log1p(64) - 1) ]
+#
+# `lambda = 0` reproduces `reward_balance`'s flat `0.5 * Z.sum()` exactly, and
+# `lambda = 1` is full density weighting. It is a shrinkage parameter toward a
+# candidate already known to pass D62's screen, which is what makes the endpoint
+# meaningful rather than arbitrary.
+#
+# **0.5 is justified by what it bounds, not by what it scores.** At this value
+# the weight is confined to [0.583, 1.509] -- a 2.6:1 spread against full
+# weighting's 12.1:1 -- so **no occupied cell is ever worth less than 58% of what
+# `reward_balance` paid for it.** Density can reorder which occupied cell a
+# policy should prefer; it cannot make a genuinely occupied cell nearly
+# worthless, which is the failure mode that would quietly reintroduce the
+# coverage collapse this whole reward exists to prevent.
+_DENSITY_SHRINKAGE = 0.5
+
+
+def reward_balance_improved(
+    dwell: DwellResult,
+    newly: set[int],
+    camp_slots: int,
+    hit_rate_array: np.ndarray,
+    visit_density_array: np.ndarray,
+    staleness_array: np.ndarray,
+    action: int,
+) -> float:
+    """Candidate 7: `reward_balance` with its occupancy term weighted by pulse density.
+
+    **One term differs from `reward_balance`, and nothing else.** That is the
+    point: the other three coefficients passed D62's screen at their current
+    values, so changing one variable keeps the comparison interpretable and lets
+    the screen attribute any failure to density weighting rather than to a
+    rebalance.
+
+        reward_balance           `+0.5 * Z.sum()`
+        reward_balance_improved  `+0.5 * sum(log1p(C) / log1p(64))`
+
+    ### The mismatch this closes
+
+    `Z` is boolean occupancy and `C` is the pulse count (`truth.py`: `Z[b,t] =
+    True` against `np.add.at(C, (b,t), c.n_pulses)`). The **evaluation metric
+    counts pulses** -- interception ratio is `pulses_intercepted / total_pulses`
+    (`metrics/scoring.py`) -- while `reward_balance` pays a flat 0.5 per occupied
+    cell. Measured on the development set, a cell holds between 1 and 4,543
+    pulses, the top 10% of occupied cells hold 46-59% of all pulses, and the
+    reward pays identically for the sparsest and the densest. The agent is
+    optimising "touch many occupied cells" while being scored on "capture many
+    pulses", and those diverge exactly as far as pulse mass is concentrated.
+
+    Measured consequence, not a prediction: on `config_921` the two orderings
+    already disagree. `reward_balance` ranks rung 5 first (413.2) and the 300k
+    RecurrentPPO checkpoint second (407.9); interception ratio ranks that
+    checkpoint first (0.1144) and rung 5 **third** (0.0856).
+
+    ### Why `log1p` rather than `C` itself
+
+    Raw `C` spans 1 to 4,543 within a single episode. Paying it linearly makes
+    one lucky dwell worth more than the rest of the episode combined and hands
+    the value head a target with a three-order-of-magnitude range -- the
+    unfittable-scale failure D53 removed from this reward once already, and D57
+    removed from `explore` a second time. `log1p` compresses that 4,543:1 span to
+    **12:1** (weight 0.17 at one pulse, 2.03 at 4,543): enough that density
+    changes the ranking of two candidate dwells, bounded enough that it cannot
+    dominate the episode.
+
+    ### Why the magnitude is preserved rather than increased
+
+    `_DENSITY_REF_PULSES` is set so the mean weight over occupied cells is 1.0,
+    which keeps this term's episode total where `reward_balance` had it (~42% of
+    total reward magnitude) and changes only how it is *distributed* across
+    cells. Scaling the term up as well as reshaping it would move two things at
+    once, and the camping cost is the only thing holding the policy off the
+    densest band -- which is precisely rung 4's exploit. **The risk this
+    candidate carries is that density weighting re-creates the camper**, so it
+    goes through `python -m rfenv.reward_gate` before anything trains on it, and
+    that screen exists to fail it if so.
+
+    Per-slot by construction (D31): `dwell.C` is the per-slot illumination array
+    and the term sums over it, so a 2-slot dwell is scored on both its cells.
+
+    Reads `C`, which is truth-side and permitted (D29) -- the same permission
+    `reward_balance` already uses for `Z`. The observation is untouched and stays
+    density-blind in its per-band blocks; closing that is an observation change
+    (D34/D49/D55), separate from this and not done here.
+    """
+    visit_density = float(visit_density_array[action]) / N_BANDS
+    staleness = float(staleness_array[action]) / _SWEEPS_PER_EPISODE
+
+    # Exploitation
+    reward = 0.5 * hit_rate_array[action]
+
+    # Exploration / airtime balance
+    reward += 1.0 * (1.5 - visit_density) * staleness
+
+    # Useful occupancy, weighted by how much traffic the cell actually held.
+    # `Z` is implicit: an unoccupied cell has C = 0 and log1p(0) = 0, so it pays
+    # nothing without needing a mask.
+    occupied = np.asarray(dwell.Z, dtype=np.float64)
+    density = np.log1p(np.asarray(dwell.C, dtype=np.float64)) / np.log1p(_DENSITY_REF_PULSES)
+    weight = occupied * (1.0 + _DENSITY_SHRINKAGE * (density - 1.0))
+    reward += 0.5 * float(weight.sum())
+
+    # Cost on concentrated airtime -- unchanged, and load-bearing here.
+    reward -= 3.0 * visit_density * dwell.n_slots
+
+    return float(reward)
     
 
 
@@ -417,6 +539,7 @@ reward_weighted = make_reward_weighted(WEIGHTED_ALPHA)
 
 REWARDS = {
     "reward_balance": reward_balance,
+    "reward_balance_improved": reward_balance_improved,
     "greedy": reward_greedy,
     "explore": reward_explore,
     "weighted": reward_weighted,
