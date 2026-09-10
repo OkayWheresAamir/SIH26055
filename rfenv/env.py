@@ -86,24 +86,29 @@ _SWEEPS_PER_EPISODE = N_SLOTS / SWEEP_SLOTS   # 600 / 43 = 13.95, staleness's ce
 # below as a commented-out draft alongside a further `reward_hybrid` sketch) --
 # neither is active.
 #
-# Candidates 1 and 2 are **per slot**, and a dwell's reward is the sum over its
-# slots (D31), so a 100 ms dwell can earn up to +2. That keeps reward per unit
-# time equal across wide and narrow bands -- the alternative, +1 per dwell
-# regardless of length, would make the seven wide bands strictly dominated, and
-# those are measurably the bands holding the densest emitter populations and the
-# slowest rotators.
+# D29's original candidates 1 (`hit_z`) and 2 (`hit_y`) were **per slot**, and
+# a dwell's reward is the sum over its slots (D31), so a 100 ms dwell could earn
+# up to +2. That kept reward per unit time equal across wide and narrow bands --
+# the alternative, +1 per dwell regardless of length, would make the seven wide
+# bands strictly dominated, and those are measurably the bands holding the
+# densest emitter populations and the slowest rotators. **Both were retired from
+# `REWARDS` 2026-09-10 after failing D62's screen** -- each ranks the camper
+# above every sweeping policy, D14's tension in reward form -- but D31's
+# per-slot invariant they established still binds every candidate below.
 #
-# Candidate 3, `reward_balance`, carries the invariant too: its camping cost is
+# Candidate 3, `reward_balance`, carries the invariant: its camping cost is
 # scaled by `dwell.n_slots` so it is charged per slot of airtime spent (D53).
 # Its predecessor under this slot, `reward_first_intercept`, was flat per dwell
 # instead -- a discovery being worth the same whether the dwell that found it ran
 # 1 or 2 slots -- and is kept as a commented-out draft at the end of this file.
+# D57's `greedy`/`explore`/`weighted` carry it too, each multiplying its
+# state-dependent terms by `dwell.n_slots` for the same reason.
 #
 # D28 puts the two headline metrics on opposite sides of the Y/Z line -- censored
 # intercept time needs Y = 1, interception ratio does not -- so no single reward
-# is aligned with both. That is why there are three rather than one, and why the
-# rule for choosing between them is a human decision recorded as open in D29.
-# Nothing here ranks them.
+# is aligned with both. That is part of why there is more than one candidate,
+# and why the rule for choosing between them is a human decision recorded as
+# open in D29, now gated behind D62's screen. Nothing here ranks them.
 #
 # Every candidate takes the same seven arguments even though no candidate reads
 # all seven:
@@ -120,50 +125,6 @@ _SWEEPS_PER_EPISODE = N_SLOTS / SWEEP_SLOTS   # 600 / 43 = 13.95, staleness's ce
 # One call signature, not a special case per candidate, so a new candidate can
 # be registered -- or a retired one re-enabled -- without touching the call
 # site. Unused parameters are the price of that and are deliberate.
-
-
-def reward_hit_z(
-    dwell: DwellResult,
-    newly: set[int],
-    camp_slots: int,
-    hit_rate_array: np.ndarray,
-    visit_density_array: np.ndarray,
-    staleness_array: np.ndarray,
-    action: int,
-) -> float:
-    """Candidate 1: +1 per **true** hit, cell-level `Z` (D5). Not the current
-    default -- see `DEFAULT_REWARD` -- but still every rung's registered
-    baseline reward for training rungs 7/8/9's own base variant.
-
-    Values every occupied cell equally, whatever its level, so it prices
-    opportunity rather than detectability. Predicted to favour interception ratio,
-    which is itself the threshold-free opportunity metric.
-    """
-    return float(dwell.Z.sum())
-
-
-def reward_hit_y(
-    dwell: DwellResult,
-    newly: set[int],
-    camp_slots: int,
-    hit_rate_array: np.ndarray,
-    visit_density_array: np.ndarray,
-    staleness_array: np.ndarray,
-    action: int,
-) -> float:
-    """Candidate 2: +1 per **declared** hit `Y` -- what the receiver actually said.
-
-    Weights cells by loudness, since `P(Y=1) = Phi((S-gamma)/sigma)` runs from 0.5
-    at `S = gamma` upward, and so teaches the agent that a marginal emitter needs
-    repeated looks before it yields a declaration. Under D28 that is exactly what
-    lowers `first_e`. Predicted to favour censored intercept time.
-
-    It also pays out on false alarms. That cannot be helped and should not be
-    penalised into submission: Pfa is a frozen receiver property and no reward can
-    move it (D15, D21). At the operating point it is 1.35e-3 anyway -- about 0.8
-    spurious reward over a whole episode of empty looks.
-    """
-    return float(dwell.Y.sum())
 
 
 def reward_balance(
@@ -242,43 +203,6 @@ def reward_balance(
     return float(reward)
     
 
-# def reward_first_intercept_test(dwell: DwellResult,
-#     camp_slots: int,
-#     hit_rate: float,
-#     visit_density: float,
-#     staleness: float) -> float:
-#     """Candidate 3: a flat +3 per dwell that finds at least one emitter for the
-#     **first time in a given band** (D28's own-first-intercept rule, extended
-#     per-band rather than per-episode -- see `ScanEnv.step`'s `newly`), whatever
-#     the count of new emitters that dwell credits. A dwell that finds nothing new
-#     still earns +1 if it lands on an occupied cell at all (`Z`, even a cell
-#     belonging to an already-found emitter), minus a flat 0.5 -- so an empty look
-#     nets -0.5, a look that re-touches known occupancy nets +0.5, and a look that
-#     surfaces a new (emitter, band) pair nets +3 outright.
-
-#     Deliberately flat rather than `+1 * len(newly)`: this candidate prices *that*
-#     a dwell discovered something at all, not how many, and does not scale with
-#     dwell width the way candidates 1/2 and D31 do -- a discovery is worth the
-#     same whether it lands on a 1- or 2-slot band.
-
-#     Reads truth, which is allowed (D29) and necessary: novelty is not something
-#     binary hit/miss can perceive. Whether a policy can *learn* to act on a signal
-#     it cannot observe is the open question D30 raises; it does not block training.
-#     """
-#     reward = 0.0
-#     if len(newly) == 0:
-#         if float(dwell.Y.sum()) > 0:
-#             reward += 0.5*(dwell.Y.sum())
-#             if camp_slots > 1:
-#                 reward -= 0.5*(camp_slots-1)
-#         else:
-#             reward -= 0.5
-#             if camp_slots > 1:
-#                 reward -= 0.5*(camp_slots-1)
-#     else:
-#         reward += 3.0*len(newly)
-#     return reward
-
 
 
 
@@ -327,9 +251,10 @@ def reward_greedy(
     of the space, the reward-side twin of rung 4, and the control that says how
     much of any blended reward's behaviour comes from its exploit half.
 
-    Distinct from `hit_y`, which is also exploit-only. `hit_y` pays only for the
-    current dwell's declarations, so a band that has paid out for 400 slots and
-    a band never looked at are worth the same until the dwell resolves.
+    Distinct from `hit_y` (D29's second candidate, retired from `REWARDS` after
+    failing D62's screen), which was also exploit-only and paid only for the
+    current dwell's declarations, so a band that had paid out for 400 slots and
+    a band never looked at were worth the same until the dwell resolved.
     `reward_greedy` adds the *remembered* rate, so it prices the decision at the
     moment it is made rather than only its outcome -- which is what "greedy" in
     the bandit sense actually means, and what an agent can act on. It is priced
@@ -448,6 +373,7 @@ def make_reward_weighted(alpha: float):
     almost always a typo, and silently extrapolating produces a reward that
     punishes the thing it names.
     """
+
     if not 0.0 <= alpha <= 1.0:
         raise ValueError(f"alpha must be in [0, 1], got {alpha!r}")
 
@@ -490,8 +416,6 @@ reward_weighted = make_reward_weighted(WEIGHTED_ALPHA)
 
 
 REWARDS = {
-    "hit_z": reward_hit_z,
-    "hit_y": reward_hit_y,
     "reward_balance": reward_balance,
     "greedy": reward_greedy,
     "explore": reward_explore,
