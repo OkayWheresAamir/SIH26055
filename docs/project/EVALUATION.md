@@ -319,7 +319,7 @@ why torch's generator is now seeded per rung.
    in reward form), and were **retired from `REWARDS` entirely** 2026-09-10 as a consequence.
    D47 is gated behind that screen and has still never been run.
 
-### The development split, and why no RL row is clean yet (D60, D61)
+### The development split (D60, D61)
 
 **Until 2026-09-10 RL training sampled `EmitterPool.from_train()` -- every emitter in all 47
 development configs -- while this section's scenarios are those same 47 replays plus scenarios
@@ -340,10 +340,52 @@ added here must state how many configurations were tried to produce it.
 **The 2,223-episode acceptance run of 2026-09-10 is not in the table above and will not be.** Its
 rung 9 rows -- 9c dominating rung 5 on 48.0% of episodes against 13.5%, 9b on 43.9% against 4.7% --
 are arithmetically sound and were produced under the leak. Artefacts in
-`runs/acceptance_2026-09-10/`. The number that will go here is that comparison re-measured after a
-retrain on the training half.
+`runs/acceptance_2026-09-10/`. **This is the comparison D60 said would supersede it, re-measured
+after a retrain on the training half — see below.**
 
-**Reproduce it with:**
+### The first clean RL rows (D64, D65) — measured 2026-09-10
+
+Two runs, `reward_balance` (rung 10, the control) and `reward_balance_improved` (rung 11, the
+treatment) -- identical seed, hyperparameters and D60 split, differing only in the reward. Each
+trained 400k steps, checkpointed every 100k, and each checkpoint selected on the validation half
+by D61's pre-registered rule before anything below was measured:
+
+| run | selected checkpoint | dominates rung 5 | dominated by rung 5 | net dominance (D61, validation) |
+|---|---|---|---|---|
+| control (`reward_balance`) | 400k (`clean_lstm_s4`, rung 10d) | 47.2% | 11.1% | **+36.1%** |
+| treatment (`reward_balance_improved`) | 200k (`lstm_balance_improved_s2`, rung 11b) | 36.1% | 11.1% | +25.0% |
+
+`python -m rfenv.compare --rungs round_robin,recency,lstm_balance_clean_400k,lstm_balance_improved_200k_400k --seeds 3 --sampled 10 --figures --out runs/clean_paired_comparison`
+— 4 rungs x 57 scenarios x 3 seeds = **684 episodes**:
+
+| # | scheduler | interception ratio | censored intercept time (s) | emitter coverage | beats recency on **both** |
+|---|---|---|---|---|---|
+| 2 | round_robin | 0.060 | 4.18 | 0.865 | 3.5% |
+| 5 | recency | 0.111 | 3.34 | 0.887 | -- |
+| 10d | Recurrent PPO, clean (`reward_balance`, 400k) | 0.123 | 3.87 | 0.861 | 22.8% |
+| 11b | Recurrent PPO, clean (`reward_balance_improved`, 200k) | 0.143 | 3.51 | 0.860 | **31.0%** |
+
+**Both checkpoints clear the bar** -- both beat `recency` on the joint metric at a rate the floor
+(3.5%) does not come close to. **On this headline measure the treatment is ahead of the control**
+(31.0% against 22.8%, and ahead on both individual paired columns: ratio 83.0% against 73.7%, cTTI
+39.8% against 31.6% -- see `runs/clean_paired_comparison/`), reversing the D61 validation ranking
+above.
+
+**Not read as "the improved reward wins."** One training seed per arm: the control's own four
+checkpoints swing from +25.0% to +30.6% to +0.0% to +36.1% net dominance across a single run
+(D64) -- a larger swing than the 8.2-point headline gap between the two arms -- and the two
+selected checkpoints sit at different step counts (400k vs 200k), so the comparison is each
+reward's best snapshot rather than a controlled same-point measurement. It is weak evidence in the
+direction argued when `reward_balance_improved` was called "unproven rather than rejected" by
+D62's screen (which measures discrimination between six fixed heuristics, not what a learner's
+gradient consumes), not a settled result. **Matched seed counts per arm is what would settle it**
+(D65).
+
+**Neither row above is registered as *the* headline RL number yet** -- that decision (which reward,
+if either, becomes the one carried forward past this comparison) has not been made, and both are
+reported here as measured rather than one being promoted over the other by this document.
+
+**Reproduce the full ladder with:**
 
 ```bash
 python -m rfenv.compare --seeds 3 --sampled 10 --figures --out runs/baselines

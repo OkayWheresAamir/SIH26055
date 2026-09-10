@@ -299,8 +299,52 @@ LADDER: tuple[Rung, ...] = (
     Rung("lstm_balance_1M", "9j", "Recurrent PPO (reward_balance, 1M)",
                 "Ours. Trained on reward_balance after D52/D53/D55, 1M timesteps.",
                 _recurrent_ppo_rung_factory(Path("runs/checkpoints/lstm_balance_1M.zip"))),
-        
-        
+
+
+
+
+
+    Rung("lstm_balance_clean_100k_400k", "10a", "Recurrent PPO (reward_balance clean, 100k-400k)",
+            "Ours. Trained on reward_balance after D52/D53/D55, 100k out of 400k timesteps.",
+            _recurrent_ppo_rung_factory(Path("runs/checkpoints/clean_lstm_s1.zip"))),
+
+      Rung("lstm_balance_clean_200k_400k", "10b", "Recurrent PPO (reward_balance clean, 200k-400k)",
+                "Ours. Trained on reward_balance after D52/D53/D55, 200k out of 400k timesteps.",
+                _recurrent_ppo_rung_factory(Path("runs/checkpoints/clean_lstm_s2.zip"))),
+
+     Rung("lstm_balance_clean_300k_400k", "10c", "Recurrent PPO (reward_balance clean, 300k-400k)",
+                    "Ours. Trained on reward_balance after D52/D53/D55, 300k out of 400k timesteps.",
+                    _recurrent_ppo_rung_factory(Path("runs/checkpoints/clean_lstm_s3.zip"))),
+
+     Rung("lstm_balance_clean_400k", "10d", "Recurrent PPO (reward_balance clean, 400k)",
+                    "Ours. Trained on reward_balance after D52/D53/D55, 400k out of 400k timesteps.",
+                    _recurrent_ppo_rung_factory(Path("runs/checkpoints/clean_lstm_s4.zip"))),
+
+
+
+
+
+    Rung("lstm_balance_improved_100k_400k", "11a", "Recurrent PPO (reward_balance_improved, 100k-400k)",
+            "Ours. Treatment arm of the D64 paired comparison: reward_balance_improved, "
+            "100k out of 400k timesteps, same split/hyperparameters/seed as rung 10a.",
+            _recurrent_ppo_rung_factory(Path("runs/checkpoints/lstm_balance_improved_s1.zip"))),
+
+    Rung("lstm_balance_improved_200k_400k", "11b", "Recurrent PPO (reward_balance_improved, 200k-400k)",
+            "Ours. Treatment arm of the D64 paired comparison: reward_balance_improved, "
+            "200k out of 400k timesteps, same split/hyperparameters/seed as rung 10b.",
+            _recurrent_ppo_rung_factory(Path("runs/checkpoints/lstm_balance_improved_s2.zip"))),
+
+    Rung("lstm_balance_improved_300k_400k", "11c", "Recurrent PPO (reward_balance_improved, 300k-400k)",
+            "Ours. Treatment arm of the D64 paired comparison: reward_balance_improved, "
+            "300k out of 400k timesteps, same split/hyperparameters/seed as rung 10c.",
+            _recurrent_ppo_rung_factory(Path("runs/checkpoints/lstm_balance_improved_s3.zip"))),
+
+    Rung("lstm_balance_improved_400k", "11d", "Recurrent PPO (reward_balance_improved, 400k)",
+            "Ours. Treatment arm of the D64 paired comparison: reward_balance_improved, "
+            "400k out of 400k timesteps, same split/hyperparameters/seed as rung 10d.",
+            _recurrent_ppo_rung_factory(Path("runs/checkpoints/lstm_balance_improved_s4.zip"))),
+
+
     Rung("camper_oracle", "—", "Greedy static, truth-fed (D14's camper)",
          "Reference line: D14's camper, which knew where the pulses were.",
          lambda rng, grid: OracleCamper(grid, rng),

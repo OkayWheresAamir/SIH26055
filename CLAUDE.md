@@ -127,12 +127,32 @@ have done it — the pool is assembled *from* the configs.
 rung 5)` on the validation half, ties toward fewer steps, fixed in `rfenv/selection.py` before the
 run that uses it.
 
-**No RL result in this repository is currently clean.** The 2,223-episode acceptance run of
-2026-09-10 (`runs/acceptance_2026-09-10/`) has rung 9c Pareto-dominating rung 5 on 48.0% of
-episodes against being dominated on 13.5%, and rung 9b at 43.9% against 4.7% — but every one of
-those checkpoints trained on the emitters it was scored against. Sound arithmetic, contaminated
-comparison, **not written into `EVALUATION.md` §5**. The number to chase is that comparison
-re-measured after a retrain on the training half.
+**Corrected 2026-09-10: a clean RL result now exists, headline included, in `EVALUATION.md` §5
+(D64, D65).** The 2,223-episode acceptance run above (`runs/acceptance_2026-09-10/`, rung 9c
+48.0%/13.5%, rung 9b 43.9%/4.7%) is still contaminated for the reason given — every checkpoint in
+it trained on the emitters it was scored against — and stays out of `EVALUATION.md` §5 for that
+reason. But a retrain has since run: `reward_balance`, 400k steps, started at commit `176e6a9`,
+after both D60 and D62/D63 were in the tree. D61's selection rule, run for the first time on real
+candidates rather than stale pre-D60 checkpoints, picked the 400k snapshot at **net dominance
++36.1%** (47.2% dominates rung 5 / 11.1% dominated) on the 12 validation configs — a checkpoint
+this repository can defend as clean. Its headline, paired against recency over the full development
+set (684 episodes): **73.7% ratio / 31.6% cTTI / 22.8% both**. A parallel run finished the same
+day: same split, hyperparameters and seed, only the reward differs (`reward_balance_improved`). Its
+own D61-selected checkpoint (200k, weaker than the control on validation at +25.0% net dominance)
+scores **83.0% / 39.8% / 31.0%** on the same headline run — ahead of the control there, a reversal
+from the validation ranking. **Read as suggestive, not conclusive** — one training seed per arm,
+and the control's own four checkpoints swing by more than the gap between the two arms. **Neither
+row is promoted as the number to carry forward** — that decision has not been made, and both are
+reported side by side in `EVALUATION.md` §5 rather than one superseding the other. Ledger:
+`docs/project/ITERATION_LEDGER.md`. Full account: D64 (control), D65 (the paired comparison and the
+reversal), `scratch/TRAINING_JOURNEY.md` §14.
+
+**A hard explore/exploit gate was tried and removed the same day (D66).** Two new rungs — a
+threshold-based commit/release gate, and the same gate wrapped around the D61-selected checkpoint's
+own action choices instead of a sweep — both measured *worse* than the camper baseline on censored
+intercept time and coverage. The code was removed after being measured; `D66` stays as the record
+and `docs/project/PHASE_SWITCH_FUTURE_WORK.md` carries the two directions (an observation feature,
+or a jointly-learned phase/band action) still worth trying if this line of work is picked up again.
 
 **The environment was frozen on 2026-09-04 (D42).** `rfenv/constants.py` is closed — band
 geometry, slot clock, dwell schedule, `N₀`, `σ`, `γ`, `PD_POPULATION` — and

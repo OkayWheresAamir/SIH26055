@@ -32,8 +32,12 @@ ladder had six rungs and claimed seven.
 
 **Package layout.** One rung family per file: `guard.py` (the deployability
 contract), `simple.py` (rungs 1-3), `camper.py` (rung 4 + its truth-fed twin),
-`recency.py` (rung 5), `apfeld.py` (rungs 6/6a), `oracle.py` (the ceiling line),
-`ladder.py` (the registry that ties every rung together).
+`recency.py` (rung 5), `apfeld.py` (rungs 6/6a), `oracle.py` (the ceiling
+line), `ladder.py` (the registry that ties every rung together).
+
+**A hard explore/exploit gate (rungs 12/13) was tried and removed (D66).**
+Measured worse than the camper it was meant to fix. See
+`docs/project/PHASE_SWITCH_FUTURE_WORK.md` for what's still worth trying.
 """
 
 from __future__ import annotations
