@@ -3,9 +3,14 @@
 All deliberately naive first passes (RL_TEAM_HANDOFF.md §15 Day 1):
 library-default hyperparameters, nothing tuned. Each base variant (rungs 7, 8,
 9 -- not their lettered siblings) was specifically trained with `--reward hit_z`
-(D29's candidate 1) -- pass that flag explicitly if reproducing one, since
-`env.DEFAULT_REWARD` has since moved to `first_intercept` and no longer matches.
-See `dqn.py` (rung 7), `ppo.py` (rung 8) and `recurrent_ppo.py` (rung 9).
+(D29's original candidate 1). **That flag no longer reproduces anything**:
+`hit_z` and `hit_y` were retired from `REWARDS` 2026-09-10 after both failed
+D62's screen, so rungs 7 and 7a/8's base variants are permanently unloadable
+(they already were, from D49's observation-width change) and unreproducible.
+`env.DEFAULT_REWARD` is `reward_balance` -- the only candidate that currently
+passes the screen; see `python -m rfenv.reward_gate` before training on
+anything else. See `dqn.py` (rung 7), `ppo.py` (rung 8) and
+`recurrent_ppo.py` (rung 9).
 
 **Package layout, built for more than one algorithm.** `make_train_env` (the
 `ScanEnv(pool=..., reward=...)` factory) is algorithm-agnostic -- any SB3(-contrib)
@@ -22,16 +27,16 @@ already using those names); PPO and RecurrentPPO are reached explicitly as
 
 Usage::
 
-    python -m rfenv.rl --check-env                                   # DQN sanity check only, no training
-    python -m rfenv.rl --reward hit_z                                 # train DQN on hit_z, 20,000 steps (rung 7's own setting)
-    python -m rfenv.rl --reward hit_y --timesteps 100000 --seed 1     # a different reward candidate (D29)
-    python -m rfenv.rl --checkpoint runs/checkpoints/dqn_hit_y.zip --reward hit_y
+    python -m rfenv.rl --check-env                                        # DQN sanity check only, no training
+    python -m rfenv.rl --reward reward_balance                           # train DQN, 20,000 steps -- the only candidate D62 currently passes
+    python -m rfenv.rl --reward greedy --timesteps 100000 --seed 1       # a different candidate (D29, D57) -- run reward_gate first
+    python -m rfenv.rl --checkpoint runs/checkpoints/dqn_greedy.zip --reward greedy
 
-    python -m rfenv.rl.ppo --check-env                                # PPO's own CLI, same shape
-    python -m rfenv.rl.ppo --checkpoint runs/checkpoints/ppo_hit_y.zip --reward hit_y
+    python -m rfenv.rl.ppo --check-env                                    # PPO's own CLI, same shape
+    python -m rfenv.rl.ppo --checkpoint runs/checkpoints/ppo_balance.zip --reward reward_balance
 
-    python -m rfenv.rl.recurrent_ppo --check-env                      # RecurrentPPO's own CLI, same shape
-    python -m rfenv.rl.recurrent_ppo --checkpoint runs/checkpoints/recurrent_ppo_hit_y.zip --reward hit_y
+    python -m rfenv.rl.recurrent_ppo --check-env                          # RecurrentPPO's own CLI, same shape
+    python -m rfenv.rl.recurrent_ppo --checkpoint runs/checkpoints/recurrent_ppo_balance.zip --reward reward_balance
 
 **Every checkpoint written here gets a `.json` manifest beside it**, from the
 shared helper in `common.py` -- so `dqn.py`, `ppo.py`, `recurrent_ppo.py` and

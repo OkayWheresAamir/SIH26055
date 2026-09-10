@@ -174,14 +174,20 @@ def test_a_wide_dwell_scores_both_its_slots():
     dwell -- would halve a wide band's rate and make those seven bands strictly
     dominated.
 
-    Pinned to `reward="hit_z"` explicitly: D31's per-slot invariant is a property
-    of candidates 1/2 specifically, not of "whatever DEFAULT_REWARD happens to
-    be" -- candidate 3 (first_intercept, the current default) is documented as
-    deliberately *not* having it (flat per dwell instead).
+    **Not pinned to a registered candidate.** This used to run against `hit_z`,
+    the simplest candidate that was purely a per-slot Z count -- but `hit_z` and
+    `hit_y` were removed after both failed D62's screen (they rank the camper
+    above every sweeping policy), and none of the four remaining candidates is a
+    bare per-slot count: each mixes in a state-dependent term. So this tests
+    `ScanEnv.step`'s own slot-summation mechanics directly, via a reward function
+    built for exactly that and nothing else -- decoupled from whichever
+    candidates happen to be registered.
     """
+    raw_z_count = lambda dwell, newly, camp_slots, hr, vd, st, a: float(dwell.Z.sum())
     env = ScanEnv(scenario=Scenario(name="synthetic",
                                     contributions=[synthetic(0, [0, 1], -80.0)]),
-                  reward="hit_z")
+                  reward="reward_balance")
+    env._reward_fn = raw_z_count
     env.reset(seed=0)
     _, reward, *_ = env.step(0)          # band 0 is wide: slots 0 and 1, both occupied
     assert env.t == 2
@@ -192,15 +198,19 @@ def test_reward_per_unit_time_is_equal_across_dwell_widths():
     """The invariant D31 exists to protect. Two bands, identical occupancy on
     every slot, one wide and one narrow: the same reward per slot of airtime.
 
-    Pinned to `reward="hit_z"` for the same reason as the test above -- this is
-    a candidate 1/2 property, not a property of every registered reward.
+    **Not pinned to a registered candidate**, for the reason the test above
+    gives -- `hit_z`/`hit_y` are gone and no surviving candidate is a bare
+    per-slot count. Same raw-Z-count function as above.
     """
+    raw_z_count = lambda dwell, newly, camp_slots, hr, vd, st, a: float(dwell.Z.sum())
     sc = Scenario(name="synthetic", contributions=[
         synthetic(0, range(600), -80.0, label=0),   # wide band, always on
         synthetic(5, range(600), -80.0, label=1),   # narrow band, always on
     ])
-    wide = ScanEnv(scenario=sc, reward="hit_z"); episode(wide, lambda env: 0)
-    narrow = ScanEnv(scenario=sc, reward="hit_z"); episode(narrow, lambda env: 5)
+    wide = ScanEnv(scenario=sc, reward="reward_balance"); wide._reward_fn = raw_z_count
+    episode(wide, lambda env: 0)
+    narrow = ScanEnv(scenario=sc, reward="reward_balance"); narrow._reward_fn = raw_z_count
+    episode(narrow, lambda env: 5)
     assert wide.total_reward == narrow.total_reward == float(K.N_SLOTS)
 
 
@@ -221,8 +231,7 @@ def test_all_reward_candidates_run_and_differ():
     makes every unqualified `ScanEnv()` raise -- which is exactly what happened
     when candidate 3 was renamed and the default was not.
     """
-    assert set(REWARDS) == {
-        "hit_z", "hit_y", "reward_balance", "greedy", "explore", "weighted"}
+    assert set(REWARDS) == {"reward_balance", "greedy", "explore", "weighted"}
     assert DEFAULT_REWARD in REWARDS
 
     sc = Scenario.replay("config_921", "stare")
@@ -233,17 +242,12 @@ def test_all_reward_candidates_run_and_differ():
         episode(env, ROUND_ROBIN)
         totals[name] = env.total_reward
         n_steps[name] = env.n_steps
-    # Candidates 1 and 2 are non-negative by construction (they count hits), so
-    # a negative total from either would mean the per-slot accounting broke.
-    assert totals["hit_z"] > 0 and totals["hit_y"] > 0
-    # Candidate 3 is the only one that can go negative: its camping term
-    # subtracts against the chosen band's airtime share, with nothing bounding
-    # it below. That asymmetry is the candidate's whole point, so assert it is
-    # possible rather than asserting a range that would hide it.
+    # reward_balance is the only one of the four that can go negative: its
+    # camping term subtracts against the chosen band's airtime share, with
+    # nothing bounding it below. That asymmetry is the candidate's whole point,
+    # so assert it is possible rather than asserting a range that would hide it.
     assert isinstance(totals["reward_balance"], float)
-    # All three differ -- 1 and 2 are both per-slot counts over the same looks
-    # so they are close but not identical (Y misses weak cells, fires on empty
-    # ones); 3 is a different shape of reward entirely.
+    # All four differ -- four different shapes of reward, not variations on one.
     values = list(totals.values())
     assert len(set(values)) == len(values)
 
@@ -529,7 +533,7 @@ def test_the_greedy_explore_axis_has_the_shape_it_claims():
     sc = Scenario.replay("config_921", "stare")
 
     def total(reward_name=None, fn=None, policy="camp"):
-        env = ScanEnv(scenario=sc, reward=reward_name or "hit_z")
+        env = ScanEnv(scenario=sc, reward=reward_name or DEFAULT_REWARD)
         if fn is not None:
             env._reward_fn = fn
         env.reset(seed=0)
