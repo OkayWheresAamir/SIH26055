@@ -306,8 +306,11 @@ def test_a_rung_that_reaches_for_truth_fails(worlds):
 def test_the_observation_slices_match_the_environment(worlds):
     """`baselines.HIT_RATE` and friends still describe what `env` builds (D34).
 
-    A silent reordering of the 147-vector would leave every rung running and every
+    A silent reordering of the 146-vector would leave every rung running and every
     other test passing while rung 5 optimised staleness as though it were hit rate.
+    The units matter as much as the order since D55: rung 5 reads staleness as a
+    sweep count and would silently collapse into rung 4 if it arrived as an
+    episode fraction again.
     """
     scenario, _ = worlds["config_2"]
     env = ScanEnv(scenario=scenario)
@@ -324,18 +327,22 @@ def test_the_observation_slices_match_the_environment(worlds):
 
     slot = info["slot"]
     assert obs[B.CLOCK] == pytest.approx(slot / K.N_SLOTS, abs=1e-6)
-    # Only band 6 was ever looked at, so it holds all the airtime and no staleness.
-    assert visit[6] == pytest.approx(1.0, abs=1e-6)
+    # Only band 6 was ever looked at, so it holds all the airtime: in fair shares
+    # (D55) that is N_BANDS, not 1.0 -- one band with all 36 bands' worth.
+    assert visit[6] == pytest.approx(float(K.N_BANDS), abs=1e-4)
     assert visit[np.arange(K.N_BANDS) != 6].sum() == pytest.approx(0.0, abs=1e-6)
-    assert stale[0] == pytest.approx(1.0)          # never visited reads maximally stale
-    assert stale[6] < 0.02
+    # Never visited reads maximally stale: the episode in sweeps (D55), not 1.0.
+    assert stale[0] == pytest.approx(K.N_SLOTS / 43, rel=1e-5)
+    assert stale[6] < 0.25                         # under a quarter of a sweep old
     assert 0.0 <= hit_rate[6] <= 1.0
     assert hit_rate[np.arange(K.N_BANDS) != 6].sum() == pytest.approx(0.0)
     assert current[6] == pytest.approx(1.0)
     assert current.sum() == pytest.approx(1.0)     # one-hot: exactly one band current
-    # Camped on band 6 since t=0 with no switch, so the streak equals elapsed time.
-    assert obs[B.CAMP_TIME] == pytest.approx(obs[B.CLOCK], abs=1e-6)
+    # `CAMP_TIME` was asserted here against the clock until D55 dropped it from
+    # the vector: camped on band 6 since t=0, the streak equalled elapsed time.
+    # visit_density[6] above now carries that, and carries it for every band.
     assert 0.0 <= obs[B.MEASURED_DBM] <= 1.0
+    assert not hasattr(B, "CAMP_TIME"), "D55 removed camp_time from the observation"
 
 
 # --------------------------------------------------------------------------- #

@@ -3,8 +3,8 @@
 Plain `stable_baselines3.PPO` has no recurrent policy -- `MlpPolicy` is
 feed-forward only, so it conditions each action on exactly one D34
 observation and nothing else. `sb3_contrib.RecurrentPPO` swaps in
-`MlpLstmPolicy`: the same flat 147-vector goes in, but an LSTM inside the
-policy carries a hidden state across the episode, so the action can in
+`MlpL`MlpLstmPolicy`: the same flat 146-vector goes in, but an LSTM inside the
+ carries a hidden state across the episode, so the action can in
 principle depend on the whole scan history so far, not just the latest look.
 
 Mirrors `ppo.py`'s shape (`train`/`load_checkpoint`/`DEFAULT_CHECKPOINT`/CLI)
@@ -17,11 +17,20 @@ hidden state across calls, which the plain adapter has no slot for. A
 First pass, deliberately naive (mirrors RL_TEAM_HANDOFF.md §15 Day 1 for the
 other two algorithms): library-default hyperparameters, nothing tuned --
 including the LSTM's own hidden size (sb3-contrib's default, 256) and every
-other recurrent-specific knob. The registered checkpoint (rung 9's base
-variant, `recurrent_ppo_hit_z_20k`) is meant to be trained with
-`reward="hit_z"` -- pass that explicitly; `env.DEFAULT_REWARD` is
-`first_intercept`, not `hit_z`, so the unqualified default would silently
-mismatch the key's own name.
+other recurrent-specific knob. Whichever reward a checkpoint is trained on,
+pass `--reward` explicitly rather than leaning on `env.DEFAULT_REWARD`: that
+default has moved more than once, and a rung key naming a reward the checkpoint
+was not trained on is exactly the mismatch the manifest (`common.py`) now
+exists to make visible.
+
+**Inference on this rung samples rather than taking the argmax.**
+`RecurrentRLScheduler` defaults to `deterministic=False`, because measured on
+`lstm_gamma997` the policy's action distribution is broad (mean entropy 2.369
+against 3.584 for uniform-over-36, mean max-probability 0.206) while its mode
+is sticky -- the argmax landed on one band for 580 of 586 steps. Every "the
+agent learned to camp" result on this rung came from taking that argmax; the
+same checkpoint sampled visits 31 of 36 bands. See `common.py` for the full
+note.
 """
 
 from __future__ import annotations

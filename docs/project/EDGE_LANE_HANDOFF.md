@@ -5,16 +5,17 @@ who owns positioning, the edge and the tagline, and who needs to answer feasibil
 questions about this project without having built it.
 
 > **⚠ Correction, 2026-09-09 — this document was circulated with a stale number.**
-> Version 1 said the observation is **109 numbers**. It is now **147**: `36 × 4 + 3`. The RL lane
+> Version 1 said the observation is **109 numbers**. It is now **146**: `36 x 4 + 2` (D55; it
+> passed through 147 on the way). The RL lane
 > extended the vector after this brief was sent — `current_band` (a 36-wide one-hot of the band
-> just dwelt on), `camp_time` (consecutive slots spent there) and `measured_dbm` (the last dwell's
+> just dwelt on) and `measured_dbm` (the last dwell's
 > mean measured level), recorded as **D49**. The four occurrences below are corrected in place.
 >
-> **Nothing about the edge argument changes.** 147 floats in `[0, 1]` is the same order of
+> **Nothing about the edge argument changes.** 146 floats is the same order of
 > magnitude as 109 — still a few hundred bytes of input, still a two-layer MLP, still no scaling
 > layer. Every claim in §6 about deployability, memory and inference cost holds. What changes is
 > only the number itself, and the fact that **the width is not settled**: D34 left extensions to
-> the RL lane, and it has already moved three times (109 → 145 → 146 → 147) in a single session.
+> the RL lane, and it has already moved four times (109 → 145 → 146 → 147 → 146) in two sessions.
 > Quote it as "roughly 150 scalars, and rising" rather than as a fixed constant.
 
 **Owner of this file:** Aamir. **Regenerate the PDF** with
@@ -141,7 +142,7 @@ this project deliberately lives in *validation*, not in the design.
         |
         v
  L3  AGENT         a standard reinforcement-learning interface:
-                   36 possible actions, 147 numbers of observation
+                   36 possible actions, 146 numbers of observation
 ```
 
 **L0 — Scenario.** The dataset gives us 92 recorded situations. We do not replay them as-is for
@@ -165,10 +166,10 @@ false alarm) and sometimes miss a real but faint transmission. Those two error r
 receiver's character, they are measured, and — importantly — **no scheduler can change them.**
 
 **L3 — Agent.** A standard Gymnasium environment, the same interface every reinforcement-learning
-library in the world expects. The action is one of 36 bands. The observation is 147 numbers:
+library in the world expects. The action is one of 36 bands. The observation is 146 numbers:
 for each band, how often listening there has paid off, how often we have been there, how long
 since we last were, and whether it is the band we are on right now — plus how far through the
-episode we are, how long we have sat on the current band, and how loud the last look was. All 147
+episode we are, and how loud the last look was. All 146
 are built purely from the agent's own history. It has no other input.
 
 **Scale of the code:** eight Python modules, one per layer plus outputs, validation and
@@ -347,7 +348,7 @@ impossible, but it is expensive, and the cost should be known before it is pitch
 
 ### The information ones — these define what "deployable" means here
 
-6. **The agent sees only its own hits and misses.** 147 numbers, all derived from its own scan
+6. **The agent sees only its own hits and misses.** 146 numbers, all derived from its own scan
    history. No threat library, no pre-mission intelligence, no carry-over from the previous
    episode. This is the problem statement's *"absence of prior reliable intelligence"* taken
    literally. *Kills:* anything that starts "the agent knows that this band usually contains…".

@@ -37,6 +37,7 @@ import numpy as np
 from gymnasium import spaces
 
 from rfenv.constants import (
+    DWELL_SLOTS,
     EPISODE_S,
     GAMMA_DBM,
     N_BANDS,
@@ -45,6 +46,7 @@ from rfenv.constants import (
     NOISE_SIGMA_DB,
     SLOT_S,
 )
+
 from rfenv.receiver import DwellResult, Receiver
 from rfenv.scenario import EmitterPool, Scenario
 from rfenv.truth import TruthGrid
@@ -56,6 +58,13 @@ from rfenv.truth import TruthGrid
 # and every non-render part of the environment must work without it).
 _DBM_CLAMP_MIN = NOISE_FLOOR_DBM   # -120.0
 _DBM_CLAMP_MAX = -20.0
+
+# One pass over all 36 bands, in slots (43). Derived from the frozen dwell
+# schedule (D3/D42), not chosen -- `baselines.simple.SWEEP_SLOTS` computes the
+# identical quantity for the heuristic rungs. It is the natural unit for "how
+# overdue is this band": staleness is reported in these, not in episodes (D55).
+SWEEP_SLOTS = int(DWELL_SLOTS.sum())
+_SWEEPS_PER_EPISODE = N_SLOTS / SWEEP_SLOTS   # 600 / 43 = 13.95, staleness's ceiling
 
 # --------------------------------------------------------------------------- #
 # Reward candidates (D7, D29)
@@ -75,10 +84,11 @@ _DBM_CLAMP_MAX = -20.0
 # those are measurably the bands holding the densest emitter populations and the
 # slowest rotators.
 #
-# Candidate 3 is the exception: it is flat per dwell by design (a discovery is
-# worth the same whether the dwell that found it was 1 or 2 slots), so it does
-# not carry D31's per-slot invariant -- see `reward_first_intercept`'s own
-# docstring for why.
+# Candidate 3, `reward_balance`, carries the invariant too: its camping cost is
+# scaled by `dwell.n_slots` so it is charged per slot of airtime spent (D53).
+# Its predecessor under this slot, `reward_first_intercept`, was flat per dwell
+# instead -- a discovery being worth the same whether the dwell that found it ran
+# 1 or 2 slots -- and is kept as a commented-out draft at the end of this file.
 #
 # D28 puts the two headline metrics on opposite sides of the Y/Z line -- censored
 # intercept time needs Y = 1, interception ratio does not -- so no single reward
@@ -169,12 +179,26 @@ def reward_balance(
       `+(1.5 - visit_density[action]) * staleness`  favour bands that are both
                                                     under-visited and overdue
       `+0.5 * Z.sum()`                              real occupancy, as candidate 1
-      `-0.5 * camp_slots`                           a cost that grows with the
-                                                    length of the current streak
+      `-3.0 * visit_density[action] * n_slots`      a cost on airtime already
+                                                    concentrated on this band
 
-    The camping term is charged per slot of the *current streak*, not per dwell,
-    so it compounds the longer a policy stays put -- which is what makes leaving
-    cheaper than staying once a streak is long, rather than merely less good.
+    The camping cost is charged against **airtime share**, not against a
+    consecutive-repeat streak. An earlier draft used `-1.0 * camp_slots`, which
+    a policy defeats for free by alternating between two bands: `camp_slots`
+    resets the instant the action changes, so a 2-band ping-pong paid exactly
+    the same total as a full sweep. Measured over 3 seeds, that draft scored the
+    ping-pong (coverage 0.261, censored intercept time 16.55 s) at -218.9 and
+    round-robin (coverage 0.921, 2.47 s) at -228.5 -- it ranked the failure mode
+    *above* the sweep. `visit_density` has no such hole: sustained camping drives
+    it to 1.0 and alternating still holds it near 0.5, while round-robin keeps it
+    near 1/36. Under this term the same four policies score recency +327.7,
+    round-robin +324.3, ping-pong -505.4, camping -1361 -- correctly ordered, and
+    a ~1,700-wide range rather than the ~90,000 an unbounded streak counter
+    produced, which is a scale the value head can actually fit.
+
+    Scaled by `n_slots` so the cost is per slot of airtime spent, keeping D31's
+    per-slot invariant: a wide band costs twice as much because it consumes twice
+    as much of the episode.
 
     Reads `hit_rate`/`visit_density`/`staleness` at `action`, all three of which
     are observation components, so nothing here is information the policy could
@@ -182,21 +206,29 @@ def reward_balance(
     """
     reward = 0.0
 
+    # D55 rescaled two of this function's three array inputs for the *policy's*
+    # benefit -- visit_density into fair shares, staleness into sweeps. The
+    # coefficients below were calibrated against the episode-normalised versions
+    # (D53's four-policy table), so convert back here rather than re-tuning:
+    # this keeps the reward numerically identical across D55, which is the only
+    # way the D53 measurement survives an observation change. The reward and the
+    # observation still read the same quantities, as D52 requires -- the same
+    # quantities in different units.
+    visit_density = float(visit_density_array[action]) / N_BANDS
+    staleness = float(staleness_array[action]) / _SWEEPS_PER_EPISODE
+
     # Exploitation
     reward += 0.5 * hit_rate_array[action]
 
     # Exploration / airtime balance
-    reward += (
-        1.0
-        * (1.5 - visit_density_array[action])
-        * staleness_array[action]
-    )
+    reward += 1.0 * (1.5 - visit_density) * staleness
 
     # Actual useful occupancy
     reward += 0.5 * float(dwell.Z.sum())
 
-    # Increasing cost for consecutive camping
-    reward -= 1.0 * camp_slots
+    # Cost on concentrated airtime -- see the docstring for why this is charged
+    # against visit_density rather than against `camp_slots`.
+    reward -= 3.0 * visit_density * dwell.n_slots
 
     return float(reward)
     
@@ -288,7 +320,6 @@ class ScanEnv(gym.Env):
             raise ValueError(
                 f"render_mode must be one of {self.metadata['render_modes']}, got {render_mode!r}"
             )
-        self.SWEEP_SLOTS = 43
         self._scenario = scenario          # fixed world to replay every reset() (validation gates)
         self._pool = pool                  # draw a fresh scenario each reset() instead (RL training, D25/D32)
         self.reward_name = reward          # the REWARDS key, kept around for episode_metrics()/logging
@@ -298,13 +329,25 @@ class ScanEnv(gym.Env):
         self.render_mode = render_mode     # None (default, render() is a no-op) or "rgb_array"
 
         self.action_space = spaces.Discrete(N_BANDS)   # one of the 36 bands, chosen every step()
-        # 36 x 4 + 3 = 147 (D34). Every component is natively a fraction (the
-        # current-band block is a one-hot, still 0/1-valued; measured_dbm is
-        # clamped and linearly rescaled), so the box is the unit interval and
-        # no scaling layer is needed anywhere.
-        self.observation_space = spaces.Box(
-            low=0.0, high=1.0, shape=(N_BANDS * 4 + 3,), dtype=np.float32
-        )
+        # 36 x 4 + 2 = 146 (D34, extended by D49, rescaled by D55).
+        #
+        # **The box is no longer the unit interval**, and that is the whole point
+        # of D55. Two blocks are deliberately scaled past 1.0 so that 1.0 means
+        # something in each of them rather than "the theoretical maximum nobody
+        # reaches": visit_density is airtime share over *fair* share, so 1.0 is
+        # equal airtime and 36.0 is a fully camped episode; staleness is measured
+        # in reference sweeps, so 1.0 is "one full pass overdue" and 13.95 is a
+        # band untouched all episode. Under the old episode-normalised scaling
+        # both sat in the bottom tenth of [0, 1] -- measured, visit_density had
+        # mean 0.0278 and p99 0.065, staleness mean 0.070 -- which is why rung 5
+        # has to divide staleness back out by hand to work at all
+        # (`baselines/recency.py`). An honest box beats a tidy one; SB3 does not
+        # rescale inputs, so the numbers the network sees are these.
+        low = np.zeros(N_BANDS * 4 + 2, dtype=np.float32)
+        high = np.ones(N_BANDS * 4 + 2, dtype=np.float32)
+        high[N_BANDS:2 * N_BANDS] = float(N_BANDS)          # visit_density, in fair shares
+        high[2 * N_BANDS:3 * N_BANDS] = _SWEEPS_PER_EPISODE  # staleness, in sweeps
+        self.observation_space = spaces.Box(low=low, high=high, dtype=np.float32)
 
         # Placeholders only -- the real values are per-episode state, built
         # fresh by reset() (never carried from one episode into the next, D20).
@@ -340,7 +383,7 @@ class ScanEnv(gym.Env):
         self._last_slot = np.full(N_BANDS, -1, dtype=np.int64)     # slot of the last dwell per band, -1 = never -> staleness
         self._last_hit_slot = np.full(N_BANDS, -1, dtype=np.int64)  # slot of the last declared hit per band, -1 = never (episode log only, not in the observation)
         self._prev_action = -1        # last action taken; -1 sentinel so step() 1 always starts a fresh streak
-        self._camp_slots = 0          # length of the current same-band streak, in slots -> camp_time
+        self._camp_slots = 0          # length of the current same-band streak, in slots (reward arg only since D55)
         # Never-measured reads as the noise floor -- quietest possible, not the
         # loudest -- consistent with every episode starting cold (D20): no
         # measurement carries over from a previous episode.
@@ -378,55 +421,52 @@ class ScanEnv(gym.Env):
             raise ValueError(f"action {action} outside 0..{N_BANDS - 1}")
         if self.t >= N_SLOTS:
             raise RuntimeError("episode is over; call reset()")
-        # Staleness of the band BEFORE this dwell begins.
-        if self._last_slot[action] >= 0:
-            staleness_before = (
-                self.t - self._last_slot[action]
-            ) / N_SLOTS
-        else:
-            # Never visited = maximally stale
-            staleness_before = 1.0
-        
-        
+        # The three arrays below are read by the reward, at `action` only, and
+        # every one of them is measured BEFORE this dwell is applied -- so a
+        # reward prices the band as the agent saw it when it chose, not as the
+        # dwell it is being paid for has already made it. They mirror the
+        # corresponding blocks of `_observation()` exactly; nothing here is a
+        # quantity the policy could not have conditioned on itself (D29).
         self._current_band = action
         elapsed = max(self.t, 1)
 
-        # Hit rate for selected band
+        # Declared hits per slot of airtime spent on this band, 0 where it has
+        # never been looked at.
         self._hit_rate_array[action] = (
             self._hits[action] / self._slots_looked[action]
             if self._slots_looked[action] > 0
             else 0.0
         )
-        if self._slots_looked[action] > 0:
-            hit_rate = (
-                self._hits[action]
-                / self._slots_looked[action]
-            )
-        else:
-            hit_rate = 0.0
+
+        # Airtime share on this band, in fair shares: 1.0 is an equal cut of the
+        # episode so far, 36.0 is all of it. Same scaling as `_observation()`
+        # (D55) -- these arrays exist to be the observation's numbers.
         self._visit_density_array[action] = (
             self._slots_looked[action]
             / elapsed
+            * N_BANDS
         )
 
-        # Fraction of episode airtime already spent on this band
-        visit_density = (
-            self._slots_looked[action]
-            / elapsed
-        )
-
-        self._staleness_array[action] = (
-            self._last_slot[action]
-            / N_SLOTS
-        )
-
-        # How long this band has been neglected
+        # How long this band has been neglected: slots since its last dwell, in
+        # reference sweeps (D55), with never-visited reading the episode's worth
+        # of sweeps (maximally stale). This is the same formula and the same
+        # convention `_observation()` uses, and it has to be -- `reward_balance` prices
+        # exploration off this array and its docstring promises the agent could
+        # have acted on the same numbers. It previously stored
+        # `_last_slot[action] / N_SLOTS`, which is *when* the band was last seen
+        # rather than *how long ago*: the two are inverses, so the exploration
+        # term paid most for revisiting the freshest band and paid a small
+        # negative for returning to one abandoned 500 slots earlier (its element
+        # was still the -1/600 written on its first-ever visit). Measured on a
+        # seed-0 episode at t=503: +0.419 for the band just left against -0.0025
+        # for a band untouched since slot 1.
         if self._last_slot[action] >= 0:
             staleness = (
                 self.t - self._last_slot[action]
-            ) / N_SLOTS
+            ) / SWEEP_SLOTS
         else:
-            staleness = 1.0
+            staleness = _SWEEPS_PER_EPISODE
+        self._staleness_array[action] = staleness
         dwell = self.receiver.dwell(self.grid, action, self.t)
 
         # This dwell's mean measured level -- S + noise, what the receiver's
@@ -543,7 +583,8 @@ class ScanEnv(gym.Env):
     # ----------------------------------------------------------- observation --
 
     def _observation(self) -> np.ndarray:
-        """The 147-vector (D34), built from the agent's own scan history alone.
+        """The 146-vector (D34, extended by D49, rescaled by D55), built from the
+        agent's own scan history alone.
 
         Each of the three per-band quantities maps onto one of the PS's own
         figures of merit, which is why these three:
@@ -559,21 +600,30 @@ class ScanEnv(gym.Env):
         "I last looked here a while ago" (`staleness` alone conflates the two,
         since the currently-tuned band always reads staleness 0 too).
 
-        A scalar, `camp_time`, is how long the *current streak* on this band has
-        run: consecutive slots spent on whatever band `current_band` points to,
-        reset the instant the action changes (see `ScanEnv.step`), normalised by
-        `N_SLOTS`. `visit_density` is the wrong signal for this -- it is airtime
-        share over the *whole* episode, so a band camped early and abandoned
-        still reads high density long after the agent moved on; `camp_time`
-        collapses back to 0 the moment it leaves.
+        **Two of the three per-band blocks are scaled so that 1.0 means something
+        (D55).** `visit_density` is airtime share divided by *fair* share, so 1.0
+        is an equal cut and 36.0 a fully camped episode; `staleness` is measured
+        in reference sweeps (43 slots), so 1.0 is one full pass overdue and
+        600/43 is a band untouched all episode. D34 divided both by the episode
+        instead, which pinned visit_density's mean at 1/36 and made staleness
+        bimodal -- measured means of 0.028 and 0.070 with everything unvisited
+        piled on the 1.0 ceiling. Rung 5 could not use staleness in that form and
+        multiplied it back out itself; that correction now lives here, where
+        every policy gets it.
+
+        A scalar `camp_time` sat between the clock and `measured_dbm` until D55.
+        It was the current same-band streak over `N_SLOTS`, and measured under a
+        non-camping policy it took exactly two values -- it could not move unless
+        the agent was already camping, and `visit_density` says the same thing
+        continuously and earlier.
 
         A final scalar, `measured_dbm`, is the mean of `S + noise` over the most
         recent dwell's slots -- what the receiver's detector actually read
         (D19: observable, unlike the truth-side `S` alone), clamped to
         `[_DBM_CLAMP_MIN, _DBM_CLAMP_MAX]` and linearly rescaled to `[0, 1]` to
         fit the box. Global, not per-band: it reports only the band just left,
-        the same scope `camp_time` and `current_band` already have. Before any
-        dwell it reads as the clamp floor (quietest possible) -- see `reset()`.
+        the same scope `current_band` already has. Before any dwell it reads as
+        the clamp floor (quietest possible) -- see `reset()`.
 
         Nothing truth-side appears here. `Z`, per-emitter levels and `first_e` are
         all available to the *reward* (D29) and all absent from this vector.
@@ -589,14 +639,36 @@ class ScanEnv(gym.Env):
         hit_rate = np.zeros(N_BANDS, dtype=np.float64)
         np.divide(self._hits, self._slots_looked, out=hit_rate, where=looked)
 
-        # Sums to 1 across bands once anything has been looked at: it is the
-        # fraction of spent airtime, and airtime is the only currency (D31).
-        visit_density = self._slots_looked / elapsed
+        # Airtime share, expressed in **fair shares** rather than as a fraction
+        # of the episode (D55). The raw fraction sums to 1 across bands (airtime
+        # is the only currency, D31), which pins its mean at exactly 1/36 =
+        # 0.0278 and -- measured over 1,506 round-robin steps -- its p99 at 0.065.
+        # A feature that never leaves the bottom tenth of its declared range is a
+        # feature the first layer has to amplify before it can use it, and this
+        # is the one `reward_balance` prices camping off. Multiplied by N_BANDS,
+        # 1.0 is "this band got exactly its equal share", <1 under-visited, >1
+        # over-visited, and 36.0 a fully camped episode.
+        visit_density = self._slots_looked / elapsed * N_BANDS
 
-        # Never-visited reads 1.0, maximally stale -- an unexplored band should
-        # look at least as attractive as one last seen at t=0.
+        # Neglect, in **reference sweeps** rather than in episodes (D55). D34
+        # divided by N_SLOTS, which made this bimodal and useless in between:
+        # measured mean 0.070 with p99 exactly 1.0, because everything visited
+        # sits near zero and everything never-visited sits at the 1.0 ceiling.
+        # Rung 5 -- the bar the RL rungs have to clear -- could not use it in
+        # that form and multiplies it straight back out by N_SLOTS/SWEEP_SLOTS;
+        # its own docstring records that skipping that step collapses the rung
+        # into rung 4 (coverage 0.526 against round-robin's 0.895). Doing the
+        # division here instead means the heuristic and the agent read the same
+        # well-scaled number, and the agent no longer has to rediscover a
+        # constant that follows from the frozen dwell schedule.
+        #
+        # 1.0 now means "one full pass overdue". Never-visited reads the ceiling,
+        # _SWEEPS_PER_EPISODE -- maximally stale, as before, and still at least
+        # as attractive as any band last seen at t=0.
         staleness = np.where(
-            self._last_slot >= 0, (self.t - self._last_slot) / N_SLOTS, 1.0
+            self._last_slot >= 0,
+            (self.t - self._last_slot) / SWEEP_SLOTS,
+            _SWEEPS_PER_EPISODE,
         )
 
         # One-hot: 1.0 at whichever band the most recent dwell was on, 0.0
@@ -606,16 +678,22 @@ class ScanEnv(gym.Env):
         current_band = np.zeros(N_BANDS, dtype=np.float64)
         current_band[self._current_band] = 1.0
 
-        # Already a fraction of N_SLOTS by construction (_camp_slots counts up
-        # to at most N_SLOTS, an episode camped start-to-finish), so no clamp
-        # needed here the way measured_dbm below needs one.
-        camp_time = self._camp_slots / N_SLOTS
+        # `camp_time` (the current same-band streak / N_SLOTS) was here until
+        # D55 and is deliberately gone. Measured under a non-camping policy it
+        # took exactly two values, 1/600 and 2/600 -- a constant, because the
+        # streak cannot exceed one dwell unless the agent is already camping. It
+        # is a gauge that only moves once the wrong thing is happening, and
+        # visit_density says the same thing earlier and continuously. Its only
+        # consumer, `reward_balance`'s `-1.0 * camp_slots` term, was replaced in
+        # D53. `self._camp_slots` is still maintained: every reward candidate
+        # takes it in its signature (D31's uniform call shape) and
+        # `episode_metrics()` reports the streak.
 
         # measured_dbm needs a manual normalisation step, unlike every other
         # component above: it is a real dBm value with no natural [0,1] range
-        # (S + noise can fall anywhere), whereas hit_rate/visit_density/
-        # staleness/camp_time/current_band/the clock are all ratios or one-hot
-        # flags that land in [0,1] on their own.
+        # (S + noise can fall anywhere), whereas hit_rate/current_band/the clock
+        # are ratios or one-hot flags that land in [0,1] on their own, and
+        # visit_density/staleness carry their own declared ceilings (D55).
         #   1. Clamp the raw reading into the fixed window
         #      [_DBM_CLAMP_MIN, _DBM_CLAMP_MAX] = [-120, -20] dBm, so one
         #      unusually loud or quiet dwell can't blow the box's declared
@@ -629,7 +707,7 @@ class ScanEnv(gym.Env):
 
         return np.concatenate([
             hit_rate, visit_density, staleness, current_band,
-            [self.t / N_SLOTS], [camp_time], [measured_dbm]]).astype(np.float32)
+            [self.t / N_SLOTS], [measured_dbm]]).astype(np.float32)
 
     # ------------------------------------------------------------------ info --
 

@@ -63,7 +63,12 @@ def _dqn_rung_factory(checkpoint_path: Path) -> Callable:
     def factory(rng, grid):
         from rfenv.rl import RLScheduler
         from rfenv.rl.dqn import load_checkpoint
-        return RLScheduler(load_checkpoint(checkpoint_path))
+        # `deterministic=True`, against `RLScheduler`'s own default, and the one
+        # rung that should be: a DQN has no stochastic policy to sample from, so
+        # SB3's `deterministic=False` means epsilon-greedy *exploration* noise
+        # (`exploration_final_eps`, 0.05 by default) -- a training artefact, not
+        # a learned distribution. The greedy argmax is this rung's policy.
+        return RLScheduler(load_checkpoint(checkpoint_path), deterministic=True)
     return factory
 
 
@@ -74,6 +79,7 @@ def _ppo_rung_factory(checkpoint_path: Path) -> Callable:
     def factory(rng, grid):
         from rfenv.rl import RLScheduler
         from rfenv.rl.ppo import load_checkpoint
+        _seed_torch(rng)
         return RLScheduler(load_checkpoint(checkpoint_path))
     return factory
 
@@ -91,8 +97,29 @@ def _recurrent_ppo_rung_factory(checkpoint_path: Path) -> Callable:
     def factory(rng, grid):
         from rfenv.rl.common import RecurrentRLScheduler
         from rfenv.rl.recurrent_ppo import load_checkpoint
+        _seed_torch(rng)
         return RecurrentRLScheduler(load_checkpoint(checkpoint_path))
     return factory
+
+
+def _seed_torch(rng) -> None:
+    """Fold this episode's rung stream into torch's RNG, so a sampled policy
+    still reproduces from `(seed, rung key)` alone.
+
+    `RLScheduler`/`RecurrentRLScheduler` default to sampling rather than taking
+    the argmax (see `common.py` for the measurement behind that), and SB3's
+    `.predict()` draws that sample from torch's *global* generator -- it takes no
+    generator argument. Without this, two runs of `compare.py` at the same seed
+    would give a sampled rung different actions, and `EVALUATION.md` §7's
+    "identical scenarios and seeds" would quietly stop holding for rungs 8 and 9.
+
+    Global state, unavoidably, which is why it is set here per rung rather than
+    once per process: `make()` already derives `rng` from the episode seed and
+    the rung's own key, so each rung re-seeds torch from its own stream and no
+    rung's draw depends on where it sits in the ladder.
+    """
+    import torch
+    torch.manual_seed(int(rng.integers(2 ** 31)))
 
 
 # Literals, not imports from rfenv.rl.dqn/ppo/recurrent_ppo.DEFAULT_CHECKPOINT --
@@ -207,6 +234,11 @@ LADDER: tuple[Rung, ...] = (
             "other rung, but the policy carries an LSTM hidden state across "
             "the episode instead of acting on each look alone.",
             _recurrent_ppo_rung_factory(Path("runs/checkpoints/lstm_ppo4_400000_steps.zip"))),
+
+    Rung("lstm_balance_100k_1M", "9", "Recurrent PPO (reward_balance, 100k)",
+     "Ours. Trained on reward_balance after D52/D53/D55, 100k timesteps.",
+     _recurrent_ppo_rung_factory(Path("runs/checkpoints/lstm_balance_1M_s1.zip"))),
+
 
 
     Rung("camper_oracle", "—", "Greedy static, truth-fed (D14's camper)",

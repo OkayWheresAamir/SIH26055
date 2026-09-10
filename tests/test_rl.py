@@ -40,6 +40,11 @@ from rfenv.scenario import Scenario
 
 CONFIG_ID = "config_81"   # 1 detectable emitter -- the cheap/fast case
 
+# Derived, never hardcoded: the observation has changed width three times
+# (109 -> 145 -> 146 -> 147 -> 146, D34/D49/D55) and every literal in this file
+# had to be chased down each time.
+OBS_WIDTH = common.current_observation_width()
+
 
 def _key_for_rung(rung_number: str) -> str:
     """The registered key for a rung number, not a hardcoded string.
@@ -66,7 +71,7 @@ def untrained_model():
 def test_make_train_env_builds_a_valid_scan_env():
     from gymnasium.utils.env_checker import check_env
     env = rl.make_train_env()
-    assert env.observation_space.shape == (147,)
+    assert env.observation_space.shape == (OBS_WIDTH,)
     assert env.action_space.n == 36
     check_env(env, skip_render_check=True)
 
@@ -106,7 +111,7 @@ def test_rl_scheduler_returns_plain_python_int(scenario, untrained_model):
 
 
 def test_rl_scheduler_ignores_info(untrained_model):
-    obs = np.zeros(147, dtype=np.float32)
+    obs = np.zeros(OBS_WIDTH, dtype=np.float32)
     action = rl.RLScheduler(untrained_model)(obs, {})
     assert isinstance(action, int)
     assert 0 <= action < 36
@@ -146,7 +151,7 @@ def test_checkpoint_round_trips(tmp_path, untrained_model):
     path = tmp_path / "m.zip"
     untrained_model.save(path)
     loaded = rl.load_checkpoint(path)
-    obs = np.zeros(147, dtype=np.float32)
+    obs = np.zeros(OBS_WIDTH, dtype=np.float32)
     a1, _ = untrained_model.predict(obs, deterministic=True)
     a2, _ = loaded.predict(obs, deterministic=True)
     assert int(a1) == int(a2)
@@ -157,7 +162,7 @@ def test_train_produces_a_loadable_checkpoint(tmp_path):
     rl.train(reward="hit_z", total_timesteps=10, seed=0, checkpoint=path)
     assert path.exists()
     model = rl.load_checkpoint(path)
-    action, _ = model.predict(np.zeros(147, dtype=np.float32), deterministic=True)
+    action, _ = model.predict(np.zeros(OBS_WIDTH, dtype=np.float32), deterministic=True)
     assert 0 <= int(action) < 36
 
 
@@ -193,7 +198,7 @@ def test_checkpoint_freq_saves_intermediate_checkpoints(tmp_path):
     intermediate = tmp_path / "deep_q_network_s1.zip"
     assert intermediate.exists()
     model = dqn.load_checkpoint(intermediate)
-    action, _ = model.predict(np.zeros(147, dtype=np.float32), deterministic=True)
+    action, _ = model.predict(np.zeros(OBS_WIDTH, dtype=np.float32), deterministic=True)
     assert 0 <= int(action) < 36
 
 
@@ -312,7 +317,7 @@ def test_ppo_checkpoint_round_trips(tmp_path, ppo_untrained_model):
     path = tmp_path / "m.zip"
     ppo_untrained_model.save(path)
     loaded = ppo.load_checkpoint(path)
-    obs = np.zeros(147, dtype=np.float32)
+    obs = np.zeros(OBS_WIDTH, dtype=np.float32)
     a1, _ = ppo_untrained_model.predict(obs, deterministic=True)
     a2, _ = loaded.predict(obs, deterministic=True)
     assert int(a1) == int(a2)
@@ -323,7 +328,7 @@ def test_ppo_train_produces_a_loadable_checkpoint(tmp_path):
     ppo.train(reward="hit_z", total_timesteps=64, seed=0, checkpoint=path)
     assert path.exists()
     model = ppo.load_checkpoint(path)
-    action, _ = model.predict(np.zeros(147, dtype=np.float32), deterministic=True)
+    action, _ = model.predict(np.zeros(OBS_WIDTH, dtype=np.float32), deterministic=True)
     assert 0 <= int(action) < 36
 
 
@@ -369,7 +374,7 @@ def test_recurrent_ppo_checkpoint_round_trips(tmp_path, recurrent_untrained_mode
     path = tmp_path / "m.zip"
     recurrent_untrained_model.save(path)
     loaded = recurrent_ppo.load_checkpoint(path)
-    obs = np.zeros(147, dtype=np.float32)
+    obs = np.zeros(OBS_WIDTH, dtype=np.float32)
     episode_start = np.array([True])
     a1, _ = recurrent_untrained_model.predict(obs, state=None, episode_start=episode_start, deterministic=True)
     a2, _ = loaded.predict(obs, state=None, episode_start=episode_start, deterministic=True)
@@ -382,7 +387,7 @@ def test_recurrent_ppo_train_produces_a_loadable_checkpoint(tmp_path):
     assert path.exists()
     model = recurrent_ppo.load_checkpoint(path)
     action, _ = model.predict(
-        np.zeros(147, dtype=np.float32), state=None, episode_start=np.array([True]), deterministic=True,
+        np.zeros(OBS_WIDTH, dtype=np.float32), state=None, episode_start=np.array([True]), deterministic=True,
     )
     assert 0 <= int(action) < 36
 

@@ -15,12 +15,15 @@ import numpy as np
 from rfenv.constants import N_BANDS
 
 HIT_RATE = slice(0, N_BANDS)          # declared hits per slot looked, per band
-VISIT_DENSITY = slice(N_BANDS, 2 * N_BANDS)      # fraction of airtime spent there
-STALENESS = slice(2 * N_BANDS, 3 * N_BANDS)      # (t - last visit) / N_SLOTS
+VISIT_DENSITY = slice(N_BANDS, 2 * N_BANDS)      # airtime share / fair share; 1.0 = equal cut (D55)
+STALENESS = slice(2 * N_BANDS, 3 * N_BANDS)      # (t - last visit) / SWEEP_SLOTS, in sweeps (D55)
 CURRENT_BAND = slice(3 * N_BANDS, 4 * N_BANDS)   # one-hot of the band just dwelt on
 CLOCK = 4 * N_BANDS                   # normalised episode time
-CAMP_TIME = 4 * N_BANDS + 1           # consecutive slots on current_band / N_SLOTS
-MEASURED_DBM = 4 * N_BANDS + 2        # last dwell's mean measured dBm, clamped+scaled
+MEASURED_DBM = 4 * N_BANDS + 1        # last dwell's mean measured dBm, clamped+scaled
+
+# `CAMP_TIME` sat at 4 * N_BANDS + 1 until D55 removed it from the vector. It is not
+# reinstated here: a policy that wants the streak reads visit_density, which says
+# the same thing without waiting for the agent to commit to camping first.
 
 # The keys of `info` a deployable scheduler may read. `slot`/`time_s` are the
 # receiver's own clock; `band`, `dwell_slots` and `Y` are what its last look did

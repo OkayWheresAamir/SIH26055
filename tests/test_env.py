@@ -77,18 +77,29 @@ def test_rgb_array_render_is_a_valid_frame():
 
 
 def test_spaces_are_the_specified_ones():
-    """Discrete(36) and a 36x4+3 = 147 box (D34). Every component of the
-    observation is natively a fraction, so the box is the unit interval."""
+    """Discrete(36) and a 36x4+2 = 146 box (D34, extended by D49, rescaled by D55).
+
+    The box is **not** the unit interval, which is the point of D55: two blocks
+    declare ceilings above 1.0 so that 1.0 means something inside them -- equal
+    airtime for visit_density, one full pass overdue for staleness. A box that
+    lied about those bounds would be caught by `check_env`, and a box that kept
+    them at 1.0 would be the compressed scaling D55 removed.
+    """
     env = ScanEnv(scenario=Scenario.replay("config_59", "stare"))
     assert env.action_space.n == 36
-    assert env.observation_space.shape == (147,)
+    assert env.observation_space.shape == (146,)
     assert env.observation_space.dtype == np.float32
+
+    high = env.observation_space.high
+    assert (high[:36] == 1.0).all()                                   # hit_rate
+    assert high[36:72] == pytest.approx(36.0)                         # visit_density, fair shares
+    assert high[72:108] == pytest.approx(600 / 43, rel=1e-6)          # staleness, sweeps
+    assert (high[108:] == 1.0).all()                                  # one-hot, clock, dbm
 
     obs, _ = env.reset(seed=0)
     for _ in range(200):
         obs, *_ = env.step(int(env.np_random.integers(36)))
         assert env.observation_space.contains(obs)
-        assert (obs >= 0).all() and (obs <= 1).all()
 
 
 def test_rejects_an_action_outside_the_band_set():
@@ -224,8 +235,8 @@ def test_all_reward_candidates_run_and_differ():
     # a negative total from either would mean the per-slot accounting broke.
     assert totals["hit_z"] > 0 and totals["hit_y"] > 0
     # Candidate 3 is the only one that can go negative: its camping term
-    # subtracts 0.5 per slot of the current streak, with nothing bounding it
-    # below. That asymmetry is the candidate's whole point, so assert it is
+    # subtracts against the chosen band's airtime share, with nothing bounding
+    # it below. That asymmetry is the candidate's whole point, so assert it is
     # possible rather than asserting a range that would hide it.
     assert isinstance(totals["reward_balance"], float)
     # All three differ -- 1 and 2 are both per-slot counts over the same looks
@@ -233,6 +244,89 @@ def test_all_reward_candidates_run_and_differ():
     # ones); 3 is a different shape of reward entirely.
     values = list(totals.values())
     assert len(set(values)) == len(values)
+
+
+def test_the_reward_reads_the_same_staleness_the_observation_reports():
+    """`reward_balance` promises it prices exploration off observation
+    components. `_staleness_array` once held `_last_slot[action] / N_SLOTS` --
+    *when* a band was last seen, the inverse of *how long ago* -- so the
+    exploration term paid most for revisiting the freshest band and paid a small
+    negative for returning to one abandoned hundreds of slots earlier.
+
+    Nothing caught it because the array is reward-facing only: `_observation()`
+    recomputes staleness from the raw counters and was always right. This pins
+    the two together at the one index the reward actually reads.
+    """
+    env = ScanEnv(pool=EmitterPool.from_train(), reward="reward_balance")
+    env.reset(seed=0)
+    env.step(0)                             # band 0 seen early, then abandoned
+    for _ in range(200):
+        env.step(18)                        # burn the clock elsewhere
+
+    # The array is written before the dwell it prices, the observation after it,
+    # so read the array at the moment of choice and compare against what the
+    # observation said one step earlier.
+    for band in (0, 9):                     # long-abandoned, never-visited
+        before = env._observation()[2 * K.N_BANDS + band]
+        env.step(band)
+        assert env._staleness_array[band] == pytest.approx(before)
+
+    # Never visited is maximally stale, not minimally -- the inverted version
+    # read -1/600 here, because the element still held the sentinel `_last_slot`
+    # of -1 divided by the episode length. Since D55 "maximally stale" is the
+    # episode measured in reference sweeps, N_SLOTS / SWEEP_SLOTS, not 1.0.
+    assert env._staleness_array[9] == pytest.approx(K.N_SLOTS / 43)
+
+    # And the ordering the exploration term depends on: a band abandoned 200
+    # slots ago must read staler than the one just left. A fresh episode,
+    # because the loop above has just re-visited band 0.
+    env = ScanEnv(pool=EmitterPool.from_train(), reward="reward_balance")
+    env.reset(seed=0)
+    env.step(0)
+    for _ in range(200):
+        env.step(18)
+    env.step(0)                             # re-price band 0 after the neglect
+    env.step(18)                            # re-price band 18, just left
+    assert env._staleness_array[0] > env._staleness_array[18]
+
+
+def test_reward_balance_ranks_a_sweep_above_a_two_band_pingpong():
+    """The hole that `-1.0 * camp_slots` left open.
+
+    `camp_slots` resets the instant the action changes, so alternating between
+    two bands paid exactly what a full sweep paid. Measured over three sampled
+    scenarios, that version scored a 2-band ping-pong (coverage 0.261, censored
+    intercept time 16.55 s) above round-robin (coverage 0.921, 2.47 s) -- it
+    ranked the failure mode D14 exists to demonstrate above the floor the ladder
+    is built on. Charging against `visit_density` closes it, because alternating
+    holds density near 0.5 where a sweep holds it near 1/36.
+
+    Asserted as an ordering, not against literals: the numbers move with the
+    scenario draw, the ordering is the property.
+    """
+    pool = EmitterPool.from_train()
+
+    def total(pick):
+        rewards = []
+        for seed in (0, 1, 2):
+            env = ScanEnv(pool=pool, reward="reward_balance")
+            env.reset(seed=seed)
+            step = 0
+            while True:
+                _, _, terminated, _, _ = env.step(pick(step))
+                step += 1
+                if terminated:
+                    break
+            rewards.append(env.total_reward)
+        return float(np.mean(rewards))
+
+    sweep = total(lambda s: s % K.N_BANDS)
+    pingpong = total(lambda s: 18 + s % 2)
+    camp = total(lambda s: 18)
+
+    assert sweep > pingpong, "a ping-pong must not out-score a full sweep"
+    assert pingpong > camp, "camping must still be the worst of the three"
+    assert sweep > 0 > camp
 
 
 def test_an_unknown_reward_is_refused():
@@ -328,14 +422,15 @@ def test_every_episode_starts_cold():
     episode(env, ROUND_ROBIN, seed=1)
     again, _ = env.reset(seed=2)
     assert np.array_equal(first, again)
-    # staleness is 1.0 everywhere (nothing seen), hit rate and density are 0,
-    # current_band is a one-hot on band 0 (reset()'s initial _current_band),
-    # and the clock, camp_time and measured_dbm scalars are all 0 -- the last
-    # because reset() sets _last_measured_dbm to the clamp floor (D20: cold start).
+    # staleness is maximal everywhere (nothing seen) -- since D55 that ceiling is
+    # the episode's worth of sweeps, 600/43, not 1.0. Hit rate and density are 0,
+    # current_band is a one-hot on band 0 (reset()'s initial _current_band), and
+    # the clock and measured_dbm scalars are 0 -- the last because reset() sets
+    # _last_measured_dbm to the clamp floor (D20: cold start).
     assert (first[:36] == 0).all() and (first[36:72] == 0).all()
-    assert (first[72:108] == 1).all()
+    assert first[72:108] == pytest.approx(600 / 43, rel=1e-6)
     assert first[108] == 1 and (first[109:144] == 0).all()
-    assert first[144] == 0 and first[145] == 0 and first[146] == 0
+    assert first[144] == 0 and first[145] == 0
 
 
 # --------------------------------------------------------------------------- #
