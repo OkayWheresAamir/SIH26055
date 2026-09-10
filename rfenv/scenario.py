@@ -352,8 +352,42 @@ class EmitterPool:
 
     @classmethod
     def from_train(cls, *, rebuild: bool = False, sources=SOURCES) -> "EmitterPool":
+        """Every train-split emitter -- all 47 configs.
+
+        **This is the evaluation pool, not the training pool.** `compare.py` draws
+        its sampled scenarios from here, which is right: the headline is reported
+        over the whole development set. RL training must use
+        `split.training_pool()` instead, or the emitters it learns on are the same
+        ones it is scored against and the margin over a non-training baseline is
+        not real (see `rfenv/split.py`).
+        """
+        return cls.from_configs(list_configs("scan", TRAIN_SPLIT),
+                                rebuild=rebuild, sources=sources)
+
+    @classmethod
+    def from_configs(cls, config_ids, *, rebuild: bool = False,
+                     sources=SOURCES) -> "EmitterPool":
+        """A pool built from a named subset of the train split.
+
+        Splitting the config *list* is not enough to separate training from
+        evaluation, because the pool is assembled from the configs -- a scenario
+        sampled from a pool built over all 47 can contain an emitter from a config
+        that was supposed to be held back. This is the constructor that keeps the
+        two disjoint.
+        """
+        config_ids = list(config_ids)
+        if not config_ids:
+            raise ValueError("an emitter pool needs at least one config")
+        known = set(list_configs("scan", TRAIN_SPLIT))
+        unknown = [c for c in config_ids if c not in known]
+        if unknown:
+            raise ValueError(
+                f"not train-split configs: {unknown}. `from_configs` is for "
+                "subsets of the development set; the held-out split is reached "
+                "only through the explicit flag D8 requires."
+            )
         contribs, counts = [], []
-        for config_id in list_configs("scan", TRAIN_SPLIT):
+        for config_id in config_ids:
             seen = set()
             for source in sources:
                 got = load_contributions(config_id, source, TRAIN_SPLIT, rebuild=rebuild)

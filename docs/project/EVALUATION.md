@@ -310,20 +310,48 @@ why torch's generator is now seeded per rung.
    hold `recency`'s 3.20 s while multiplying its 0.110 interception ratio toward the camper's
    0.209 and the oracle's 0.658.**
 
-   **No registered reward candidate currently encodes that target (D56, open).** Measured over 8
-   seeds, `reward_balance` scores rung 5 at +277.2 and round-robin at +274.9 -- a per-seed
-   difference of **+2.3 +/- 11.7**, with rung 5 ahead on 4 of 8 -- against a scenario-to-scenario
-   spread of about 78. It separates catastrophe from competence by a very large margin (camping
-   -1361) and barely separates competence from excellence, so **round-robin is approximately the
-   ceiling it can teach**. An agent can satisfy the reward completely without approaching the
-   Pareto target this section sets. Recorded rather than fixed: D47's paired-dominance selection
-   rule has still never been run, and it is what should settle the choice.
+   **D56 claimed no candidate encodes that target. It was measured wrong and is withdrawn.**
+   It scored a hand-written `step % N_BANDS` sweep instead of rung 2 (`EQUAL_AIRTIME_CYCLE`, D43);
+   against the real rung, `reward_balance` separates rung 5 from rung 2 by **+59.0 +/- 19.4 on 8/8
+   seeds**. Every candidate is now screened before training (**D62**): rungs 2, 4, 5 and 6a under
+   each, 8 seeds, paired per seed. **`reward_balance` is the only one of six that passes** --
+   and **`hit_z` and `hit_y` both fail**, ranking rung 4 above every sweeping policy, which is D14's
+   tension in reward form. D47 is gated behind that screen and has still never been run.
+
+### The development split, and why no RL row is clean yet (D60, D61)
+
+**Until 2026-09-10 RL training sampled `EmitterPool.from_train()` -- every emitter in all 47
+development configs -- while this section's scenarios are those same 47 replays plus scenarios
+sampled from that same pool.** The heuristic rungs do not train, so the asymmetry ran one way. Any
+RL margin measured before that date includes an advantage no fielded scheduler would have.
+
+The 47 are now split **35 training / 12 validation** by a rule fixed in `rfenv/split.py` *before*
+anyone looked at which configs landed where, sampling systematically along detectable-emitter count
+so both halves span the difficulty range (training mean 40.9, validation 40.2). The pool is rebuilt
+from the training half and shares **zero emitters** with the validation half -- splitting the
+config list alone is not enough, because the pool is assembled from the configs.
+
+**This section still reports on all 47, deliberately.** The headline belongs on the whole
+development set; it is *training* that must not see it. Checkpoint selection happens on the 12
+(D61: highest `P(dominates rung 5) - P(dominated by rung 5)`, fixed before the run), and any RL row
+added here must state how many configurations were tried to produce it.
+
+**The 2,223-episode acceptance run of 2026-09-10 is not in the table above and will not be.** Its
+rung 9 rows -- 9c dominating rung 5 on 48.0% of episodes against 13.5%, 9b on 43.9% against 4.7% --
+are arithmetically sound and were produced under the leak. Artefacts in
+`runs/acceptance_2026-09-10/`. The number that will go here is that comparison re-measured after a
+retrain on the training half.
 
 **Reproduce it with:**
 
 ```bash
 python -m rfenv.compare --seeds 3 --sampled 10 --figures --out runs/baselines
 ```
+
+Both paired tables are printed: against `round_robin` (the floor, beating it is the minimum) and
+against `recency` (**the bar** -- a scheduler that clears the floor and not the bar has not beaten
+the ladder). Until 2026-09-10 only the floor comparison was computed, so every RL claim in this
+repository had been measured against the wrong reference.
 
 ### Comparison figures
 
@@ -335,6 +363,13 @@ they cannot disagree with the table (`rfenv/render.py`):
   beside the axes. D14's finding as a picture: better is up and to the left, and nothing trivial
   is there. The names are off the markers deliberately — five rungs cluster inside one second and
   0.08 of ratio, and labelling them in place makes the one corner a reader came for illegible.
+  **Markers are medians and the whiskers are the interquartile range (D58)** — not means, which is
+  how the rest of this document reports the same metrics. A marker cannot show a distribution, and
+  rung 4's is wide enough to break the figure: its interception ratio has mean 0.2065 against
+  median 0.1257, so drawn as means it floated above every adaptive rung *and* stretched the y-axis
+  for all of them, since the limits come from the maximum. The table below keeps means because it
+  has room to print an interval beside each one; the figure does not, so it collapses differently
+  on purpose. The camper's whisker being four times any other rung's is the point of the change.
 - **`timeline_<config>.png`** — one row per rung: band against time over the scenario's occupancy,
   with the tuning path, a tick per dwell start (so a 100 ms look reads as one decision, D31/D35),
   declared hits, and a per-emitter strip on the right that turns solid at first intercept. This is

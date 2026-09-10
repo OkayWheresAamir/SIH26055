@@ -70,12 +70,21 @@ _SWEEPS_PER_EPISODE = N_SLOTS / SWEEP_SLOTS   # 600 / 43 = 13.95, staleness's ce
 # Reward candidates (D7, D29)
 # --------------------------------------------------------------------------- #
 #
-# Exactly three, and the set stays at three (D29): every candidate scored on the
-# same 47 scenarios is another draw, and best-of-many is partly selection noise.
-# A camping-penalised fourth candidate was registered and retired within this
-# same working session (see git history / `reward_weighted_camp`, kept below
-# as a commented-out draft alongside a further `reward_hybrid` sketch) --
-# neither is active; REWARDS holds exactly the original three again.
+# **Six since D57, and D29's cap of three is formally lifted there.** The cap
+# existed for a real reason and it has not gone away: every candidate scored on
+# the same 47 scenarios is another draw, and best-of-many is partly selection
+# noise. What changed is that the three added by D57 are not three more guesses
+# competing for the same prize -- `greedy` and `explore` are the two corners of
+# D14's tension, deliberately expected to fail (one camps, one cannot express
+# the bar), and `weighted` is the single knob between them. They are a designed
+# axis, so the multiple-comparisons argument applies to choosing a point on it,
+# not to six independent tries. D47's selection rule is what must still be run,
+# and D57 records that it has not been.
+#
+# An earlier camping-penalised fourth candidate was registered and retired
+# within one working session (see git history / `reward_weighted_camp`, kept
+# below as a commented-out draft alongside a further `reward_hybrid` sketch) --
+# neither is active.
 #
 # Candidates 1 and 2 are **per slot**, and a dwell's reward is the sum over its
 # slots (D31), so a 100 ms dwell can earn up to +2. That keeps reward per unit
@@ -272,10 +281,221 @@ def reward_balance(
 
 
 
+
+
+# --------------------------------------------------------------------------- #
+# The greedy / explore pair, and the blend between them (D57)
+# --------------------------------------------------------------------------- #
+#
+# `reward_balance` mixes exploitation, exploration and a camping cost with fixed
+# coefficients, which makes it one point in a space rather than a way of moving
+# through it. These three make that space explicit: `reward_greedy` is the pure
+# exploit corner, `reward_explore` the pure explore corner, and
+# `reward_weighted` a single knob between them. The point is not that any one of
+# them is better -- it is that D14's tension can now be measured as a curve
+# instead of argued about, and D47's selection rule has something to select
+# between.
+#
+# All three keep D31's per-slot invariant: every term that prices a *state*
+# (rather than counting events that already happened per slot) is multiplied by
+# `dwell.n_slots`, so a 100 ms dwell on a wide band is worth exactly two 50 ms
+# dwells and the seven wide bands are not silently dominated.
+#
+# All three read the observation arrays in D55's units: `visit_density` in fair
+# shares (1.0 = an equal cut of airtime, 36.0 = fully camped) and `staleness` in
+# reference sweeps (1.0 = one full pass overdue, 13.95 = untouched all episode).
+# That is what makes the coefficients below legible -- each is "how much is one
+# natural unit of this worth".
+
+
+def reward_greedy(
+    dwell: DwellResult,
+    newly: set[int],
+    camp_slots: int,
+    hit_rate_array: np.ndarray,
+    visit_density_array: np.ndarray,
+    staleness_array: np.ndarray,
+    action: int,
+) -> float:
+    """Candidate 4: pure exploitation. Pays for what this band has paid before.
+
+      `+1.0 * Y.sum()`                       what the receiver actually declared
+      `+2.0 * hit_rate[action] * n_slots`    for being on a band with a record
+
+    **Deliberately has no exploration term and no camping cost**, and is
+    therefore expected to camp. That is what makes it useful: it is the corner
+    of the space, the reward-side twin of rung 4, and the control that says how
+    much of any blended reward's behaviour comes from its exploit half.
+
+    Distinct from `hit_y`, which is also exploit-only. `hit_y` pays only for the
+    current dwell's declarations, so a band that has paid out for 400 slots and
+    a band never looked at are worth the same until the dwell resolves.
+    `reward_greedy` adds the *remembered* rate, so it prices the decision at the
+    moment it is made rather than only its outcome -- which is what "greedy" in
+    the bandit sense actually means, and what an agent can act on. It is priced
+    entirely off the observation plus the dwell, so nothing here is information
+    the policy could not have conditioned on itself.
+
+    The 2.0 makes a perfect band (hit rate 1.0) worth about as much per slot as
+    two declared hits, so the remembered term can outvote a single unlucky dwell
+    without drowning the signal that the band has actually gone quiet.
+    """
+    reward = 1.0 * float(dwell.Y.sum())
+    reward += 2.0 * float(hit_rate_array[action]) * dwell.n_slots
+    return float(reward)
+
+
+def reward_explore(
+    dwell: DwellResult,
+    newly: set[int],
+    camp_slots: int,
+    hit_rate_array: np.ndarray,
+    visit_density_array: np.ndarray,
+    staleness_array: np.ndarray,
+    action: int,
+) -> float:
+    """Candidate 5: pure exploration. Pays for going where it has not been.
+
+      `+1.00 * staleness[action] * n_slots`       how overdue this band was
+      `-0.10 * visit_density[action] * n_slots`   what it has already spent here
+      `+2.00 * len(newly)`                        emitters found in a new band
+
+    **Not the same thing as uniform coverage**, which is why the third term is
+    here. A reward built only from `staleness` and `visit_density` is satisfied
+    by any policy that spreads airtime evenly, including one that sweeps past
+    every emitter without ever dwelling long enough to declare. `newly` is
+    truth-side and D29 permits it; it credits the first intercept of each
+    `(emitter, band)` pair (D51), so it pays for *discovering* rather than for
+    merely moving. Flat per dwell rather than per slot, deliberately -- a
+    discovery is worth the same whether the dwell that found it ran 1 or 2 slots.
+
+    The first two terms are opposite sides of the same quantity and both are
+    needed. `staleness` alone is a pull toward the most-overdue band and says
+    nothing about a band being over-served; `visit_density` alone is a push away
+    from over-served bands and says nothing about which of the rest to pick.
+
+    **The 0.10 is set by the units, not by taste.** `visit_density` reads in fair
+    shares since D55, so it reaches 36.0 on a camped band -- a coefficient of 1.0
+    would charge 36 per slot and give a camped episode a reward near -22,000
+    against a good episode's few hundred. That is the same unfittable-scale
+    failure D53 removed from `reward_balance`, reintroduced from the other
+    direction, and it was measured here before being fixed: at 2.0 the spread
+    across these four policies was 43,000 wide. At 0.10 a camped band costs 3.6
+    per slot, which is comparable to the staleness term's own ceiling of 13.95
+    and keeps the episode range in the low thousands.
+
+    Expected to score round-robin above rung 5, and that is a real limitation
+    rather than an accident: nothing here rewards finding the *busy* bands
+    faster, so it cannot express D46's Pareto target on its own. It is the
+    corner of the space, not a proposal.
+    """
+    reward = 1.0 * float(staleness_array[action]) * dwell.n_slots
+    reward -= 0.10 * float(visit_density_array[action]) * dwell.n_slots
+    reward += 2.0 * float(len(newly))
+    return float(reward)
+
+
+# The blend point `reward_weighted` is registered at.
+#
+# **0.3 is the midpoint of the only window where the reward orders the ladder
+# correctly**, measured across alpha in 0.0..1.0 at 0.1 steps over the four
+# reference policies at seeds 0/1/2:
+#
+#   alpha   recency  round_robin  alternate     camp   sweeps>degen  rung5 top
+#     0.0    1286.6       1384.8     -909.1  -2078.3            yes        no
+#     0.1    1549.5       1591.4     -229.2  -1179.0            yes        no
+#     0.2    1812.3       1798.0      450.7   -279.7            yes       yes
+#     0.3    2075.2       2004.7     1130.6    619.7            yes       yes
+#     0.4    2338.0       2211.3     1810.5   1519.0            yes       yes
+#     0.5    2600.9       2417.9     2490.4   2418.3             NO       yes
+#     0.6+   greedy dominates; camping outscores every sweeping policy
+#
+# Two constraints, and they close from opposite ends. Below 0.2 the explore half
+# dominates and round-robin outscores rung 5, so the reward cannot express the
+# bar. From 0.5 up, a 2-band ping-pong outscores round-robin -- D53's exact
+# failure mode, reintroduced through the greedy half. Only 0.2..0.4 satisfies
+# both, and 0.3 is its middle.
+#
+# **This is a sanity constraint, not tuning against a score.** Nothing here was
+# chosen to make a policy perform better on the D27 metrics; what was checked is
+# that two known-good policies outrank two known-degenerate ones, which is the
+# same check D53 applied. The performance question -- which candidate to
+# actually select -- is D47's paired-dominance rule, and it has still never been
+# run. `make_reward_weighted` is public so that sweep can build the rest of the
+# curve without touching the registry.
+WEIGHTED_ALPHA = 0.3
+
+
+def make_reward_weighted(alpha: float):
+    """Candidate 6, as a family: `alpha * greedy + (1 - alpha) * explore`.
+
+    `alpha = 1.0` is `reward_greedy` up to a positive constant (`_GREEDY_GAIN`,
+    which cannot change an optimal policy), `alpha = 0.0` is exactly
+    `reward_explore`, and the registered `reward_weighted` sits at
+    `WEIGHTED_ALPHA`. One knob, both corners reachable, and the whole curve
+    between them buildable without editing this file -- which is the difference
+    between a reward you can run D47's paired-dominance rule over and a reward
+    you can only argue about.
+
+    **The two halves are scaled to be comparable before blending**, or `alpha`
+    would not mean what it says -- a half with ten times the spread wins every
+    blend regardless of the weight. `_GREEDY_SCALE` divides the greedy half by
+    the measured ratio of the two spreads across the four reference policies, so
+    a unit of `alpha` moves the blend by comparable amounts at both ends. See
+    that constant for the numbers it came from.
+
+    Raises on an alpha outside [0, 1]: a blend weight outside the corners is
+    almost always a typo, and silently extrapolating produces a reward that
+    punishes the thing it names.
+    """
+    if not 0.0 <= alpha <= 1.0:
+        raise ValueError(f"alpha must be in [0, 1], got {alpha!r}")
+
+    def reward_weighted(
+        dwell: DwellResult,
+        newly: set[int],
+        camp_slots: int,
+        hit_rate_array: np.ndarray,
+        visit_density_array: np.ndarray,
+        staleness_array: np.ndarray,
+        action: int,
+    ) -> float:
+        greedy = reward_greedy(dwell, newly, camp_slots, hit_rate_array,
+                               visit_density_array, staleness_array, action)
+        explore = reward_explore(dwell, newly, camp_slots, hit_rate_array,
+                                 visit_density_array, staleness_array, action)
+        return float(alpha * greedy * _GREEDY_GAIN + (1.0 - alpha) * explore)
+
+    reward_weighted.__doc__ = (
+        f"`{alpha:.2f} * greedy * {_GREEDY_GAIN:g} + {1.0 - alpha:.2f} * explore` "
+        f"-- see `make_reward_weighted`."
+    )
+    return reward_weighted
+
+
+# What the greedy half is multiplied by before blending, so that `alpha` moves
+# the result by comparable amounts at both ends. Measured over the four reference
+# policies at seeds 0/1/2: the greedy half spans 849.0 across them (camp +1694.8
+# down to round-robin +845.8) and the explore half spans 3463.1 (round-robin
+# +1384.8 down to camp -2078.3), a ratio of 4.08.
+#
+# **This is a units correction, not a tuned coefficient.** Multiplying a reward
+# by a positive constant leaves its optimal policy untouched, so nothing about
+# `reward_greedy` or `reward_explore` alone depends on it -- it exists only so
+# that `alpha = 0.5` is actually half-and-half rather than the 10:1 explore-
+# dominated blend it was before this was measured.
+_GREEDY_GAIN = 4.08
+
+reward_weighted = make_reward_weighted(WEIGHTED_ALPHA)
+
+
 REWARDS = {
     "hit_z": reward_hit_z,
     "hit_y": reward_hit_y,
     "reward_balance": reward_balance,
+    "greedy": reward_greedy,
+    "explore": reward_explore,
+    "weighted": reward_weighted,
 }
 
 DEFAULT_REWARD = "reward_balance"  # the one used to train the registered checkpoints, and the one rung 9's base variant is scored on

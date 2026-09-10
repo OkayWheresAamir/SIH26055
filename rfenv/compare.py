@@ -259,12 +259,45 @@ def summarise(rows: dict[str, list[dict]]) -> dict[str, dict]:
     return out
 
 
-def _means(summary: dict[str, dict]) -> dict[str, dict]:
-    """`{label: {metric: mean}}` for the Pareto plot and the printed table."""
+def _centres(summary: dict[str, dict]) -> dict[str, dict]:
+    """`{key: {metric: median, metric_p25, metric_p75}}` for the Pareto plot.
+
+    **Medians, not means, and the interquartile range travels with them.** The
+    figure draws one point per scheduler, and a point cannot show a
+    distribution -- so the statistic it collapses to has to be one that is not
+    moved by a minority of episodes. For every scheduler on the ladder except
+    one that barely matters; for rung 4 it decides what the figure says.
+
+    Measured over 47 stare replays, the camper's interception ratio has mean
+    **0.2065** against median **0.1257** -- the mean sits 64% above the median,
+    because a camper either lands on a busy band and scores 0.32 or lands on a
+    quiet one and scores 0.05 (IQR [0.0538, 0.3228], std 0.19, five times any
+    other rung's). Drawn as means, it floats a long way above every adaptive
+    scheduler and, since the axis limits are taken from the maximum, drags the
+    whole y-axis with it: every other rung is squashed into the lower half of a
+    plot whose top is set by one policy's luckiest scenarios. Drawn as medians,
+    the camper sits level with the RL rungs -- which is what the paired
+    per-episode counts already say, and what `EVALUATION.md` §4 means by never
+    reading one number alone.
+
+    This is deliberately **not** how the printed table reports the same metrics:
+    `_report_md` prints `mean` over the IQR, and `EVALUATION.md` §5's ratified
+    rows are means. The table has room for an interval beside every number and
+    the figure does not, so they collapse differently on purpose. Whiskers carry
+    p25/p75 into the figure so the spread the median hides is still visible.
+    """
     out = {}
     for key, block in summary.items():
         agg = block["aggregate"]
-        row = {m: agg[m]["mean"] for m in HEADLINE if agg.get(m, {}).get("n")}
+        row = {}
+        for m in HEADLINE:
+            stats = agg.get(m, {})
+            if not stats.get("n"):
+                continue
+            row[m] = stats["median"]
+            if "p25" in stats and "p75" in stats:
+                row[f"{m}_p25"] = stats["p25"]
+                row[f"{m}_p75"] = stats["p75"]
         row["reference"] = block["reference"]
         row["rung"] = block["rung"]
         out[key] = row
@@ -276,6 +309,13 @@ def _means(summary: dict[str, dict]) -> dict[str, dict]:
 # --------------------------------------------------------------------------- #
 
 BASELINE_TO_BEAT = "round_robin"
+
+# The bar, as distinct from the floor. `EVALUATION.md` §5 and CLAUDE.md both say
+# it in words -- "the bar for RL is rung 5, not round-robin" -- but until now the
+# artefacts only ever computed the floor comparison, so every RL claim in this
+# repository was measured against the wrong reference. Both are reported.
+BAR_TO_BEAT = "recency"
+PAIRED_REFERENCES = (BASELINE_TO_BEAT, BAR_TO_BEAT)
 
 
 def paired_wins(rows: dict[str, list[dict]], against: str = BASELINE_TO_BEAT) -> dict:
@@ -354,10 +394,11 @@ def _table(summary: dict[str, dict]) -> list[str]:
     return lines
 
 
-def _paired_table(wins: dict, summary: dict[str, dict]) -> list[str]:
+def _paired_table(wins: dict, summary: dict[str, dict], against: str = BASELINE_TO_BEAT) -> list[str]:
     lines = [
-        f"paired against {BASELINE_TO_BEAT}, per episode "
-        f"(same scenario, same seed, same grid)",
+        f"paired against {against}, per episode "
+        f"(same scenario, same seed, same grid)"
+        + ("   <- THE BAR" if against == BAR_TO_BEAT else ""),
         f"{'scheduler':<18} {'ratio':>8} {'cTTI':>8} {'both':>8}",
         "-" * 46,
     ]
@@ -429,23 +470,38 @@ def _report_md(summary: dict[str, dict], meta: dict) -> str:
         "Cells are `mean` over the interquartile range. A **reference line** reads "
         "the truth grid and is not a scheduler (§5).",
         "",
-        f"## Head to head against `{BASELINE_TO_BEAT}`, paired per episode",
+        "## Head to head, paired per episode",
         "",
         "Same scenario, same seed, same truth grid. A mean can clear a mean while "
         "losing most scenarios, so §5's \"beating round-robin is the minimum\" is "
         "checked paired. **`both` is the column that matters**: D14 measured that no "
-        "trivial strategy is good at both objectives, so Pareto-dominating the floor "
-        "is the bar and winning one column alone is not evidence.",
+        "trivial strategy is good at both objectives, so Pareto-dominating the "
+        "reference is the bar and winning one column alone is not evidence.",
         "",
-        "| scheduler | wins on ratio | wins on intercept time | **wins on both** |",
-        "|---|---|---|---|",
+        f"**Two references, and `{BAR_TO_BEAT}` is the one that decides anything.** "
+        f"`{BASELINE_TO_BEAT}` is the floor the problem statement targets and beating "
+        f"it is the *minimum*, not a result; rung 5 is the bar (`EVALUATION.md` §5). "
+        "A scheduler that clears the floor and not the bar has not beaten the ladder.",
+        "",
     ]
-    for key, w in meta.get("paired", {}).items():
-        name = f"`{key}`" + (" *(reference line)*" if summary[key]["reference"] else "")
-        out.append(
-            f"| {name} | {w['beats_on_ratio']:.1%} | "
-            f"{w['beats_on_intercept_time']:.1%} | **{w['beats_on_both']:.1%}** |"
-        )
+    for ref in meta.get("paired_references", [BASELINE_TO_BEAT]):
+        table = meta.get("paired_all", {}).get(ref, {})
+        if not table:
+            continue
+        role = "the floor" if ref == BASELINE_TO_BEAT else "**the bar**"
+        out += [
+            f"### against `{ref}` — {role}",
+            "",
+            "| scheduler | wins on ratio | wins on intercept time | **wins on both** |",
+            "|---|---|---|---|",
+        ]
+        for key, w in table.items():
+            name = f"`{key}`" + (" *(reference line)*" if summary[key]["reference"] else "")
+            out.append(
+                f"| {name} | {w['beats_on_ratio']:.1%} | "
+                f"{w['beats_on_intercept_time']:.1%} | **{w['beats_on_both']:.1%}** |"
+            )
+        out.append("")
     out += [
         "",
         f"Over {meta['n_scenarios']} scenarios x {len(meta['seeds'])} seeds.",
@@ -510,7 +566,7 @@ def figures(out_root: Path, summary: dict[str, dict], keys: tuple[str, ...],
         # row, not used as the key itself -- two rungs sharing a label (e.g.
         # two PPO variants) must still draw as two points (see render.pareto's
         # docstring for the bug this avoids).
-        {k: {**row, "label": B.BY_KEY[k].label} for k, row in _means(summary).items()},
+        {k: {**row, "label": B.BY_KEY[k].label} for k, row in _centres(summary).items()},
         out_root / "pareto.png",
         title="The baseline ladder on the two PS objectives",
     )
@@ -591,7 +647,7 @@ def main(argv: list[str] | None = None) -> int:
 
     rows = compare(scenarios, keys, seeds, out_root, reward=args.reward)
     summary = summarise(rows)
-    wins = paired_wins(rows)
+    wins = {ref: paired_wins(rows, against=ref) for ref in PAIRED_REFERENCES}
 
     point = operating_point([TruthGrid.from_scenario(s) for s in scenarios])
     meta = {
@@ -606,8 +662,10 @@ def main(argv: list[str] | None = None) -> int:
         "n_runs": sum(len(v) for v in rows.values()),
         "out_root": str(out_root),
         "operating_point": point,
-        "paired": wins,
+        "paired": wins.get(BASELINE_TO_BEAT, {}),
         "paired_against": BASELINE_TO_BEAT,
+        "paired_all": wins,
+        "paired_references": list(PAIRED_REFERENCES),
     }
 
     write_metrics_json(
@@ -635,8 +693,11 @@ def main(argv: list[str] | None = None) -> int:
     for line in _table(summary):
         print(line)
     print()
-    for line in _paired_table(wins, summary):
-        print(line)
+    for ref in PAIRED_REFERENCES:
+        if wins.get(ref):
+            for line in _paired_table(wins[ref], summary, against=ref):
+                print(line)
+            print()
     print(f"\nartefacts: {out_root}")
     return 0
 
