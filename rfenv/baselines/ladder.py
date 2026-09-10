@@ -288,15 +288,15 @@ LADDER: tuple[Rung, ...] = (
                 _recurrent_ppo_rung_factory(Path("runs/checkpoints/lstm_balance_1M_s7.zip"))),
         
     
-    Rung("lstm_balance_800k_1M", "9f", "Recurrent PPO (reward_balance, 800k)",
+    Rung("lstm_balance_800k_1M", "9h", "Recurrent PPO (reward_balance, 800k)",
                 "Ours. Trained on reward_balance after D52/D53/D55, 800k timesteps.",
                 _recurrent_ppo_rung_factory(Path("runs/checkpoints/lstm_balance_1M_s8.zip"))),
     
-    Rung("lstm_balance_900k_1M", "9f", "Recurrent PPO (reward_balance, 900k)",
+    Rung("lstm_balance_900k_1M", "9i", "Recurrent PPO (reward_balance, 900k)",
                 "Ours. Trained on reward_balance after D52/D53/D55, 900k timesteps.",
                 _recurrent_ppo_rung_factory(Path("runs/checkpoints/lstm_balance_1M_s9.zip"))),
     
-    Rung("lstm_balance_1M", "9f", "Recurrent PPO (reward_balance, 1M)",
+    Rung("lstm_balance_1M", "9j", "Recurrent PPO (reward_balance, 1M)",
                 "Ours. Trained on reward_balance after D52/D53/D55, 1M timesteps.",
                 _recurrent_ppo_rung_factory(Path("runs/checkpoints/lstm_balance_1M.zip"))),
         
