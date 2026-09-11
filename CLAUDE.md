@@ -186,6 +186,33 @@ in progress — training one model at a time, sequentially, after a laptop crash
 first attempt at running several in parallel. Full account: D67, `scratch/TRAINING_JOURNEY.md`
 §15.
 
+**THE BAR IS BEATEN. Measured 2026-09-11 across 5,643 episodes in one run (D71).** Every loadable
+checkpoint scored against the whole ladder on one scenario set with one set of seeds — the first
+time that has been true; every earlier RL claim compared one run against a different run. The best
+model, **rung 17c** (Recurrent PPO, `reward_balance`, seed 2, 300k of 400k steps), posts
+interception ratio **0.1304**, censored intercept time **3.04 s**, coverage **0.9019**, intercept
+rate **1.191/s** — **Pareto-dominating rung 5 on all four scheduler metrics simultaneously**, which
+no rung before it did. Paired per episode it beats `round_robin` on both headline metrics **81.9%**
+of the time and **`recency` — the bar — 54.4%**. Across all 24 live checkpoints the joint column
+runs 18.7–54.4% (median 35.4%) and **23 of 24 beat `apfeld_active_rfs`** (23.4%), the strongest
+published-literature rung on the joint objective.
+
+**Rung 17c is the checkpoint D61's rule selected on validation data, before this run existed** —
+the rule never saw the data that confirmed it. That is the strongest available evidence the
+selection methodology is sound rather than lucky, and it is why the criterion was fixed in
+`rfenv/selection.py` in advance (D39's discipline, applied to checkpoints).
+
+**Two cautions that travel with those numbers.** Seed spread across the 24 checkpoints is 36
+percentage points — larger than the control/treatment reward gap D65 and D68 argued over, so no
+single-checkpoint comparison between the two rewards is trustworthy at this sample size. And every
+number in this repository is a **development-set** number: the 45 held-out test pairs remain
+untouched (D8) and are spent once, on a final system.
+
+**Start here if you are picking this up cold, building the deck, or scoping the edge lane:**
+`docs/project/WHERE_WE_STAND.md` — the headline numbers, the five findings worth presenting, what
+is explicitly *not* proven, and where every artefact lives. It is a pointer document; the
+authorities it points at still govern.
+
 **The environment was frozen on 2026-09-04 (D42).** `rfenv/constants.py` is closed — band
 geometry, slot clock, dwell schedule, `N₀`, `σ`, `γ`, `PD_POPULATION` — and
 `tests/test_freeze.py` enforces it with per-value literals plus a digest tripwire. Until that
