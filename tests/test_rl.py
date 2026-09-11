@@ -40,9 +40,9 @@ from rfenv.scenario import Scenario
 
 CONFIG_ID = "config_81"   # 1 detectable emitter -- the cheap/fast case
 
-# Derived, never hardcoded: the observation has changed width three times
-# (109 -> 145 -> 146 -> 147 -> 146, D34/D49/D55) and every literal in this file
-# had to be chased down each time.
+# Derived, never hardcoded: the observation has changed width four times
+# (109 -> 145 -> 146 -> 147 -> 146 -> 183, D34/D49/D55/D67) and every literal in
+# this file had to be chased down each time.
 OBS_WIDTH = common.current_observation_width()
 
 

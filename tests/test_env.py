@@ -77,7 +77,8 @@ def test_rgb_array_render_is_a_valid_frame():
 
 
 def test_spaces_are_the_specified_ones():
-    """Discrete(36) and a 36x4+2 = 146 box (D34, extended by D49, rescaled by D55).
+    """Discrete(36) and a 36x5+3 = 183 box (D34, extended by D49, rescaled by
+    D55, extended again by D67).
 
     The box is **not** the unit interval, which is the point of D55: two blocks
     declare ceilings above 1.0 so that 1.0 means something inside them -- equal
@@ -87,14 +88,14 @@ def test_spaces_are_the_specified_ones():
     """
     env = ScanEnv(scenario=Scenario.replay("config_59", "stare"))
     assert env.action_space.n == 36
-    assert env.observation_space.shape == (146,)
+    assert env.observation_space.shape == (183,)
     assert env.observation_space.dtype == np.float32
 
     high = env.observation_space.high
     assert (high[:36] == 1.0).all()                                   # hit_rate
     assert high[36:72] == pytest.approx(36.0)                         # visit_density, fair shares
     assert high[72:108] == pytest.approx(600 / 43, rel=1e-6)          # staleness, sweeps
-    assert (high[108:] == 1.0).all()                                  # one-hot, clock, dbm
+    assert (high[108:] == 1.0).all()                                  # one-hot, clock, dbm, hit_streak
 
     obs, _ = env.reset(seed=0)
     for _ in range(200):
@@ -231,7 +232,8 @@ def test_all_reward_candidates_run_and_differ():
     makes every unqualified `ScanEnv()` raise -- which is exactly what happened
     when candidate 3 was renamed and the default was not.
     """
-    assert set(REWARDS) == {"reward_balance", "greedy", "explore", "weighted"}
+    assert set(REWARDS) == {"reward_balance", "reward_balance_improved",
+                           "greedy", "explore", "weighted"}
     assert DEFAULT_REWARD in REWARDS
 
     sc = Scenario.replay("config_921", "stare")

@@ -97,8 +97,8 @@ def current_observation_width() -> int:
     at all (a bad `DEFAULT_REWARD` raises in `ScanEnv.__init__`, which would
     then mask the shape mismatch this is trying to report).
     """
-    from rfenv.baselines.guard import MEASURED_DBM
-    return MEASURED_DBM + 1
+    from rfenv.baselines.guard import CURRENT_HIT_STREAK
+    return CURRENT_HIT_STREAK + 1
 
 
 def manifest_path(checkpoint: str | Path) -> Path:
