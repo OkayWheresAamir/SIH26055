@@ -1,0 +1,74 @@
+{
+  "run": "lstm_balance_d67_treatment_seed1",
+  "description": "treatment: reward_balance_improved, D60 split, D67 observation (183-wide), matched-seed for D47/D68",
+  "checkpoint": "lstm_balance_d67_treatment_seed1.zip",
+  "sha256": "f78db9ae952dcf014ce46ba4470e40808f0506fca5d15d5ff1bc7d9eee4dcb16",
+  "algorithm": "RecurrentPPO",
+  "policy": "RecurrentActorCriticPolicy",
+  "reward": "reward_balance_improved",
+  "observation_width": 183,
+  "action_space": "Discrete(36)",
+  "seed": 1,
+  "total_timesteps": 401408,
+  "hyperparameters": {
+    "ent_coef": 0.01,
+    "gamma": 0.997,
+    "n_steps": 8192
+  },
+  "resolved": {
+    "learning_rate": 0.0003,
+    "gamma": 0.997,
+    "n_steps": 8192,
+    "batch_size": 128,
+    "n_epochs": 10,
+    "ent_coef": 0.01,
+    "gae_lambda": 0.95,
+    "vf_coef": 0.5,
+    "max_grad_norm": 0.5
+  },
+  "argv": [
+    "C:\\Code\\sih\\SIH26055\\rfenv\\rl\\recurrent_ppo.py",
+    "--reward",
+    "reward_balance_improved",
+    "--timesteps",
+    "400000",
+    "--seed",
+    "1",
+    "--hyperparam",
+    "ent_coef=0.01",
+    "--hyperparam",
+    "gamma=0.997",
+    "--hyperparam",
+    "n_steps=8192",
+    "--checkpoint",
+    "runs/checkpoints/lstm_balance_d67_treatment_seed1.zip",
+    "--checkpoint-freq",
+    "100000",
+    "--run-name",
+    "lstm_balance_d67_treatment_seed1",
+    "--description",
+    "treatment: reward_balance_improved, D60 split, D67 observation (183-wide), matched-seed for D47/D68"
+  ],
+  "command": "C:\\Code\\sih\\SIH26055\\venv\\Scripts\\python.exe -m rfenv.rl.recurrent_ppo --reward reward_balance_improved --timesteps 400000 --seed 1 --hyperparam ent_coef=0.01 --hyperparam gamma=0.997 --hyperparam n_steps=8192 --checkpoint runs/checkpoints/lstm_balance_d67_treatment_seed1.zip --checkpoint-freq 100000 --run-name lstm_balance_d67_treatment_seed1 --description \"treatment: reward_balance_improved, D60 split, D67 observation (183-wide), matched-seed for D47/D68\"",
+  "git": {
+    "commit": "4da81667d62a863999c57ee572c996e0152d0cc2",
+    "dirty": true
+  },
+  "started_at": "2026-09-11T08:18:29Z",
+  "wall_clock_s": 3616.7,
+  "versions": {
+    "python": "3.12.10",
+    "stable_baselines3": "2.9.0",
+    "torch": "2.14.0+cpu",
+    "gymnasium": "1.3.0",
+    "numpy": "2.5.3",
+    "sb3_contrib": "2.9.0"
+  },
+  "hardware": {
+    "os": "Windows-11-10.0.26200-SP0",
+    "machine": "AMD64",
+    "processor": "Intel64 Family 6 Model 165 Stepping 2, GenuineIntel",
+    "cpu_count": 12,
+    "cuda": null
+  }
+}
