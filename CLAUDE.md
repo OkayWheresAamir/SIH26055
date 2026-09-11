@@ -112,8 +112,11 @@ every sweeping policy, D14's tension in reward form — **and were removed from 
 as a consequence (D63).** `REWARDS` now holds four keys: `reward_balance` (the only one that
 passes D62), `greedy`, `explore`, `weighted`. Every DQN and PPO run in this repository trained on
 one of the two removed candidates; they were already permanently unloadable from D49's observation
-change, so nothing currently loadable is lost. D47 is gated behind this screen and **has still
-never been run**.
+change, so nothing currently loadable is lost. `reward_balance_improved` (added 2026-09-10, below)
+also passes D62. **D47 has now run (D68, 2026-09-10)** — against round-robin, `reward_balance`
+scores 65.5% paired-both to `reward_balance_improved`'s 64.3%, a 1.2 pp gap, inside D47's own 5 pp
+margin. **No candidate selected**; per D47's own text this escalates rather than ties-breaks. Both
+remain carried forward.
 
 **The train/evaluation leak is closed (D60).** Training sampled `EmitterPool.from_train()` — all 47
 development configs — while evaluation ran those same 47 replays plus scenarios sampled from that

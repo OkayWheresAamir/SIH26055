@@ -1104,3 +1104,16 @@ marginally more capacity for reasons that have nothing to do with streaks, or th
 single-seed noise -- D64's own four snapshots swung by 36 points on this exact measure. What can be
 said without hedging: the streak feature has not, on either checkpoint tried so far, taught a
 policy to camp. Full accounting in D67.
+
+## 15.6 D47, run for the first time (D68)
+
+Rather than another architecture experiment, the next question asked was procedural: three
+decision-cycles (D62, D66, D67) had shipped since D47 -- the actual pre-registered rule for
+*choosing* between reward candidates -- was written, and it had never once executed. Checked D62
+eligibility fresh (`python -m rfenv.reward_gate --rewards reward_balance,reward_balance_improved`,
+this session, not trusted from an earlier unrecorded claim): both pass, `reward_balance` at
+3.0σ/7.3σ, `reward_balance_improved` at 2.3σ/5.6σ. Then applied D47's rule -- paired-both against
+round-robin, largest fraction wins, within 5 pp nothing is selected -- to the same D61-selected
+checkpoints and the same `compare.py` run §15.5 already produced, no new run needed:
+`reward_balance` 65.5%, `reward_balance_improved` 64.3%. **1.2 points apart. No candidate
+selected**, exactly as D47's own text says should happen at this margin. Full accounting in D68.

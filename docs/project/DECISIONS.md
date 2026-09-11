@@ -3800,3 +3800,64 @@ feature has not, so far, taught either policy to camp.
 `lstm_balance_d67_treatment_s{1,2,3,4}` (`.zip`/`.json`), streak analysis and `compare.py` output
 both reproduced this session, artefacts in `runs/d67_paired_comparison/`. Ladder rungs `14a`–`14d`,
 `15a`–`15d`. `docs/project/ITERATION_LEDGER.md`.
+
+---
+
+## D68 — D47 run for the first time: no reward candidate selected, escalated
+
+**Status:** `MEASURED` (2026-09-10) — D47's rule executed against real, D62-screened, D61-selected
+checkpoints for the first time since it was written (D47, 2026-09-05). Three decision-cycles
+(D62, D66, D67) shipped ahead of this one; nothing blocked it, it simply had not been run.
+
+### Eligibility, verified fresh this session
+
+D47 is gated behind D62 (only a screened candidate may be considered). Rather than trust an
+unrecorded prior claim, `python -m rfenv.reward_gate --rewards reward_balance,reward_balance_improved`
+was re-run this session:
+
+| candidate | round_robin | recency | camper | apfeld_active_rfs | sep | seeds | camper margin | verdict |
+|---|---|---|---|---|---|---|---|---|
+| `reward_balance` | 217.9 | 276.9 | −414.1 | 278.7 | 3.0σ | 8/8 | 7.3σ | **PASS** |
+| `reward_balance_improved` | 216.6 | 280.0 | −388.4 | 276.6 | 2.3σ | 8/8 | 5.6σ | **PASS** |
+
+Both eligible. No other candidate in `REWARDS` passes (`greedy`/`explore`/`weighted` all fail D62,
+per D62/D57's own record) and no other candidate has a trained checkpoint regardless.
+
+### The rule, applied
+
+D47: the candidate beating round-robin on **both** headline metrics on the largest fraction of
+paired episodes, via `compare.paired_wins()`; within 5 percentage points, no candidate is
+selected. One D61-selected checkpoint stands in for each reward — the same checkpoints D67
+retrained and the same `compare.py` run already on record (`runs/d67_paired_comparison/`), paired
+against **round-robin specifically** (D47's own reference, not rung 5 — see D47's own reasoning for
+why the weak floor is the right denominator here):
+
+| candidate | checkpoint | ratio | cTTI | **both** |
+|---|---|---|---|---|
+| `reward_balance` | `lstm_balance_d67_control_s3` (300k) | 86.5% | 69.0% | **65.5%** |
+| `reward_balance_improved` | `lstm_balance_d67_treatment_s1` (100k) | 90.6% | 69.6% | **64.3%** |
+
+**Gap: 1.2 percentage points. Under the 5 pp margin. No candidate is selected.**
+
+### What this means, plainly
+
+This is not a null result in the sense of "the measurement failed" — it is D47's own rule doing
+exactly what its own docstring says it would: "if two candidates land within 5 percentage points
+of each other, no candidate is selected: both are reported and the choice is escalated." The rule
+was written knowing this could happen (D47's own "weakness 1": insensitivity to margin) and chose
+to accept it rather than force a pick. Both candidates clear round-robin decisively (65.5%/64.3%
+against round-robin's own unpaired position) and both clear rung 5, the actual bar (D64/D65/D67).
+Between them, D47 declines to choose.
+
+**Escalated, per the rule's own text, rather than broken by a tie-break invented here.** The human
+decision this surfaces: whether to (a) pick one anyway on a rationale D47 was deliberately built
+not to encode (e.g. `reward_balance_improved`'s consistent edge on the recency-paired headline
+across two independent checkpoint pairs, D65 and D67 — a real pattern, still built on single-seed
+training each time), (b) run D47 again on matched multi-seed checkpoints in case the margin
+sharpens past 5 pp with less noise, or (c) accept "no selection" as the answer and carry both
+forward.
+
+**Evidence.** `python -m rfenv.reward_gate --rewards reward_balance,reward_balance_improved`,
+this session. `runs/d67_paired_comparison/comparison.md`'s "paired against round_robin" table,
+same run D67 already recorded. No new training, no new comparison run — D47 applied to existing,
+already-verified numbers.
