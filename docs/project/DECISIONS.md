@@ -3270,7 +3270,16 @@ Removing two long-standing registry keys touched more than the registry:
 
 ---
 
-## D64 — the scheduler takes a threat priority from outside; it does not compute one
+## D70 — the scheduler takes a threat priority from outside; it does not compute one
+
+> **Renumbered from D64 on 2026-09-11.** Two lanes allocated D64 in parallel — this entry
+> and the RL lane's first clean result — and both reached `main`. The RL chain D64–D69 is
+> referenced from `CLAUDE.md`, `EVALUATION.md`, `ITERATION_LEDGER.md`, `MODEL_COMPARISON.md`,
+> `PHASE_SWITCH_FUTURE_WORK.md` and `ladder.py`; this entry was referenced only by its own
+> heading, so it is the one that moves. It keeps its position in the file rather than being
+> shuffled to the end — the number is authoritative, the ordering is not.
+> **Allocate new numbers from the highest on `main` after a pull, never from a local tree.**
+> `scripts/doctor.py` now fails on a duplicate.
 
 **Status:** `SETTLED` (2026-09-11) for the direction. Implementation brief:
 `docs/project/THREAT_WEIGHTING_BRIEF.md`. Two things inside it are open and named at the end.
