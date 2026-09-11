@@ -3861,3 +3861,40 @@ forward.
 this session. `runs/d67_paired_comparison/comparison.md`'s "paired against round_robin" table,
 same run D67 already recorded. No new training, no new comparison run — D47 applied to existing,
 already-verified numbers.
+
+## D69 — hand-rolled policies outside `baselines/` are now a structural test failure, not a review catch
+
+D56 (`step % N_BANDS` scored and called `round_robin`) was the third time a policy built by hand
+instead of through `baselines.make()` inverted a conclusion — D36 (a scan replay stood in for a
+scenario), D43 (rungs 2 and 3 were accidentally the same policy), D56. Each was caught by a human
+reading a diff, not by anything the suite would refuse to let happen again. `reward_gate.py`
+already carries the fix for its own instance (`score_rung` calls `B.make(key, seed=seed)`, with a
+docstring naming D56 directly) and `compare.py` and `selection.py` were checked this session and
+already go through `B.make`/`baselines.make` everywhere they construct a policy — the code itself
+had no live instance of the bug left. What was missing was the guard against a fourth recurrence.
+
+**`tests/test_reward_gate.py::test_no_module_outside_baselines_hand_rolls_a_band_cycle`** parses
+every top-level `rfenv/*.py` module with `ast` — deliberately not `rfenv/baselines/`, where
+constructing a policy is the point, and not `rfenv/rl/`, which trains one rather than hand-writing
+one — and fails if any of them contains `... % N_BANDS` as an AST node (a `BinOp` with `ast.Mod`
+and `N_BANDS` on the right), rather than as a text grep that would also trip on the sentence
+describing the bug in a docstring. Passes clean on the current tree; exists to fail loudly the next
+time someone reaches for `step % N_BANDS` instead of `baselines.make("round_robin", ...)`.
+
+**A second, unrelated gap closed in the same pass.** `tests/test_split.py` imported
+`rfenv.rl.common` (which hard-imports `stable_baselines3`) at module level, so on a machine without
+the training stack installed, `pytest tests -q` aborted at collection — nothing in the file ran,
+not even the tests that need no training library at all. `tests/test_selection.py` was checked
+against the same concern and did not have it: `rfenv.selection` only reaches `rfenv.baselines`,
+whose one `rfenv.rl` dependency (`ladder.py::_make_deep_q_network`) is already lazy, imported
+inside the function rather than at module level. Fixed in `test_split.py` by moving
+`from rfenv.rl.common import make_train_env` into the one test that needs it
+(`test_training_does_not_sample_the_evaluation_pool`), guarded by
+`pytest.importorskip("stable_baselines3")` — the other five tests in the file now run on a clean
+checkout with no training stack, and only that one test skips.
+
+**Evidence.** `ast`-walked `rfenv/*.py` by hand this session (`grep` first, then the AST test, to
+confirm the one docstring mention of `step % N_BANDS` in `reward_gate.py` does not trip a text-based
+check) — no live instance of the bug found; the fix is prophylactic, not a correction to a wrong
+number in any table. `venv/Scripts/python.exe -m pytest tests/test_reward_gate.py tests/test_split.py
+tests/test_selection.py -q` → 21 passed.

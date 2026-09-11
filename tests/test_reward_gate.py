@@ -99,3 +99,36 @@ def test_every_registered_candidate_can_be_screened():
     assert set(REWARDS)  # non-empty
     for name in REWARDS:
         assert callable(REWARDS[name])
+
+
+def test_no_module_outside_baselines_hand_rolls_a_band_cycle():
+    """D56, generalised: nothing outside `rfenv/baselines/` may construct a
+    scheduling policy by hand -- every measurement goes through `baselines.make()`.
+
+    D56 scored a hand-written `step % N_BANDS` sweep and called it `round_robin`;
+    it was not rung 2, and the substitution inverted a conclusion (see
+    `test_every_screened_rung_is_a_real_registered_rung` above). This is the same
+    check made structural: parse every top-level `rfenv/*.py` module -- deliberately
+    not `rfenv/baselines/` or `rfenv/rl/`, where constructing a policy or training
+    one is the point -- and fail if any of them contains `... % N_BANDS` as actual
+    code (an AST walk, not a text grep, so mentioning the pattern in a docstring,
+    as this file and `reward_gate.py` both do, does not trip it).
+    """
+    import ast
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parent.parent / "rfenv"
+    offenders = []
+    for path in sorted(root.glob("*.py")):
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        for node in ast.walk(tree):
+            if not (isinstance(node, ast.BinOp) and isinstance(node.op, ast.Mod)):
+                continue
+            operand = node.right
+            name = (operand.id if isinstance(operand, ast.Name) else
+                     operand.attr if isinstance(operand, ast.Attribute) else None)
+            if name == "N_BANDS":
+                offenders.append(f"{path.name}:{node.lineno}")
+    assert not offenders, (
+        f"hand-rolled band-cycle ('... % N_BANDS') outside rfenv/baselines/: "
+        f"{offenders} -- construct the policy through baselines.make() instead")
