@@ -416,6 +416,50 @@ against `recency` (**the bar** -- a scheduler that clears the floor and not the 
 the ladder). Until 2026-09-10 only the floor comparison was computed, so every RL claim in this
 repository had been measured against the wrong reference.
 
+### The full ladder with every live RL rung — measured 2026-09-11 (D71)
+
+**This supersedes every RL row above as the current standing.** All prior RL numbers in this
+section compared one run against a *different* run; this is the first in which every loadable
+checkpoint was scored against the whole ladder in one run, one scenario set, one set of seeds.
+
+`python -m rfenv.compare --seeds 3 --sampled 10 --figures --out runs/final_2026-09-11`
+— 33 rungs x 57 scenarios x 3 seeds = **5,643 episodes**. 24 of 57 registered rungs skipped by
+`compare.py`'s guard: every DQN/PPO checkpoint and every 146/147-wide LSTM predates D67 and is
+permanently unloadable.
+
+| rung | scheduler | interception ratio | censored intercept time (s) | emitter coverage | intercept rate (/s) |
+|---|---|---|---|---|---|
+| **17c** | **Recurrent PPO, `reward_balance`, seed 2, 300k** | **0.1304** | **3.04** | **0.9019** | **1.191** |
+| 5 | `recency` — **the bar** | 0.1105 | 3.34 | 0.8874 | 1.153 |
+| 6a | `apfeld_active_rfs` | 0.1320 | 4.32 | 0.8602 | 1.135 |
+| 6 | `apfeld` | 0.2455 | 14.86 | 0.3672 | 0.350 |
+| 4 | `camper` | 0.2088 | 9.67 | 0.4971 | 0.660 |
+| 3 | `turing_sweep` | 0.0805 | 3.74 | 0.8643 | 1.166 |
+| 2 | `round_robin` — the floor | 0.0605 | 4.18 | 0.8650 | 1.118 |
+| 1 | `random` | 0.0669 | 4.16 | 0.8583 | 1.117 |
+| — | `oracle_pulse` *(reference line)* | 0.6579 | 8.01 | 0.6912 | 0.813 |
+| — | `camper_oracle` *(reference line)* | 0.5680 | 15.71 | 0.2960 | 0.295 |
+
+Paired per episode (n = 171): **rung 17c beats `round_robin` on both metrics 81.9% of the time and
+`recency` — the bar — 54.4%.** Across all 24 live RL checkpoints the joint column ranges 18.7-54.4%
+against the bar (median 35.4%); **23 of 24 beat `apfeld_active_rfs`** at 23.4%, and the weakest
+still beats `turing_sweep` (9.9%), `apfeld` (2.9%) and `camper` (0.6%).
+
+**Rung 17c Pareto-dominates rung 5 on all four metrics in the means** — higher ratio, lower
+intercept time, higher coverage, higher intercept rate. No rung before it did that.
+
+**Rung 17c is the checkpoint D61's rule selected, on validation data, before this run existed.**
+It then scored highest of all 24 here. The rule never saw the data that confirmed it — which is
+the whole reason the criterion was fixed in `rfenv/selection.py` in advance (D39's discipline
+applied to checkpoints rather than gate thresholds).
+
+**Read the seed spread before quoting any single row.** The 24 checkpoints span 36 percentage
+points on the joint column. The control/treatment reward gap argued in D65 and D68 is a few points
+inside that spread, so **no single-checkpoint comparison between the two rewards is trustworthy at
+this sample size** (D71).
+
+Full account: **D71**. Artefacts: `runs/final_2026-09-11/`.
+
 ### Comparison figures
 
 `--figures` writes four kinds of picture into the run directory, all drawn from the artefacts so

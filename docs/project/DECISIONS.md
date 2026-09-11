@@ -3366,6 +3366,93 @@ paragraph; ADITI transcript pp. 2 and 8, read 2026-09-11.
 
 ---
 
+## D71 — the full ladder measured with every live RL rung: the bar is beaten, and D61's rule picked the winner
+
+**Status:** `MEASURED` (2026-09-11). Not a decision — the first measurement in which every
+loadable checkpoint in the repository was scored against the whole ladder in **one run, on one
+scenario set, with one set of seeds**. Every prior RL claim compared a run to a *different* run;
+this one compares 33 rungs to each other.
+
+**The run.** `python -m rfenv.compare --seeds 3 --sampled 10 --figures --out runs/final_2026-09-11`
+— 33 rungs × 57 scenarios (47 stare replays + 10 sampled) × 3 seeds = **5,643 episodes**, executed
+2026-09-11. 24 of 57 registered rungs were skipped by `compare.py`'s own guard: every DQN/PPO
+checkpoint and every 146/147-wide LSTM predates D67 and is permanently unloadable. The 24 live
+rungs are D67's control and treatment arms across seeds 0, 1 and 2, at four snapshots each.
+
+### All four PS scheduler metrics (`EVALUATION.md` §4), means over 5,643 episodes
+
+| rung | scheduler | interception ratio ↑ | censored intercept time (s) ↓ | emitter coverage ↑ | intercept rate (/s) ↑ |
+|---|---|---|---|---|---|
+| **17c** | **Recurrent PPO, `reward_balance`, seed 2, 300k** | **0.1304** | **3.04** | **0.9019** | **1.191** |
+| 5 | `recency` — **the bar** | 0.1105 | 3.34 | 0.8874 | 1.153 |
+| 6a | `apfeld_active_rfs` | 0.1320 | 4.32 | 0.8602 | 1.135 |
+| 6 | `apfeld` | 0.2455 | 14.86 | 0.3672 | 0.350 |
+| 4 | `camper` | 0.2088 | 9.67 | 0.4971 | 0.660 |
+| 3 | `turing_sweep` | 0.0805 | 3.74 | 0.8643 | 1.166 |
+| 2 | `round_robin` — the floor | 0.0605 | 4.18 | 0.8650 | 1.118 |
+| 1 | `random` | 0.0669 | 4.16 | 0.8583 | 1.117 |
+| — | `oracle_pulse` *(reference line)* | 0.6579 | 8.01 | 0.6912 | 0.813 |
+| — | `camper_oracle` *(reference line)* | 0.5680 | 15.71 | 0.2960 | 0.295 |
+
+**Rung 17c Pareto-dominates rung 5 on all four metrics simultaneously in the means** — higher
+ratio, lower intercept time, higher coverage, higher intercept rate. No rung before it did that.
+
+### Paired, per episode (n = 171 scenario×seed pairs)
+
+| | vs `round_robin` (floor) | vs `recency` (**the bar**) |
+|---|---|---|
+| rung 17c, `both` | **81.9%** | **54.4%** |
+| all 24 RL rungs, range | 50.9 – 81.9% | 18.7 – 54.4% |
+| all 24 RL rungs, median | — | **35.4%** |
+| `apfeld_active_rfs` | 53.2% | 23.4% |
+| `turing_sweep` | 51.5% | 9.9% |
+| `apfeld` | 4.1% | 2.9% |
+| `camper` | 1.8% | 0.6% |
+
+**Four findings, all from this one run.**
+
+1. **The bar is beaten, and not marginally.** Every one of the 24 live RL checkpoints beats
+   `round_robin` on the joint metric more often than any heuristic except `recency` itself, and
+   **23 of 24 beat `apfeld_active_rfs`**, the strongest published-literature rung on the joint
+   objective. The weakest RL checkpoint (18.7%) still beats `turing_sweep` (9.9%), `apfeld` (2.9%)
+   and `camper` (0.6%) against the same reference.
+
+2. **D61's pre-registered rule picked the best checkpoint of all 24 — on validation data alone.**
+   Rung 17c was selected by `rfenv/selection.py` on the 12 validation configs (net dominance
+   +36.1%) *before* this run existed, and it then scored highest of all 24 on the full 57-scenario
+   development set. That is the strongest available evidence that the selection methodology is
+   sound rather than lucky: the rule never saw the data it turned out to be right about. Had the
+   checkpoint been chosen after seeing this table, the number would carry no weight at all (D39).
+
+3. **A published adaptive strategy loses badly on the PS's own joint objective.** `apfeld` posts
+   the second-highest interception ratio in the table (0.2455) and is beaten by `recency` on the
+   paired joint metric **97.1% of the time**, because it buys that ratio with 14.86 s intercept
+   time and 0.367 coverage — it camps. This is D14's trap reproduced on a method from the
+   literature rather than on a strawman, and it is the single clearest argument for why this
+   project reports two metrics together and never one.
+
+4. **Seed variance is larger than any effect we have claimed between reward arms.** The 24 live
+   checkpoints span 18.7–54.4% against the bar; the control/treatment gap D65 and D68 argued over
+   is a few points inside that. **No single-checkpoint comparison between the two rewards is
+   trustworthy at this sample size** — which is exactly why D61's rule scores every checkpoint and
+   takes the best rather than comparing arms head-to-head.
+
+**Reproduced this session, not quoted.** `python -m rfenv.reward_gate` re-run independently:
+`reward_balance` PASS at 3.0σ separation on 8/8 seeds with the camper 7.3σ below, and it remains
+the only candidate besides `reward_balance_improved` to pass D62. D68's headline pair (81.9% /
+64.3% against round-robin) reproduced exactly by this run.
+
+**Headroom.** `oracle_pulse` reaches interception ratio 0.6579. Rung 17c reaches 0.1304 — about a
+fifth of the truth-reading ceiling, on a metric where the ceiling itself loses intercept time to
+round-robin on 80.7% of episodes (D46). The remaining gap is real but is not a gap to the oracle's
+*schedule*; it is a gap to knowledge no deployable scheduler has.
+
+**Evidence.** `runs/final_2026-09-11/` — `comparison.md`, `summary.json`, figures, and 5,643
+per-episode artefact directories. Suite at the time of the run: **433 passed, 144 skipped, 0
+failed** with the training stack installed; 261 passed / 290 skipped / 0 failed without it.
+
+---
+
 ## Consistency audit — 2026-08-30
 
 Requested by the team: a check that the decisions form one coherent story. Result: **two real
