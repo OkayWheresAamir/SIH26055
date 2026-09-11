@@ -18,7 +18,8 @@ six-rung ladder. **Delete them; this file is the source.**
 > **(3)** Inference **samples** the policy; it no longer takes the argmax. `RLScheduler` and
 > `RecurrentRLScheduler` take `deterministic`, defaulting to `False`, so every code snippet below
 > showing `deterministic=True` is stale except for rung 7 (a DQN's greedy action *is* its policy).
-> **(4)** The observation is **146 wide, not 147**, and its box is no longer `[0, 1]` (D55):
+> **(4)** The observation is **183 wide** (D55 took it to 146; D67 appended two hit-streak
+> blocks), and its box is no longer `[0, 1]` (D55):
 > `camp_time` was dropped as measurably inert, `visit_density` now reads in fair shares (ceiling
 > 36.0) and `staleness` in reference sweeps (ceiling 13.95). Every checkpoint that predates this is
 > unloadable. **(5)** `reward_balance` separates catastrophe from competence but not competence from

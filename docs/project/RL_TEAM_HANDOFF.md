@@ -16,7 +16,8 @@
 > **(3)** Inference **samples** the policy; it no longer takes the argmax. `RLScheduler` and
 > `RecurrentRLScheduler` take `deterministic`, defaulting to `False`, so every code snippet below
 > showing `deterministic=True` is stale except for rung 7 (a DQN's greedy action *is* its policy).
-> **(4)** The observation is **146 wide, not 147**, and its box is no longer `[0, 1]` (D55):
+> **(4)** The observation is **183 wide** (D55 took it to 146; D67 appended two hit-streak
+> blocks), and its box is no longer `[0, 1]` (D55):
 > `camp_time` was dropped as measurably inert, `visit_density` now reads in fair shares (ceiling
 > 36.0) and `staleness` in reference sweeps (ceiling 13.95). Every checkpoint that predates this is
 > unloadable. **(5)** `reward_balance` separates catastrophe from competence but not competence from
@@ -483,8 +484,8 @@ obs, reward, terminated, truncated, info = env.step(action)
 **Action space:** `Discrete(36)`. Choose one of 36 frequency bands to listen to.
 **All 36 are legal at every step — no action masking is needed.**
 
-**Observation space:** `Box(shape=(146,), dtype=float32)`, with a **per-dimension** `high`. That is
-36×4 + 2. D34 ratified the base 36×3 + 1; **D49 extended it** with `current_band` (36-wide one-hot
+**Observation space:** `Box(shape=(183,), dtype=float32)`, with a **per-dimension** `high`. That is
+36×5 + 3. D34 ratified the base 36×3 + 1; **D49 extended it** with `current_band` (36-wide one-hot
 of the band just dwelt on), `camp_time` and `measured_dbm` (the last dwell's mean measured level,
 clamped and rescaled); **D55 dropped `camp_time`** as measurably inert and **rescaled two blocks so
 that 1.0 means something** — `visit_density` is airtime share over fair share (ceiling 36.0) and
