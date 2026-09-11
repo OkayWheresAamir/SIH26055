@@ -12,7 +12,6 @@ import pytest
 
 from rfenv import split
 from rfenv.env import DEFAULT_REWARD
-from rfenv.rl.common import make_train_env
 from rfenv.scenario import TRAIN_SPLIT, EmitterPool, list_configs
 
 
@@ -79,7 +78,15 @@ def test_training_does_not_sample_the_evaluation_pool():
     which is the same population `compare.py` draws its sampled evaluation
     scenarios from. Reverting it would re-open the leak while every other test
     stayed green.
+
+    Imports `stable_baselines3` lazily, here rather than at module level, so
+    this is the only test in the file that needs the training stack -- the rest
+    of this module's tests still run and this one just skips on a machine that
+    doesn't have it installed.
     """
+    pytest.importorskip("stable_baselines3")
+    from rfenv.rl.common import make_train_env
+
     env = make_train_env(reward=DEFAULT_REWARD)
     assert len(env._pool) == len(split.training_pool())
     assert len(env._pool) < len(EmitterPool.from_train())
