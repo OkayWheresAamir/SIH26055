@@ -1,0 +1,74 @@
+{
+  "run": "lstm_balance_1M",
+  "description": "first run on the corrected reward, D52/D53/D55, n_steps=8192",
+  "checkpoint": "lstm_balance_1M_s5.zip",
+  "sha256": "4200ac4c14a22ebca6cb6ca9ec2bc7e4c440e83c700db950754bf61ad36cff47",
+  "algorithm": "RecurrentPPO",
+  "policy": "RecurrentActorCriticPolicy",
+  "reward": "reward_balance",
+  "observation_width": 146,
+  "action_space": "Discrete(36)",
+  "seed": 0,
+  "total_timesteps": 500000,
+  "hyperparameters": {
+    "ent_coef": 0.01,
+    "gamma": 0.997,
+    "n_steps": 8192
+  },
+  "resolved": {
+    "learning_rate": 0.0003,
+    "gamma": 0.997,
+    "n_steps": 8192,
+    "batch_size": 128,
+    "n_epochs": 10,
+    "ent_coef": 0.01,
+    "gae_lambda": 0.95,
+    "vf_coef": 0.5,
+    "max_grad_norm": 0.5
+  },
+  "argv": [
+    "C:\\Code\\sih\\SIH26055\\rfenv\\rl\\recurrent_ppo.py",
+    "--reward",
+    "reward_balance",
+    "--timesteps",
+    "1000000",
+    "--seed",
+    "0",
+    "--hyperparam",
+    "ent_coef=0.01",
+    "--hyperparam",
+    "gamma=0.997",
+    "--hyperparam",
+    "n_steps=8192",
+    "--checkpoint",
+    "runs/checkpoints/lstm_balance_1M.zip",
+    "--checkpoint-freq",
+    "100000",
+    "--run-name",
+    "lstm_balance_1M",
+    "--description",
+    "first run on the corrected reward, D52/D53/D55, n_steps=8192"
+  ],
+  "command": "C:\\Code\\sih\\SIH26055\\venv\\Scripts\\python.exe -m rfenv.rl.recurrent_ppo --reward reward_balance --timesteps 1000000 --seed 0 --hyperparam ent_coef=0.01 --hyperparam gamma=0.997 --hyperparam n_steps=8192 --checkpoint runs/checkpoints/lstm_balance_1M.zip --checkpoint-freq 100000 --run-name lstm_balance_1M --description \"first run on the corrected reward, D52/D53/D55, n_steps=8192\"",
+  "git": {
+    "commit": "031f25e07c107d25da4519c162e77973e8728b6a",
+    "dirty": true
+  },
+  "started_at": "2026-09-10T05:21:36Z",
+  "wall_clock_s": 5696.4,
+  "versions": {
+    "python": "3.12.10",
+    "stable_baselines3": "2.9.0",
+    "torch": "2.14.0+cpu",
+    "gymnasium": "1.3.0",
+    "numpy": "2.5.3",
+    "sb3_contrib": "2.9.0"
+  },
+  "hardware": {
+    "os": "Windows-11-10.0.26200-SP0",
+    "machine": "AMD64",
+    "processor": "Intel64 Family 6 Model 165 Stepping 2, GenuineIntel",
+    "cpu_count": 12,
+    "cuda": null
+  }
+}
