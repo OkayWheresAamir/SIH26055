@@ -113,10 +113,15 @@ as a consequence (D63).** `REWARDS` now holds four keys: `reward_balance` (the o
 passes D62), `greedy`, `explore`, `weighted`. Every DQN and PPO run in this repository trained on
 one of the two removed candidates; they were already permanently unloadable from D49's observation
 change, so nothing currently loadable is lost. `reward_balance_improved` (added 2026-09-10, below)
-also passes D62. **D47 has now run (D68, 2026-09-10)** — against round-robin, `reward_balance`
-scores 65.5% paired-both to `reward_balance_improved`'s 64.3%, a 1.2 pp gap, inside D47's own 5 pp
-margin. **No candidate selected**; per D47's own text this escalates rather than ties-breaks. Both
-remain carried forward.
+also passes D62. **D47 ran on 2026-09-10 (D68) and was resolved on 2026-09-11 with matched seeds.**
+The first run, one seed per arm, landed 1.2 pp apart — inside D47's 5 pp no-selection margin, so
+D47 escalated rather than picking. Two more seeds per arm (4 more runs, strictly sequential) fed a
+fuller D61 selection: the treatment arm's pick was unchanged, but the control arm's moved to a
+materially stronger checkpoint (net dominance +36.1% against the single-seed pick's +25.0%).
+Re-applying D47 on that pair: `reward_balance` **81.9%** paired-both against round-robin,
+`reward_balance_improved` **64.3%** (unchanged, same checkpoint as before) — a 17.6 pp gap, decisively
+outside the margin. **`reward_balance` is selected.** `reward_balance_improved` stays registered
+and passing D62, but is no longer carried forward as a co-equal candidate.
 
 **The train/evaluation leak is closed (D60).** Training sampled `EmitterPool.from_train()` — all 47
 development configs — while evaluation ran those same 47 replays plus scenarios sampled from that

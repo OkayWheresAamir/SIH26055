@@ -136,6 +136,45 @@ venv/Scripts/python.exe -m rfenv.rl.recurrent_ppo --reward reward_balance_improv
   --description "treatment: reward_balance_improved, D60 split, D67 observation (183-wide, hit_streak)"
 ```
 
+## The D47/D68 matched-seed queue — 4 runs, one at a time
+
+Launched to resolve D68's escalation: `reward_balance` (65.5%) vs `reward_balance_improved`
+(64.3%) landed 1.2 pp apart on single-seed-each checkpoints, inside D47's 5 pp no-selection margin.
+Adding seeds 1 and 2 to each arm (3 seeds total per reward) to see whether the gap survives being
+measured with less noise. Same hyperparameters as the original D67 runs throughout; only `--seed`
+and the checkpoint name differ per row.
+
+| run | reward | seed | status |
+|---|---|---|---|
+| `lstm_balance_d67_control_seed1` | `reward_balance` | 1 | **Complete** 2026-09-11 00:23 — `s1`-`s4` all landed |
+| `lstm_balance_d67_control_seed2` | `reward_balance` | 2 | **Complete** 2026-09-11 01:18 — `s1`-`s4` all landed |
+| `lstm_balance_d67_treatment_seed1` | `reward_balance_improved` | 1 | **Complete** 2026-09-11 02:18 — `s1`-`s4` all landed |
+| `lstm_balance_d67_treatment_seed2` | `reward_balance_improved` | 2 | **Complete** 2026-09-11 04:17 — `s1`-`s4` all landed |
+
+All four ran strictly one at a time, as the standing instruction after the crash requires. The
+queue's own cost: roughly 4 hours of wall clock for ~70 minutes of training each, plus the gaps
+between one finishing and the next being noticed and launched.
+
+```
+venv/Scripts/python.exe -m rfenv.rl.recurrent_ppo --reward <reward> --timesteps 400000 \
+  --seed <seed> --hyperparam ent_coef=0.01 --hyperparam gamma=0.997 --hyperparam n_steps=8192 \
+  --checkpoint runs/checkpoints/<run>.zip --checkpoint-freq 100000 --run-name <run> \
+  --description "<control|treatment>: <reward>, D60 split, D67 observation (183-wide), matched-seed for D47/D68"
+```
+
+**Resolved.** D61 re-run across all 12 checkpoints per arm: the control pick moved from seed 0's
+300k (rung 14c, +25.0% net dominance) to seed 2's 300k (rung 17c, **+36.1%**); the treatment pick
+was unchanged (rung 15a, +33.3%, same checkpoint both times). D47 re-applied on the new pair,
+paired against round-robin (`runs/d68_rerun_paired_comparison/`): `reward_balance` **81.9%** both,
+`reward_balance_improved` **64.3%** both — a 17.6 pp gap, decisively outside the 5 pp margin.
+**`reward_balance` selected.** Full accounting in D68 (`DECISIONS.md`); the 16 new checkpoints are
+registered as ladder rungs 16a-16d, 17a-17d, 18a-18d, 19a-19d.
+
+A broader comparison — every one of these 16 checkpoints plus both previous best-known
+checkpoints (14c, 15a), round-robin and recency, 20 rungs total — is running separately
+(`runs/d68_full_matched_seed_comparison/`) to put the complete picture in one table, not just the
+two D61 picks. Result to follow once it lands.
+
 ---
 
 ## Maintaining this file
