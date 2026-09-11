@@ -20,7 +20,7 @@ import pytest
 
 from rfenv import constants as K
 from rfenv import metrics as M
-from rfenv.env import ScanEnv
+from rfenv.env import DEFAULT_REWARD, ScanEnv
 from rfenv.rollout import run_episode
 from rfenv.scenario import Scenario
 
@@ -36,7 +36,7 @@ def scenario():
     return Scenario.replay("config_2", "stare")
 
 
-def finished(scenario, policy=ROUND_ROBIN, seed=0, reward="hit_z"):
+def finished(scenario, policy=ROUND_ROBIN, seed=0, reward=DEFAULT_REWARD):
     env = ScanEnv(scenario=scenario, reward=reward)
     return run_episode(env, policy, seed=seed)
 

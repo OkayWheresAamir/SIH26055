@@ -156,13 +156,20 @@ placeholder, which is precisely the part this spec replaces.
   discarded at inference — only the observation ships, and only it carries the deployability
   constraint. D28 makes this a live choice rather than a formality: `first_e` requires `Y = 1`,
   so censored intercept time is `Y`-conditioned while interception ratio stays threshold-free,
-  and no single reward is aligned with both. The three D7 candidates are therefore +1 per true
+  and no single reward is aligned with both. The three original D7 candidates were +1 per true
   hit (`Z`), +1 per declared hit (`Y`), and +1 per first intercept of an emitter (D28's three
-  clauses). **No reward can move P<sub>d</sub> or P<sub>fa</sub>** — those are frozen receiver
-  properties (D15, D21); a false-alarm penalty prices a wasted dwell, nothing more.
+  clauses). D29's three-candidate cap was lifted by D57, which added an exploit corner, an explore
+  corner and a blend between them, and D62 added a screen every candidate must pass before D47's
+  selection rule may consider it: rung 5 clearly above rung 2, the camper clearly below both,
+  8 seeds. `hit_z` and `hit_y`, the original two, both **failed** that screen — each ranks the
+  camper above every sweeping policy — and were **removed from `REWARDS` entirely** as a
+  consequence (2026-09-10). **Four candidates are registered as of that date**: `reward_balance`
+  (the only one that currently passes D62), `greedy`, `explore`, `weighted`. **No reward can
+  move P<sub>d</sub> or P<sub>fa</sub>** — those are frozen receiver properties (D15, D21); a
+  false-alarm penalty prices a wasted dwell, nothing more.
   **Reward is defined per slot, and a dwell's reward is the sum of its slots'** (D31) — so a
   100 ms dwell on one of the seven wide bands is scored on both its cells and can earn up to +2.
-  This holds for all three candidates, and it keeps reward-per-unit-time equal across wide and
+  This holds for every registered candidate, and it keeps reward-per-unit-time equal across wide and
   narrow bands: a wide band costs twice the airtime and can earn twice the credit. The rejected
   alternative, +1 per dwell regardless of length, would make those seven bands strictly dominated
   — and they are measurably the bands that matter most, holding the densest emitter populations
