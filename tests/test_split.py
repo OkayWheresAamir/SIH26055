@@ -78,6 +78,11 @@ def test_training_does_not_sample_the_evaluation_pool():
     which is the same population `compare.py` draws its sampled evaluation
     scenarios from. Reverting it would re-open the leak while every other test
     stayed green.
+
+    Imports `stable_baselines3` lazily, here rather than at module level, so
+    this is the only test in the file that needs the training stack -- the rest
+    of this module's tests still run and this one just skips on a machine that
+    doesn't have it installed.
     """
     # Imported here, not at module level: rfenv.rl.common hard-imports
     # stable_baselines3, and a module-level import of it aborts COLLECTION of

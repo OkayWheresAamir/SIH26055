@@ -288,19 +288,200 @@ LADDER: tuple[Rung, ...] = (
                 _recurrent_ppo_rung_factory(Path("runs/checkpoints/lstm_balance_1M_s7.zip"))),
         
     
-    Rung("lstm_balance_800k_1M", "9f", "Recurrent PPO (reward_balance, 800k)",
+    Rung("lstm_balance_800k_1M", "9h", "Recurrent PPO (reward_balance, 800k)",
                 "Ours. Trained on reward_balance after D52/D53/D55, 800k timesteps.",
                 _recurrent_ppo_rung_factory(Path("runs/checkpoints/lstm_balance_1M_s8.zip"))),
     
-    Rung("lstm_balance_900k_1M", "9f", "Recurrent PPO (reward_balance, 900k)",
+    Rung("lstm_balance_900k_1M", "9i", "Recurrent PPO (reward_balance, 900k)",
                 "Ours. Trained on reward_balance after D52/D53/D55, 900k timesteps.",
                 _recurrent_ppo_rung_factory(Path("runs/checkpoints/lstm_balance_1M_s9.zip"))),
     
-    Rung("lstm_balance_1M", "9f", "Recurrent PPO (reward_balance, 1M)",
+    Rung("lstm_balance_1M", "9j", "Recurrent PPO (reward_balance, 1M)",
                 "Ours. Trained on reward_balance after D52/D53/D55, 1M timesteps.",
                 _recurrent_ppo_rung_factory(Path("runs/checkpoints/lstm_balance_1M.zip"))),
-        
-        
+
+
+
+
+
+    Rung("lstm_balance_clean_100k_400k", "10a", "Recurrent PPO (reward_balance clean, 100k-400k)",
+            "Ours. Trained on reward_balance after D52/D53/D55, 100k out of 400k timesteps.",
+            _recurrent_ppo_rung_factory(Path("runs/checkpoints/clean_lstm_s1.zip"))),
+
+      Rung("lstm_balance_clean_200k_400k", "10b", "Recurrent PPO (reward_balance clean, 200k-400k)",
+                "Ours. Trained on reward_balance after D52/D53/D55, 200k out of 400k timesteps.",
+                _recurrent_ppo_rung_factory(Path("runs/checkpoints/clean_lstm_s2.zip"))),
+
+     Rung("lstm_balance_clean_300k_400k", "10c", "Recurrent PPO (reward_balance clean, 300k-400k)",
+                    "Ours. Trained on reward_balance after D52/D53/D55, 300k out of 400k timesteps.",
+                    _recurrent_ppo_rung_factory(Path("runs/checkpoints/clean_lstm_s3.zip"))),
+
+     Rung("lstm_balance_clean_400k", "10d", "Recurrent PPO (reward_balance clean, 400k)",
+                    "Ours. Trained on reward_balance after D52/D53/D55, 400k out of 400k timesteps.",
+                    _recurrent_ppo_rung_factory(Path("runs/checkpoints/clean_lstm_s4.zip"))),
+
+
+
+
+
+    Rung("lstm_balance_improved_100k_400k", "11a", "Recurrent PPO (reward_balance_improved, 100k-400k)",
+            "Ours. Treatment arm of the D64 paired comparison: reward_balance_improved, "
+            "100k out of 400k timesteps, same split/hyperparameters/seed as rung 10a.",
+            _recurrent_ppo_rung_factory(Path("runs/checkpoints/lstm_balance_improved_s1.zip"))),
+
+    Rung("lstm_balance_improved_200k_400k", "11b", "Recurrent PPO (reward_balance_improved, 200k-400k)",
+            "Ours. Treatment arm of the D64 paired comparison: reward_balance_improved, "
+            "200k out of 400k timesteps, same split/hyperparameters/seed as rung 10b.",
+            _recurrent_ppo_rung_factory(Path("runs/checkpoints/lstm_balance_improved_s2.zip"))),
+
+    Rung("lstm_balance_improved_300k_400k", "11c", "Recurrent PPO (reward_balance_improved, 300k-400k)",
+            "Ours. Treatment arm of the D64 paired comparison: reward_balance_improved, "
+            "300k out of 400k timesteps, same split/hyperparameters/seed as rung 10c.",
+            _recurrent_ppo_rung_factory(Path("runs/checkpoints/lstm_balance_improved_s3.zip"))),
+
+    Rung("lstm_balance_improved_400k", "11d", "Recurrent PPO (reward_balance_improved, 400k)",
+            "Ours. Treatment arm of the D64 paired comparison: reward_balance_improved, "
+            "400k out of 400k timesteps, same split/hyperparameters/seed as rung 10d.",
+            _recurrent_ppo_rung_factory(Path("runs/checkpoints/lstm_balance_improved_s4.zip"))),
+
+
+    # D67: the observation gains hit_streak, 146 -> 183. Every rung above this
+    # point trained against the narrower vector and is now permanently
+    # unloadable (D49's rule, paid again). Rungs 14/15 are the first trained
+    # against the current 183-wide observation.
+    Rung("lstm_balance_d67_control_100k_400k", "14a", "Recurrent PPO (reward_balance, D67 obs, 100k-400k)",
+            "Ours. Control arm retrained under D67's 183-wide observation (hit_streak), "
+            "100k out of 400k timesteps.",
+            _recurrent_ppo_rung_factory(Path("runs/checkpoints/lstm_balance_d67_control_s1.zip"))),
+
+    Rung("lstm_balance_d67_control_200k_400k", "14b", "Recurrent PPO (reward_balance, D67 obs, 200k-400k)",
+            "Ours. Control arm retrained under D67's 183-wide observation (hit_streak), "
+            "200k out of 400k timesteps.",
+            _recurrent_ppo_rung_factory(Path("runs/checkpoints/lstm_balance_d67_control_s2.zip"))),
+
+    Rung("lstm_balance_d67_control_300k_400k", "14c", "Recurrent PPO (reward_balance, D67 obs, 300k-400k)",
+            "Ours. Control arm retrained under D67's 183-wide observation (hit_streak), "
+            "300k out of 400k timesteps -- the single-seed D61 pick (+25.0% net dominance); "
+            "superseded by rung 17c (+36.1%) once seeds 1/2 were added for D47/D68's re-run.",
+            _recurrent_ppo_rung_factory(Path("runs/checkpoints/lstm_balance_d67_control_s3.zip"))),
+
+    Rung("lstm_balance_d67_control_400k", "14d", "Recurrent PPO (reward_balance, D67 obs, 400k)",
+            "Ours. Control arm retrained under D67's 183-wide observation (hit_streak), "
+            "400k out of 400k timesteps.",
+            _recurrent_ppo_rung_factory(Path("runs/checkpoints/lstm_balance_d67_control_s4.zip"))),
+
+    Rung("lstm_balance_d67_treatment_100k_400k", "15a", "Recurrent PPO (reward_balance_improved, D67 obs, 100k-400k)",
+            "Ours. Treatment arm retrained under D67's 183-wide observation (hit_streak), "
+            "100k out of 400k timesteps -- the D61-selected checkpoint, both before and after "
+            "seeds 1/2 were added for D47/D68's re-run (+33.3% net dominance either way).",
+            _recurrent_ppo_rung_factory(Path("runs/checkpoints/lstm_balance_d67_treatment_s1.zip"))),
+
+    Rung("lstm_balance_d67_treatment_200k_400k", "15b", "Recurrent PPO (reward_balance_improved, D67 obs, 200k-400k)",
+            "Ours. Treatment arm retrained under D67's 183-wide observation (hit_streak), "
+            "200k out of 400k timesteps.",
+            _recurrent_ppo_rung_factory(Path("runs/checkpoints/lstm_balance_d67_treatment_s2.zip"))),
+
+    Rung("lstm_balance_d67_treatment_300k_400k", "15c", "Recurrent PPO (reward_balance_improved, D67 obs, 300k-400k)",
+            "Ours. Treatment arm retrained under D67's 183-wide observation (hit_streak), "
+            "300k out of 400k timesteps.",
+            _recurrent_ppo_rung_factory(Path("runs/checkpoints/lstm_balance_d67_treatment_s3.zip"))),
+
+    Rung("lstm_balance_d67_treatment_400k", "15d", "Recurrent PPO (reward_balance_improved, D67 obs, 400k)",
+            "Ours. Treatment arm retrained under D67's 183-wide observation (hit_streak), "
+            "400k out of 400k timesteps.",
+            _recurrent_ppo_rung_factory(Path("runs/checkpoints/lstm_balance_d67_treatment_s4.zip"))),
+
+
+    # D68's escalation (1.2 pp gap, inside D47's 5 pp margin) prompted a matched-seed
+    # retrain: 2 more seeds per arm, run strictly one at a time after the crash. Rungs
+    # 16/17 are the control arm's seeds 1/2, rungs 18/19 the treatment arm's -- same
+    # hyperparameters and D67 observation as 14/15, only --seed differs. D61 is run
+    # across all 12 checkpoints per arm (rungs 14+16+17, and 15+18+19); whichever
+    # checkpoint wins gets used for D47's re-application, whether or not it is one
+    # of these eight.
+    Rung("lstm_balance_d67_control_seed1_100k_400k", "16a", "Recurrent PPO (reward_balance, D67 obs, seed 1, 100k-400k)",
+            "Ours. Control arm, matched-seed retrain for D47/D68, seed 1, "
+            "100k out of 400k timesteps.",
+            _recurrent_ppo_rung_factory(Path("runs/checkpoints/lstm_balance_d67_control_seed1_s1.zip"))),
+
+    Rung("lstm_balance_d67_control_seed1_200k_400k", "16b", "Recurrent PPO (reward_balance, D67 obs, seed 1, 200k-400k)",
+            "Ours. Control arm, matched-seed retrain for D47/D68, seed 1, "
+            "200k out of 400k timesteps.",
+            _recurrent_ppo_rung_factory(Path("runs/checkpoints/lstm_balance_d67_control_seed1_s2.zip"))),
+
+    Rung("lstm_balance_d67_control_seed1_300k_400k", "16c", "Recurrent PPO (reward_balance, D67 obs, seed 1, 300k-400k)",
+            "Ours. Control arm, matched-seed retrain for D47/D68, seed 1, "
+            "300k out of 400k timesteps.",
+            _recurrent_ppo_rung_factory(Path("runs/checkpoints/lstm_balance_d67_control_seed1_s3.zip"))),
+
+    Rung("lstm_balance_d67_control_seed1_400k", "16d", "Recurrent PPO (reward_balance, D67 obs, seed 1, 400k)",
+            "Ours. Control arm, matched-seed retrain for D47/D68, seed 1, "
+            "400k out of 400k timesteps.",
+            _recurrent_ppo_rung_factory(Path("runs/checkpoints/lstm_balance_d67_control_seed1_s4.zip"))),
+
+    Rung("lstm_balance_d67_control_seed2_100k_400k", "17a", "Recurrent PPO (reward_balance, D67 obs, seed 2, 100k-400k)",
+            "Ours. Control arm, matched-seed retrain for D47/D68, seed 2, "
+            "100k out of 400k timesteps.",
+            _recurrent_ppo_rung_factory(Path("runs/checkpoints/lstm_balance_d67_control_seed2_s1.zip"))),
+
+    Rung("lstm_balance_d67_control_seed2_200k_400k", "17b", "Recurrent PPO (reward_balance, D67 obs, seed 2, 200k-400k)",
+            "Ours. Control arm, matched-seed retrain for D47/D68, seed 2, "
+            "200k out of 400k timesteps.",
+            _recurrent_ppo_rung_factory(Path("runs/checkpoints/lstm_balance_d67_control_seed2_s2.zip"))),
+
+    Rung("lstm_balance_d67_control_seed2_300k_400k", "17c", "Recurrent PPO (reward_balance, D67 obs, seed 2, 300k-400k)",
+            "Ours. Control arm, matched-seed retrain for D47/D68, seed 2, "
+            "300k out of 400k timesteps -- the D61-selected checkpoint once all 12 "
+            "control-arm checkpoints (seeds 0/1/2) were scored together (+36.1% net dominance, "
+            "ahead of seed 0's own 300k at +25.0%, rung 14c).",
+            _recurrent_ppo_rung_factory(Path("runs/checkpoints/lstm_balance_d67_control_seed2_s3.zip"))),
+
+    Rung("lstm_balance_d67_control_seed2_400k", "17d", "Recurrent PPO (reward_balance, D67 obs, seed 2, 400k)",
+            "Ours. Control arm, matched-seed retrain for D47/D68, seed 2, "
+            "400k out of 400k timesteps.",
+            _recurrent_ppo_rung_factory(Path("runs/checkpoints/lstm_balance_d67_control_seed2_s4.zip"))),
+
+    Rung("lstm_balance_d67_treatment_seed1_100k_400k", "18a", "Recurrent PPO (reward_balance_improved, D67 obs, seed 1, 100k-400k)",
+            "Ours. Treatment arm, matched-seed retrain for D47/D68, seed 1, "
+            "100k out of 400k timesteps.",
+            _recurrent_ppo_rung_factory(Path("runs/checkpoints/lstm_balance_d67_treatment_seed1_s1.zip"))),
+
+    Rung("lstm_balance_d67_treatment_seed1_200k_400k", "18b", "Recurrent PPO (reward_balance_improved, D67 obs, seed 1, 200k-400k)",
+            "Ours. Treatment arm, matched-seed retrain for D47/D68, seed 1, "
+            "200k out of 400k timesteps.",
+            _recurrent_ppo_rung_factory(Path("runs/checkpoints/lstm_balance_d67_treatment_seed1_s2.zip"))),
+
+    Rung("lstm_balance_d67_treatment_seed1_300k_400k", "18c", "Recurrent PPO (reward_balance_improved, D67 obs, seed 1, 300k-400k)",
+            "Ours. Treatment arm, matched-seed retrain for D47/D68, seed 1, "
+            "300k out of 400k timesteps.",
+            _recurrent_ppo_rung_factory(Path("runs/checkpoints/lstm_balance_d67_treatment_seed1_s3.zip"))),
+
+    Rung("lstm_balance_d67_treatment_seed1_400k", "18d", "Recurrent PPO (reward_balance_improved, D67 obs, seed 1, 400k)",
+            "Ours. Treatment arm, matched-seed retrain for D47/D68, seed 1, "
+            "400k out of 400k timesteps.",
+            _recurrent_ppo_rung_factory(Path("runs/checkpoints/lstm_balance_d67_treatment_seed1_s4.zip"))),
+
+    Rung("lstm_balance_d67_treatment_seed2_100k_400k", "19a", "Recurrent PPO (reward_balance_improved, D67 obs, seed 2, 100k-400k)",
+            "Ours. Treatment arm, matched-seed retrain for D47/D68, seed 2, "
+            "100k out of 400k timesteps.",
+            _recurrent_ppo_rung_factory(Path("runs/checkpoints/lstm_balance_d67_treatment_seed2_s1.zip"))),
+
+    Rung("lstm_balance_d67_treatment_seed2_200k_400k", "19b", "Recurrent PPO (reward_balance_improved, D67 obs, seed 2, 200k-400k)",
+            "Ours. Treatment arm, matched-seed retrain for D47/D68, seed 2, "
+            "200k out of 400k timesteps.",
+            _recurrent_ppo_rung_factory(Path("runs/checkpoints/lstm_balance_d67_treatment_seed2_s2.zip"))),
+
+    Rung("lstm_balance_d67_treatment_seed2_300k_400k", "19c", "Recurrent PPO (reward_balance_improved, D67 obs, seed 2, 300k-400k)",
+            "Ours. Treatment arm, matched-seed retrain for D47/D68, seed 2, "
+            "300k out of 400k timesteps.",
+            _recurrent_ppo_rung_factory(Path("runs/checkpoints/lstm_balance_d67_treatment_seed2_s3.zip"))),
+
+    Rung("lstm_balance_d67_treatment_seed2_400k", "19d", "Recurrent PPO (reward_balance_improved, D67 obs, seed 2, 400k)",
+            "Ours. Treatment arm, matched-seed retrain for D47/D68, seed 2, "
+            "400k out of 400k timesteps.",
+            _recurrent_ppo_rung_factory(Path("runs/checkpoints/lstm_balance_d67_treatment_seed2_s4.zip"))),
+
+
     Rung("camper_oracle", "—", "Greedy static, truth-fed (D14's camper)",
          "Reference line: D14's camper, which knew where the pulses were.",
          lambda rng, grid: OracleCamper(grid, rng),

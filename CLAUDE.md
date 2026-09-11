@@ -70,9 +70,9 @@ that step collapses the rung into rung 4. That correction now lives in `_observa
 policy gets it. `visit_density` reads in fair shares (1.0 = equal airtime, ceiling 36.0),
 `staleness` in reference sweeps (1.0 = one pass overdue, ceiling 13.95), **the box is deliberately
 no longer the unit interval**, and `camp_time` is gone — measured, it took exactly two values under
-any non-camping policy. **The vector is 146 wide.** Rung 5's ranking is unchanged (verified on
-1,408 of 1,408 steps) and `reward_balance` is numerically unchanged (verified to 1.6e-7), so D53's
-table survives.
+any non-camping policy. **The vector was 146 wide** (extended to 183 by D67, below). Rung 5's
+ranking is unchanged (verified on 1,408 of 1,408 steps) and `reward_balance` is numerically
+unchanged (verified to 1.6e-7), so D53's table survives.
 
 **Every checkpoint in `runs/checkpoints/` is now dead**, rungs 7 and 8 included — they predated
 D49 and D55 finished the job. **No RL row currently in `EVALUATION.md` §5 was produced under
@@ -112,8 +112,16 @@ every sweeping policy, D14's tension in reward form — **and were removed from 
 as a consequence (D63).** `REWARDS` now holds four keys: `reward_balance` (the only one that
 passes D62), `greedy`, `explore`, `weighted`. Every DQN and PPO run in this repository trained on
 one of the two removed candidates; they were already permanently unloadable from D49's observation
-change, so nothing currently loadable is lost. D47 is gated behind this screen and **has still
-never been run**.
+change, so nothing currently loadable is lost. `reward_balance_improved` (added 2026-09-10, below)
+also passes D62. **D47 ran on 2026-09-10 (D68) and was resolved on 2026-09-11 with matched seeds.**
+The first run, one seed per arm, landed 1.2 pp apart — inside D47's 5 pp no-selection margin, so
+D47 escalated rather than picking. Two more seeds per arm (4 more runs, strictly sequential) fed a
+fuller D61 selection: the treatment arm's pick was unchanged, but the control arm's moved to a
+materially stronger checkpoint (net dominance +36.1% against the single-seed pick's +25.0%).
+Re-applying D47 on that pair: `reward_balance` **81.9%** paired-both against round-robin,
+`reward_balance_improved` **64.3%** (unchanged, same checkpoint as before) — a 17.6 pp gap, decisively
+outside the margin. **`reward_balance` is selected.** `reward_balance_improved` stays registered
+and passing D62, but is no longer carried forward as a co-equal candidate.
 
 **The train/evaluation leak is closed (D60).** Training sampled `EmitterPool.from_train()` — all 47
 development configs — while evaluation ran those same 47 replays plus scenarios sampled from that
@@ -127,12 +135,47 @@ have done it — the pool is assembled *from* the configs.
 rung 5)` on the validation half, ties toward fewer steps, fixed in `rfenv/selection.py` before the
 run that uses it.
 
-**No RL result in this repository is currently clean.** The 2,223-episode acceptance run of
-2026-09-10 (`runs/acceptance_2026-09-10/`) has rung 9c Pareto-dominating rung 5 on 48.0% of
-episodes against being dominated on 13.5%, and rung 9b at 43.9% against 4.7% — but every one of
-those checkpoints trained on the emitters it was scored against. Sound arithmetic, contaminated
-comparison, **not written into `EVALUATION.md` §5**. The number to chase is that comparison
-re-measured after a retrain on the training half.
+**Corrected 2026-09-10: a clean RL result now exists, headline included, in `EVALUATION.md` §5
+(D64, D65).** The 2,223-episode acceptance run above (`runs/acceptance_2026-09-10/`, rung 9c
+48.0%/13.5%, rung 9b 43.9%/4.7%) is still contaminated for the reason given — every checkpoint in
+it trained on the emitters it was scored against — and stays out of `EVALUATION.md` §5 for that
+reason. But a retrain has since run: `reward_balance`, 400k steps, started at commit `176e6a9`,
+after both D60 and D62/D63 were in the tree. D61's selection rule, run for the first time on real
+candidates rather than stale pre-D60 checkpoints, picked the 400k snapshot at **net dominance
++36.1%** (47.2% dominates rung 5 / 11.1% dominated) on the 12 validation configs — a checkpoint
+this repository can defend as clean. Its headline, paired against recency over the full development
+set (684 episodes): **73.7% ratio / 31.6% cTTI / 22.8% both**. A parallel run finished the same
+day: same split, hyperparameters and seed, only the reward differs (`reward_balance_improved`). Its
+own D61-selected checkpoint (200k, weaker than the control on validation at +25.0% net dominance)
+scores **83.0% / 39.8% / 31.0%** on the same headline run — ahead of the control there, a reversal
+from the validation ranking. **Read as suggestive, not conclusive** — one training seed per arm,
+and the control's own four checkpoints swing by more than the gap between the two arms. **Neither
+row is promoted as the number to carry forward** — that decision has not been made, and both are
+reported side by side in `EVALUATION.md` §5 rather than one superseding the other. Ledger:
+`docs/project/ITERATION_LEDGER.md`. Full account: D64 (control), D65 (the paired comparison and the
+reversal), `scratch/TRAINING_JOURNEY.md` §14.
+
+**A hard explore/exploit gate was tried and removed the same day (D66).** Two new rungs — a
+threshold-based commit/release gate, and the same gate wrapped around the D61-selected checkpoint's
+own action choices instead of a sweep — both measured *worse* than the camper baseline on censored
+intercept time and coverage. The code was removed after being measured; `D66` stays as the record
+and `docs/project/PHASE_SWITCH_FUTURE_WORK.md` carries the two directions (an observation feature,
+or a jointly-learned phase/band action) still worth trying if this line of work is picked up again.
+
+**Option A was built the same day: the observation is now 183 wide, not 146 (D67).** Two blocks
+appended after `measured_dbm` — `HIT_STREAK` (36-wide, consecutive declared hits per band across
+visits, capped and rescaled) and `CURRENT_HIT_STREAK` (the current band's own streak, a
+convenience scalar). Existing slice offsets are untouched, so no heuristic rung needed changing.
+**Every checkpoint that predates this commit is now permanently unloadable** — D64's, D65's, every
+snapshot of both arms — same cost every past observation change has carried (D49, D55), paid again
+here on purpose rather than by accident. A gap this exposed is closed alongside it: the test
+suite's per-rung checkpoint-usability check was a hand-maintained table that had fallen behind for
+every rung added after D55, so this change's first test run produced 85 failures instead of clean
+skips; rewritten to build each rung directly and catch the error `require_loadable()` (D49) already
+raises, removing the table and the maintenance burden with it. A fresh retrain under 183 is
+in progress — training one model at a time, sequentially, after a laptop crash interrupted the
+first attempt at running several in parallel. Full account: D67, `scratch/TRAINING_JOURNEY.md`
+§15.
 
 **The environment was frozen on 2026-09-04 (D42).** `rfenv/constants.py` is closed — band
 geometry, slot clock, dwell schedule, `N₀`, `σ`, `γ`, `PD_POPULATION` — and

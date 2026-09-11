@@ -845,13 +845,14 @@ fallen to the tie-break.
 ## 12.6 Where this leaves the lane
 
 - **No clean RL number exists.** Every checkpoint predates D60.
-- **The human declined a retrain** on 2026-09-10 (cost), and will train `greedy` to 500k instead.
-  `greedy` **fails** D62's screen at −2.7σ, so the screen predicts a camper — rung 4's profile.
-  That run is therefore the screen's **first falsification test** and is worth doing as a control
-  with the prediction recorded first. It also runs under D60 automatically, since
-  `make_train_env` now defaults to the training half.
+- ~~**The human declined a retrain** on 2026-09-10 (cost), and will train `greedy` to 500k
+  instead.~~ **Superseded by §14, same day** — a clean retrain on `reward_balance` was run after
+  all, and a second, on `reward_balance_improved`, followed it as a paired comparison. Neither
+  trained `greedy`.
 - **Still open:** the iteration ledger (one row per run, including failures, with a command to
-  re-run any past run from its manifest alone), and D47, which has never been run.
+  re-run any past run from its manifest alone), and D47, which has never been run. The ledger is
+  now started — see `docs/project/ITERATION_LEDGER.md` — beginning with the D60-forward runs;
+  every run before D60 trained on a leaking pool and is narrated above instead of re-tabulated.
 
 ---
 
@@ -885,3 +886,234 @@ observation-width change, so nothing currently loadable is lost.
 **Not touched**: the deep historical worked-examples inside the three long handoff documents
 (day-by-day task tables, file-tree listings) — those already carry a top-of-document amendment
 banner saying to read it before trusting anything below.
+
+---
+
+# 14. The first clean retrain, and a paired reward comparison — 2026-09-10
+
+## 14.1 The control run
+
+`reward_balance`, 400k timesteps, under D60/D61 for the first time — the earliest run in this
+repository to start (commit `176e6a9`) after **both** the split (D60, `36405b1`) and the reward
+screen (D62/D63, `36405b1`/`46d8449`) were already in the tree. Every RL checkpoint before this one
+predates at least one of the two.
+
+```
+venv/Scripts/python.exe -m rfenv.rl.recurrent_ppo --reward reward_balance --timesteps 400000 \
+  --seed 0 --hyperparam ent_coef=0.01 --hyperparam gamma=0.997 --hyperparam n_steps=8192 \
+  --checkpoint runs/checkpoints/lstm_balance_clean.zip --checkpoint-freq 100000 \
+  --run-name clean_lstm --description "attempt 1 under D60 split, D61 selection"
+```
+
+Four snapshots, `clean_lstm_s1`–`s4` at 100k/200k/300k/400k, 4,419 s wall clock for the full run
+(~74 min).
+
+## 14.2 Selection (D61), run for real
+
+Against the 12 validation configs, 3 seeds, paired per episode against rung 5 — the rule fixed in
+`rfenv/selection.py` before this run existed:
+
+```
+venv/Scripts/python.exe -m rfenv.selection runs/checkpoints/clean_lstm_s1.zip \
+  runs/checkpoints/clean_lstm_s2.zip runs/checkpoints/clean_lstm_s3.zip \
+  runs/checkpoints/clean_lstm_s4.zip --reward reward_balance
+```
+
+| checkpoint | steps | dominates | dominated | net |
+|---|---|---|---|---|
+| `clean_lstm_s4` | 400k | 47.2% | 11.1% | **+36.1%** ← selected |
+| `clean_lstm_s2` | 200k | 41.7% | 11.1% | +30.6% |
+| `clean_lstm_s1` | 100k | 36.1% | 11.1% | +25.0% |
+| `clean_lstm_s3` | 300k | 19.4% | 19.4% | +0.0% |
+
+Monotonic in steps except a dip at 300k (net dominance drops to zero, then recovers at 400k) —
+noted, not chased; the rule picks the checkpoint it picks. **This is the first result this
+repository has produced that is both clean (post-D60 pool) and pre-registered (D61's rule, not a
+number picked after looking at the comparison).**
+
+## 14.3 What was still outstanding for the control arm at this point in the session
+
+D61 answers "which checkpoint," not "how good is it." The headline — `compare.py`'s full run over
+all 47 stare replays plus sampled scenarios, on `clean_lstm_s4` specifically — had not yet been run
+here. It has since (§14.6 below). An earlier comparison (`runs/clean_baseline_100k`, `--seeds 1 --rungs
+round_robin,recency,lstm_balance_clean_100k_500k,lstm_balance_200k_1M,lstm_balance_300k_1M
+--figures`) was run *before* selection completed, scored the **100k** snapshot only (rung `10a`
+was still registered against `clean_lstm_s1.zip`, not the eventual winner), and mixed it with two
+pre-D60 checkpoints (`lstm_balance_200k_1M`, `lstm_balance_300k_1M`) that trained on the pool these
+same 47 replays are drawn from. Read on its own terms: `lstm_balance_clean_100k_500k` (i.e.
+`clean_lstm_s1`, 100k steps) scored 74.5%/68.1%/51.1% (ratio/cTTI/both) paired against recency —
+ahead of both contaminated checkpoints despite an order of magnitude less training — but that run
+is **not** a substitute for scoring the D61-selected winner, and the two contaminated rows in it
+are not evidence about anything (same status as every pre-D60 number: sound arithmetic,
+contaminated comparison).
+
+`rfenv/baselines/ladder.py` registers all four checkpoints as their own rungs, `10a`–`10d`
+(`clean_lstm_s1`…`s4` respectively). `10d` is the D61-selected checkpoint, and §14.6 below is that
+comparison run for real.
+
+## 14.4 The treatment run, launched in parallel
+
+To settle whether `reward_balance_improved` (§ below D63, in `rfenv/env.py`) helps a learner rather
+than just passing the D62 screen more narrowly, the human launched a second
+run identical to the control in everything but the reward:
+
+```
+python -m rfenv.rl.recurrent_ppo --reward reward_balance_improved --timesteps 400000 --seed 0 \
+  --hyperparam ent_coef=0.01 --hyperparam gamma=0.997 --hyperparam n_steps=8192 \
+  --checkpoint runs/checkpoints/lstm_balance_improved.zip --checkpoint-freq 100000 \
+  --run-name lstm_balance_improved --description "treatment: density-weighted occupancy, D60 split"
+```
+
+Same seed, same hyperparameters, same split — the only variable that differs from §14.1 is the
+reward function. **This is a single seed per arm.** A difference between the two arms is
+suggestive, not conclusive: the control run's own trajectory swings by double digits between
+adjacent 100k checkpoints (§14.2), so an effect smaller than that swing is inside seed noise, not
+evidence about the reward.
+
+## 14.5 The treatment arm, selected
+
+Finished the same day. D61 selection on its four checkpoints, same rule, same validation set:
+
+| checkpoint | steps | dominates | dominated | net |
+|---|---|---|---|---|
+| `lstm_balance_improved_s2` | 200k | 36.1% | 11.1% | **+25.0%** ← selected |
+| `lstm_balance_improved_s4` | 400k | 33.3% | 11.1% | +22.2% |
+| `lstm_balance_improved_s1` | 100k | 22.2% | 11.1% | +11.1% |
+| `lstm_balance_improved_s3` | 300k | 36.1% | 27.8% | +8.3% |
+
+Selected `lstm_balance_improved_s2` (200k) — **below** the control's +36.1% (§14.2) on validation.
+Both arms registered on the ladder: `10a`–`10d` (control), `11a`–`11d` (treatment).
+
+## 14.6 The headline, both winners together — and a reversal
+
+```
+venv/Scripts/python.exe -m rfenv.compare --rungs round_robin,recency,lstm_balance_clean_400k,\
+  lstm_balance_improved_200k_400k --seeds 3 --sampled 10 --figures --out runs/clean_paired_comparison
+```
+
+684 episodes (4 rungs × 57 scenarios × 3 seeds), the full development set per D60. Paired against
+recency:
+
+| scheduler | ratio | cTTI | both |
+|---|---|---|---|
+| `round_robin` | 7.0% | 28.7% | 3.5% |
+| control (`reward_balance`, 400k) | 73.7% | 31.6% | 22.8% |
+| treatment (`reward_balance_improved`, 200k) | **83.0%** | **39.8%** | **31.0%** |
+
+Both clean checkpoints clear rung 5 comfortably. **The treatment is ahead on the headline; the
+control was ahead on validation.** Not read as "the improved reward wins" — one training seed per
+arm, the winning checkpoints sit at different step counts (400k vs 200k), and the control's own
+checkpoints alone swing by more than the 8.2-point gap between the two arms across their four
+snapshots. It is the first evidence, weak as it is, in the direction argued when the reward was
+called "unproven rather than rejected": the D62 screen measures discrimination between six fixed
+heuristics, which is a different signal than the gradient a learner actually consumes. Settling it
+for real needs matched seed counts per arm — see D65 for the full accounting.
+
+---
+
+# 15. A crash, a fix it exposed, and the observation grows to 183 (D67) — 2026-09-10
+
+## 15.1 The matched-seed attempt that didn't survive
+
+Following D65, the plan was to settle the control/treatment reversal with matched seed counts:
+`clean_lstm_seed1`/`seed2` and `lstm_balance_improved_seed1`/`seed2`, four runs, launched together
+in the background against the 146-wide observation. The laptop crashed partway through. No
+checkpoint from any of the four had reached its first 100k snapshot (~15-20 min in, well short of
+the ~18 min/100k pace observed on every prior run), so nothing was salvageable and nothing was
+lost beyond the wall-clock time -- confirmed by `runs/checkpoints/` holding no `seed1`/`seed2`
+files after the crash. The instruction that followed: train one model at a time in the background
+from here on, not several in parallel.
+
+## 15.2 Option A lands before the retry (D67)
+
+Discussed the same day, before the crash: whether the trained RecurrentPPO's never-camps behaviour
+(D64-D66) came from a missing signal or a reward that doesn't pay for using one. Agreed plan:
+Option A over Option C (a jointly-learned phase/band action, `docs/project/PHASE_SWITCH_FUTURE_WORK.md`)
+-- add the streak signal, keep the current architecture, retrain. Confirmed spec: both the scalar
+(current-band streak) and the full per-band block together, `146 -> 183`, rather than doing it in
+two separate width-bumping passes later -- "make any changes necessary to the observation space
+now" to minimise future churn.
+
+Landed in `rfenv/env.py`/`guard.py`/`rl/common.py` (full account: D67). The crash happened with
+this code already on disk but before it had been tested end-to-end; re-verified after restart:
+`ScanEnv` builds a self-consistent 183-wide box, `reset()`/`step()` populate `hit_streak`
+correctly, `current_observation_width()` reads it off `guard.py` without a hardcoded literal.
+
+## 15.3 What the first test run after the crash actually found
+
+`pytest tests/test_baselines.py`: **85 failures**, not the clean skips a stale-checkpoint change is
+supposed to produce. Cause: `_unusable_checkpoint`'s hand-maintained rung-number -> checkpoint-path
+table was written for rungs 7-9d and never extended as 9e-9j/10a-d/11a-d were registered across
+this session -- so every checkpoint outside that table hit the observation-width mismatch as a bare
+test failure instead of a skip, even though `load_checkpoint()` already raises the exact
+informative D49 error via `require_loadable()`. Fixed by building each rung directly inside the
+check and catching `(FileNotFoundError, ValueError)`, removing the table: self-healing for any rung
+registered after this one, nothing left to fall behind again. Full suite after: **287 passed / 144
+skipped / 1 pre-existing failure** (up from 60 skipped -- every now-stale RL checkpoint skips
+cleanly instead of erroring).
+
+## 15.4 The retrain, restarted
+
+One model at a time this time. Control arm first:
+
+```
+venv/Scripts/python.exe -m rfenv.rl.recurrent_ppo --reward reward_balance --timesteps 400000 \
+  --seed 0 --hyperparam ent_coef=0.01 --hyperparam gamma=0.997 --hyperparam n_steps=8192 \
+  --checkpoint runs/checkpoints/lstm_balance_d67_control.zip --checkpoint-freq 100000 \
+  --run-name lstm_balance_d67_control \
+  --description "control: reward_balance, D60 split, D67 observation (183-wide, hit_streak)"
+```
+
+Treatment (`reward_balance_improved`) queued to start only once this one finishes, per the
+one-at-a-time instruction. This folds the never-run matched-seed question into the same retrain --
+there was no clean 146-wide answer to preserve, so the question is answered on the current
+observation rather than a superseded one.
+
+## 15.5 Both arms finished, and the answer to the actual question
+
+Control finished first (401,408 timesteps, ~58 min single-run), D61-selected `s3` (300k), net
+dominance +25.0%. Treatment launched immediately after as the sole background job, finished
+cleanly, D61-selected `s1` (100k), net dominance **+33.3%** -- ahead of the control on validation,
+where under the 146-wide setup (D65) the treatment had lost.
+
+**The question Option A exists to answer, checked directly rather than inferred from a metric:**
+does either selected checkpoint actually commit to a band now that it can see a streak signal?
+Same method as D66 -- run an episode, measure the logged band sequence's run-lengths, on
+`config_81`/`config_2`/`config_921`. Both checkpoints: **maximum dwell streak 4-6 slots, on every
+scenario checked.** Identical order of magnitude to every pre-D67 checkpoint (D64/D66 measured max
+6). The feature exists in the input; neither policy learned to act on it by staying put.
+
+**The headline still moved, a little, in both arms, in the same direction as D65:**
+
+```
+venv/Scripts/python.exe -m rfenv.compare --rungs round_robin,recency,\
+  lstm_balance_d67_control_300k_400k,lstm_balance_d67_treatment_100k_400k \
+  --seeds 3 --sampled 10 --figures --out runs/d67_paired_comparison
+```
+
+| | control | treatment |
+|---|---|---|
+| both, D67 (183-wide) | 25.7% | **35.1%** |
+| both, pre-D67 equivalent (D64/D65, 146-wide) | 22.8% | 31.0% |
+
+Both arms up a few points; treatment still ahead of control, same direction D65 found on a wholly
+independent pair of checkpoints. **Read carefully, not triumphantly.** The mechanism this change
+was built to produce -- commitment -- did not appear on either checkpoint, so the few-point gain
+cannot honestly be credited to it. Equally plausible: 17 extra input dimensions gave the network
+marginally more capacity for reasons that have nothing to do with streaks, or this is ordinary
+single-seed noise -- D64's own four snapshots swung by 36 points on this exact measure. What can be
+said without hedging: the streak feature has not, on either checkpoint tried so far, taught a
+policy to camp. Full accounting in D67.
+
+## 15.6 D47, run for the first time (D68)
+
+Rather than another architecture experiment, the next question asked was procedural: three
+decision-cycles (D62, D66, D67) had shipped since D47 -- the actual pre-registered rule for
+*choosing* between reward candidates -- was written, and it had never once executed. Checked D62
+eligibility fresh (`python -m rfenv.reward_gate --rewards reward_balance,reward_balance_improved`,
+this session, not trusted from an earlier unrecorded claim): both pass, `reward_balance` at
+3.0σ/7.3σ, `reward_balance_improved` at 2.3σ/5.6σ. Then applied D47's rule -- paired-both against
+round-robin, largest fraction wins, within 5 pp nothing is selected -- to the same D61-selected
+checkpoints and the same `compare.py` run §15.5 already produced, no new run needed:
+`reward_balance` 65.5%, `reward_balance_improved` 64.3%. **1.2 points apart. No candidate
+selected**, exactly as D47's own text says should happen at this margin. Full accounting in D68.
