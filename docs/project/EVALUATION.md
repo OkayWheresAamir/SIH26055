@@ -145,6 +145,13 @@ triple), and **the comparison against rung 5**, which is the actual bar (D46). R
 paired denominator because it is the PS's named open-loop floor and is identical for every
 candidate, so it cancels; it is not the bar.
 
+**Run for the first time 2026-09-10 (D68), against `reward_balance` and `reward_balance_improved`
+— the only two candidates D62's screen has passed.** Each represented by its D61-selected
+checkpoint (`lstm_balance_d67_control_s3`, `lstm_balance_d67_treatment_s1`), paired against
+round-robin: `reward_balance` 65.5% both, `reward_balance_improved` 64.3% both. **1.2 pp apart,
+inside the 5 pp margin — no candidate selected, per the rule's own text.** Both clear rung 5
+decisively; between themselves, D47 declines to pick. Full accounting in D68.
+
 ### Two traps, both measured on real data (D14)
 
 1. **Per-dwell hit rate is misleading.** A camper that parks on the busiest band scores 85–90%
@@ -314,10 +321,13 @@ why torch's generator is now seeded per rung.
    It scored a hand-written `step % N_BANDS` sweep instead of rung 2 (`EQUAL_AIRTIME_CYCLE`, D43);
    against the real rung, `reward_balance` separates rung 5 from rung 2 by **+59.0 +/- 19.4 on 8/8
    seeds**. Every candidate is now screened before training (**D62**): rungs 2, 4, 5 and 6a under
-   each, 8 seeds, paired per seed. **`reward_balance` is the only one of six that passed** --
-   **`hit_z` and `hit_y` both failed**, ranking rung 4 above every sweeping policy (D14's tension
-   in reward form), and were **retired from `REWARDS` entirely** 2026-09-10 as a consequence.
-   D47 is gated behind that screen and has still never been run.
+   each, 8 seeds, paired per seed. **`reward_balance` is the only one of the original six that
+   passed** -- **`hit_z` and `hit_y` both failed**, ranking rung 4 above every sweeping policy
+   (D14's tension in reward form), and were **retired from `REWARDS` entirely** 2026-09-10 as a
+   consequence. `reward_balance_improved`, added the same day, also passed. **D47 has since run
+   (D68) against both survivors and selected neither** -- 65.5% vs 64.3% paired-both against
+   round-robin, inside the rule's own 5 pp no-selection margin. See §"Choosing between reward
+   candidates (D47)" above for the full table.
 
 ### The development split (D60, D61)
 
