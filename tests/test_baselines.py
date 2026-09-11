@@ -54,7 +54,14 @@ def _unusable_checkpoint(key: str, grid) -> str | None:
     """
     try:
         B.make(key, seed=0, grid=grid)
-    except (FileNotFoundError, ValueError) as exc:
+    except (FileNotFoundError, ValueError, ImportError) as exc:
+        # ImportError too: on a machine with no training stack installed, an
+        # RL-backed factory raises ModuleNotFoundError long before it can reach
+        # require_loadable(). A rung that cannot be built because torch/SB3 are
+        # absent is exactly as unusable as one whose checkpoint is missing, and
+        # both must skip rather than fail -- the whole suite has to stay green
+        # for everyone who never trains anything (requirements.txt's own
+        # rationale for keeping the training stack optional).
         return str(exc)
     return None
 

@@ -147,6 +147,14 @@ def select(checkpoints, *, reward: str = DEFAULT_REWARD,
     table is the evidence that the rule was applied rather than a result chosen
     and justified afterwards. The iteration ledger records the whole table.
     """
+    # Validated before the training-stack import, not after: an empty candidate
+    # set is a caller error that should say so on any machine, and importing
+    # rfenv.rl first turns it into a ModuleNotFoundError wherever torch/SB3 are
+    # absent -- masking the real complaint with an unrelated one.
+    checkpoints = list(checkpoints)
+    if not checkpoints:
+        raise ValueError("no checkpoints to select from")
+
     from rfenv.rl.common import RecurrentRLScheduler, read_manifest
     from rfenv.rl.recurrent_ppo import load_checkpoint
 
@@ -159,8 +167,6 @@ def select(checkpoints, *, reward: str = DEFAULT_REWARD,
             reward=reward, seeds=seeds)
         scored.append(Candidate(path, manifest.get("total_timesteps"),
                                 cand.dominates, cand.dominated, cand.n_episodes))
-    if not scored:
-        raise ValueError("no checkpoints to select from")
     # Highest net dominance; ties toward fewer steps (see the module docstring).
     winner = max(scored, key=lambda c: (c.net_dominance, -(c.steps or 0)))
     return winner, scored
