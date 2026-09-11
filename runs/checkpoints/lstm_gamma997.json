@@ -1,0 +1,72 @@
+{
+  "run": "lstm_gamma997",
+  "description": "collapse diagnostic: gamma 0.997 (horizon ~333 vs episode 300-600), ent_coef 0.01, n_steps 2048 (full episode per rollout). Tests whether camping breaks before spending real compute.",
+  "checkpoint": "lstm_gamma997.zip",
+  "sha256": "2a56a5395f97246d24a2f448b17e0bb6af859101254fc7b79d0cd1058a63dbbc",
+  "algorithm": "RecurrentPPO",
+  "policy": "RecurrentActorCriticPolicy",
+  "reward": "reward_balance",
+  "observation_width": 147,
+  "action_space": "Discrete(36)",
+  "seed": 0,
+  "total_timesteps": 100352,
+  "hyperparameters": {
+    "gamma": 0.997,
+    "ent_coef": 0.01,
+    "n_steps": 2048
+  },
+  "resolved": {
+    "learning_rate": 0.0003,
+    "gamma": 0.997,
+    "n_steps": 2048,
+    "batch_size": 128,
+    "n_epochs": 10,
+    "ent_coef": 0.01,
+    "gae_lambda": 0.95,
+    "vf_coef": 0.5,
+    "max_grad_norm": 0.5
+  },
+  "argv": [
+    "C:\\Code\\sih\\SIH26055\\rfenv\\rl\\recurrent_ppo.py",
+    "--reward",
+    "reward_balance",
+    "--timesteps",
+    "100000",
+    "--seed",
+    "0",
+    "--checkpoint",
+    "runs/checkpoints/lstm_gamma997.zip",
+    "--run-name",
+    "lstm_gamma997",
+    "--description",
+    "collapse diagnostic: gamma 0.997 (horizon ~333 vs episode 300-600), ent_coef 0.01, n_steps 2048 (full episode per rollout). Tests whether camping breaks before spending real compute.",
+    "--hyperparam",
+    "gamma=0.997",
+    "--hyperparam",
+    "ent_coef=0.01",
+    "--hyperparam",
+    "n_steps=2048"
+  ],
+  "command": "C:\\Code\\sih\\SIH26055\\venv\\Scripts\\python.exe -m rfenv.rl.recurrent_ppo --reward reward_balance --timesteps 100000 --seed 0 --checkpoint runs/checkpoints/lstm_gamma997.zip --run-name lstm_gamma997 --description \"collapse diagnostic: gamma 0.997 (horizon ~333 vs episode 300-600), ent_coef 0.01, n_steps 2048 (full episode per rollout). Tests whether camping breaks before spending real compute.\" --hyperparam gamma=0.997 --hyperparam ent_coef=0.01 --hyperparam n_steps=2048",
+  "git": {
+    "commit": "ae2b5ffee8fcdf0c262f4da6ae633845c0c1a4e6",
+    "dirty": true
+  },
+  "started_at": "2026-09-09T20:16:37Z",
+  "wall_clock_s": 1094.5,
+  "versions": {
+    "python": "3.12.10",
+    "stable_baselines3": "2.9.0",
+    "torch": "2.14.0+cpu",
+    "gymnasium": "1.3.0",
+    "numpy": "2.5.3",
+    "sb3_contrib": "2.9.0"
+  },
+  "hardware": {
+    "os": "Windows-11-10.0.26200-SP0",
+    "machine": "AMD64",
+    "processor": "Intel64 Family 6 Model 165 Stepping 2, GenuineIntel",
+    "cpu_count": 12,
+    "cuda": null
+  }
+}
