@@ -2718,11 +2718,16 @@ the way the ladder already does:
 > **AMENDED 2026-09-10 — under D62's screen, against the real rungs, this reverses.** With rung 4
 > in place of the hand-written camper, `weighted` puts the camper at +1323.0 against rung 2's
 > +1455.7 — only 0.4σ below, where the screen requires 1.0σ — and it **fails**. `reward_balance`
-> is the only candidate of the six that passes. `weighted` remains registered and remains the
-> knob it was built to be; it is not currently a candidate D47 may consider. `hit_z` and `hit_y` rank camping
-above sweeping, which is D14's tension and exactly why the ladder carries rung 4. `reward_balance`
-orders the ladder correctly but cannot separate rung 5 from round-robin at all (D56).
-`greedy` and `explore` each fail the check their corner is defined by failing.
+> is the only candidate of the six that passes (D62). `weighted` remains registered and remains the
+> knob it was built to be; it is not currently a candidate D47 may consider.
+>
+> The paragraph this amends originally read: *"`hit_z` and `hit_y` rank camping above sweeping,
+> which is D14's tension and exactly why the ladder carries rung 4. `reward_balance` orders the
+> ladder correctly but cannot separate rung 5 from round-robin at all (D56). `greedy` and `explore`
+> each fail the check their corner is defined by failing."* The `hit_z`/`hit_y`/`greedy`/`explore`
+> sentences still hold. **The `reward_balance` sentence is withdrawn with D56**: it separates rung 5
+> from round-robin by +59.0 ± 19.4 on 8/8 seeds once measured against the real rung, not "not at
+> all" — see D56's own entry for the correction.
 
 ### How α = 0.3 was chosen
 
@@ -3154,6 +3159,10 @@ be expected to beat the floor, and both have been live options for the RL lane t
 screen cost minutes and would have saved every DQN and PPO run in this repository, all of which
 trained on `hit_z` or `hit_y` (D48).
 
+**Consequence, same day: both were removed from `REWARDS` entirely — see D63.** This entry's
+numbers (six candidates screened, `reward_balance` the sole survivor) describe the screen as run,
+before that removal; D63 is the record of the registry edit that followed from it.
+
 `greedy` failing is by construction — D57 built it as the exploit corner and predicted exactly
 this. `explore` fails from the other side: it is the only candidate that ranks rung 2 *above* rung
 5, on 0/8 seeds, because nothing in it rewards finding the busy bands faster.
@@ -3174,7 +3183,94 @@ scoring a hand-written stand-in instead of a registered rung.
 
 ---
 
-## D63 — the scheduler takes a threat priority from outside; it does not compute one
+## D63 — `hit_z` and `hit_y` are removed from `REWARDS` entirely, as a consequence of D62
+
+**Status:** `SETTLED` (2026-09-10) — a change to a gated category (the reward), made directly by
+the human by editing `rfenv/env.py`, confirmed when raised. Recorded here because CLAUDE.md's
+working rules require it and because the edit has a wide blast radius across code, tests and docs
+that referenced the two by name.
+
+### What changed
+
+`reward_hit_z` and `reward_hit_y` — D29's original two candidates, registered since 2026-09-03 —
+are deleted from `rfenv/env.py`, along with their `REWARDS` entries. `REWARDS` now holds exactly
+**four** keys: `reward_balance`, `greedy`, `explore`, `weighted`. `sorted(REWARDS)` is
+`['explore', 'greedy', 'reward_balance', 'weighted']`.
+
+### Why
+
+D62's screen, run the same day, found both fail decisively:
+
+| candidate | separation (rung 5 − rung 2) | camper margin | verdict |
+|---|---|---|---|
+| `hit_z` | 3.1σ | **−2.3σ** | FAIL — camper ranks *above* both sweeps |
+| `hit_y` | 2.6σ | **−1.9σ** | FAIL — same failure |
+
+Both rank the camper above every sweeping policy — D14's tension stated in reward form, a reward
+that pays only for hits pays most for camping on the densest band. No agent trained on either could
+be expected to beat the floor, and both had been live default options for the RL lane since D29.
+Every DQN and PPO checkpoint in this repository was trained on one of the two (D48) — already
+permanently unloadable from D49's observation-width change, so nothing currently loadable is lost
+by the removal itself.
+
+D62 stopped at recording the finding; this entry is the registry edit that followed from it,
+made directly rather than proposed first. Raised and confirmed rather than reverted, per the
+working agreement that an unexpected change to a gated file gets checked before being built on.
+
+### Blast radius
+
+Removing two long-standing registry keys touched more than the registry:
+
+- **`rfenv/env.py`** — the two functions and their `REWARDS` entries gone; the module-level
+  comment block explaining D31's per-slot invariant rewritten (it previously used `hit_z`/`hit_y`
+  as the worked examples); `reward_greedy`'s docstring, which compares itself against `hit_y`,
+  updated to past tense.
+- **`rfenv/baselines/ladder.py`** — rungs 7, 7a and 8's descriptions annotated: already
+  permanently unloadable from D49, now doubly so since their registered reward no longer exists.
+  The ladder still carries them (a `Rung` with a dead checkpoint skips with a warning via
+  `checkpoint_is_usable`, rather than erroring) so nothing crashes; the docstrings now say why.
+- **`rfenv/rl/__init__.py`** — the package's usage examples used `--reward hit_z`/`hit_y` as live,
+  copy-pasteable commands; both now raise `ValueError` on the current registry, so the examples
+  are rewritten to `reward_balance`/`greedy`.
+- **Tests — 37 failures, all fixed.** Most were generic training/metrics fixtures that happened to
+  default to `reward="hit_z"` as an arbitrary valid value with no dependency on its specific shape;
+  swapped to `DEFAULT_REWARD`. Two were not generic and needed real rework:
+  - `tests/test_env.py::test_a_wide_dwell_scores_both_its_slots` and
+    `::test_reward_per_unit_time_is_equal_across_dwell_widths` pinned D31's per-slot invariant to
+    `hit_z` specifically, because it was a bare per-slot `Z` count and none of the four survivors
+    is. Rewritten to inject a raw `lambda dwell, ...: float(dwell.Z.sum())` via `env._reward_fn`
+    directly, testing `ScanEnv.step`'s slot-summation mechanics independent of whichever
+    candidates happen to be registered — a more durable test than depending on registry contents.
+  - `tests/test_reward_gate.py::test_the_screen_separates_a_known_good_reward_from_a_known_bad_one`
+    used `hit_z` as its known-bad control; swapped to `greedy` (D57's exploit corner, which fails
+    the same check by construction) since `hit_z` no longer exists to screen.
+- **Docs** — `run.md`, `ENVIRONMENT_SPEC.md`, `EVALUATION.md`, `EDGE_LANE_HANDOFF.md`, and the
+  amendment banners in `RL_LANE_HANDOFF.md`/`RL_TEAM_HANDOFF.md`/`STATE_ACTION_FORMULATION.md`
+  corrected: live example commands using `--reward hit_z`/`hit_y` rewritten (they now raise), and
+  present-tense "six candidates, hit_z and hit_y fail" language moved to past tense with the
+  removal stated. Deep historical worked-examples inside the three long handoff documents (their
+  original day-by-day task tables, file-tree listings) are **not** individually rewritten — those
+  documents already carry a prominent amendment banner at the top saying to read it before
+  trusting anything below, and rewriting hundreds of lines of legacy planning prose for one
+  registry edit is not proportional.
+
+### What this does not do
+
+- **It does not change `DEFAULT_REWARD`**, still `reward_balance`.
+- **It does not invalidate any currently-loadable checkpoint.** Rungs 7/7a/8 were already
+  unloadable from D49; nothing that worked yesterday stops working today.
+- **It is not a statement that `hit_z`/`hit_y` were bad ideas at the time.** D14's tension was not
+  known to be this severe until D62 measured it; they were D29's original two candidates and D47's
+  selection rule was written to choose between exactly this kind of pair.
+- **It does not touch D29's truth/observation split** (what a reward may read) — only which
+  candidates are registered.
+
+**Evidence.** `git diff` on `rfenv/env.py` (the deletion). D62's table, same session. Suite after:
+323 passed, 60 skipped, 1 failed (the pre-existing held-out-split guard).
+
+---
+
+## D64 — the scheduler takes a threat priority from outside; it does not compute one
 
 **Status:** `SETTLED` (2026-09-11) for the direction. Implementation brief:
 `docs/project/THREAT_WEIGHTING_BRIEF.md`. Two things inside it are open and named at the end.

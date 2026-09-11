@@ -314,9 +314,10 @@ why torch's generator is now seeded per rung.
    It scored a hand-written `step % N_BANDS` sweep instead of rung 2 (`EQUAL_AIRTIME_CYCLE`, D43);
    against the real rung, `reward_balance` separates rung 5 from rung 2 by **+59.0 +/- 19.4 on 8/8
    seeds**. Every candidate is now screened before training (**D62**): rungs 2, 4, 5 and 6a under
-   each, 8 seeds, paired per seed. **`reward_balance` is the only one of six that passes** --
-   and **`hit_z` and `hit_y` both fail**, ranking rung 4 above every sweeping policy, which is D14's
-   tension in reward form. D47 is gated behind that screen and has still never been run.
+   each, 8 seeds, paired per seed. **`reward_balance` is the only one of six that passed** --
+   **`hit_z` and `hit_y` both failed**, ranking rung 4 above every sweeping policy (D14's tension
+   in reward form), and were **retired from `REWARDS` entirely** 2026-09-10 as a consequence.
+   D47 is gated behind that screen and has still never been run.
 
 ### The development split, and why no RL row is clean yet (D60, D61)
 

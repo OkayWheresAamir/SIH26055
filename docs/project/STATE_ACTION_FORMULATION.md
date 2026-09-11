@@ -4,9 +4,12 @@
 **Audience:** the RL lane, as the input to the reward / PPO work.
 
 > **AMENDED 2026-09-09 — three things below are now out of date; see D52, D53 and D54.**
-> **(1)** The registered reward candidates are `hit_z`, `hit_y`, `reward_balance`. The key
-> `first_intercept` no longer exists — candidate 3 was renamed and rewritten (D50, D53), so any
-> command here that passes `--reward first_intercept` will be refused by `ScanEnv.__init__`.
+> **(1)** ~~The registered reward candidates are `hit_z`, `hit_y`, `reward_balance`.~~
+> **CORRECTED 2026-09-10:** the live registry is `reward_balance`, `greedy`, `explore`, `weighted`.
+> `hit_z` and `hit_y` — this document's default and its worked comparison reward throughout — were
+> **retired entirely** after both failed D62's screen (point 7, below); every `--reward hit_z` or
+> `--reward hit_y` command anywhere in this document now raises. The key `first_intercept` also no
+> longer exists — candidate 3 was renamed and rewritten (D50, D53).
 > **(2)** `reward_balance`'s camping cost is charged against airtime share
 > (`-3.0 * visit_density[action] * n_slots`), not a consecutive-repeat streak — the streak version
 > was defeated for free by alternating between two bands, and measurably ranked a 2-band ping-pong
@@ -18,9 +21,41 @@
 > `camp_time` was dropped as measurably inert, `visit_density` now reads in fair shares (ceiling
 > 36.0) and `staleness` in reference sweeps (ceiling 13.95). Every checkpoint that predates this is
 > unloadable. **(5)** `reward_balance` separates catastrophe from competence but not competence from
-> excellence — measured, it scores rung 5 and round-robin within +2.3 +/- 11.7 of each other over 8
-> seeds, so round-robin is roughly the ceiling it can teach (D56, open).
-> The PDF beside this file is older still and does not carry these amendments.
+> excellence over round-robin ~~-- measured, it scores rung 5 and round-robin within +2.3 +/- 11.7
+> of each other over 8 seeds, so round-robin is roughly the ceiling it can teach (D56, open).~~
+> **WITHDRAWN 2026-09-10 -- that measurement was wrong (D56).** It scored a hand-written
+> `step % N_BANDS` sweep and called it round-robin; round-robin is `EQUAL_AIRTIME_CYCLE` (D43).
+> Against the real rung, `reward_balance` separates rung 5 from round-robin by **+59.0 +/- 19.4 on
+> 8/8 seeds** -- three times the seed noise, not three percent of it.
+>
+> **(6)** The registered set grew to **six** under D57 (`hit_z`, `hit_y`, `reward_balance`,
+> `greedy`, `explore`, `weighted`), then back down to **four** when `hit_z`/`hit_y` were retired
+> (point 7). D29's three-candidate cap is formally lifted for the designed axis D57 added;
+> `greedy`/`explore` are the exploit/explore corners and are *expected* to fail on their own,
+> `weighted` (alpha=0.3) is the knob between them.
+>
+> **(7)** Every candidate is now screened before anything trains on it (D62): rungs 2, 4, 5, 6a
+> scored 8 seeds each, PASS only if rung 5 clearly separates from round-robin and the camper sits
+> clearly below both. **`hit_z` and `hit_y` -- this document's own default and worked reward --
+> both FAILED**, ranking the camper above every sweeping policy, and were **removed from
+> `REWARDS` as a consequence** (point 1). `reward_balance` is the only survivor.
+> Run `python -m rfenv.reward_gate` before training on anything else here. D47's selection rule is
+> gated behind this screen and has still never been run.
+>
+> **(8)** Training no longer samples the full 47-config pool (D60). The train/eval leak this
+> caused -- the RL policy could see the same emitters it was scored against, which the baselines
+> never could -- is closed: `EmitterPool.from_train()` (all 47) is now the *evaluation* pool only;
+> `split.training_pool()` (35 configs) is what `make_train_env` actually trains on, with **zero**
+> emitters shared with the 12-config validation half. **No RL result in this document predates the
+> split and none of them is clean.**
+>
+> **(9)** Checkpoint selection is pre-registered (D61): highest
+> `P(dominates rung 5) - P(dominated by rung 5)` on the validation half, fixed in
+> `rfenv/selection.py` before the run that uses it -- not picked by eye from a compare table.
+>
+> **(10)** `measured_dbm` is ratified (D59) and stays in the observation.
+>
+> The PDF beside this file is older still and does not carry any of these amendments.
 
 
 > **Read this before designing anything against it.** This document is **not a proposal**. The
