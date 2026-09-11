@@ -3862,6 +3862,74 @@ this session. `runs/d67_paired_comparison/comparison.md`'s "paired against round
 same run D67 already recorded. No new training, no new comparison run — D47 applied to existing,
 already-verified numbers.
 
+### Resolved with matched seeds (2026-09-11): `reward_balance` selected, decisively
+
+The escalation above chose option (b): 2 more seeds trained per arm (4 runs total, one at a time,
+strictly sequential after a laptop crash earlier this session lost 4 parallel runs), then D61 and
+D47 re-applied on the fuller 3-seed set. Both training runs and both re-applications ran this
+session.
+
+**D61, re-run across all 12 checkpoints per arm** (`python -m rfenv.selection`, 12 validation
+configs × 3 seeds, net dominance against `recency`):
+
+| checkpoint | steps | dominates | dominated | net |
+|---|---|---|---|---|
+| `lstm_balance_d67_control_seed2_s3` (rung 17c) | 300k | 44.4% | 8.3% | **+36.1% — selected** |
+| `lstm_balance_d67_control_s3` (rung 14c, the single-seed pick) | 300k | 36.1% | 11.1% | +25.0% |
+| `lstm_balance_d67_control_seed2_s2` | 200k | 38.9% | 16.7% | +22.2% |
+| `lstm_balance_d67_control_seed2_s1` | 100k | 36.1% | 13.9% | +22.2% |
+| (8 more control checkpoints, all lower) | | | | +16.7% down to −13.9% |
+
+**The control arm's selected checkpoint changed** — seed 2's 300k snapshot displaces seed 0's,
+registered as new rung **17c**. Rung 14c's docstring is annotated in place rather than deleted, so
+the ladder still shows what was believed before more seeds existed.
+
+| checkpoint | steps | dominates | dominated | net |
+|---|---|---|---|---|
+| `lstm_balance_d67_treatment_s1` (rung 15a, unchanged) | 100k | 38.9% | 5.6% | **+33.3% — selected** |
+| `lstm_balance_d67_treatment_s2` | 200k | 38.9% | 13.9% | +25.0% |
+| `lstm_balance_d67_treatment_seed1_s1` | 100k | 41.7% | 19.4% | +22.2% |
+| (9 more treatment checkpoints, all lower) | | | | +19.4% down to −16.7% |
+
+**The treatment arm's selection did not change** — the fuller 3-seed comparison re-picked the
+exact same checkpoint (rung 15a) that the single-seed run had already chosen.
+
+**D47, re-applied on the new pair** (`python -m rfenv.compare --rungs
+round_robin,recency,lstm_balance_d67_control_seed2_300k_400k,lstm_balance_d67_treatment_100k_400k
+--seeds 3 --sampled 10 --figures`, 57 configs × 3 seeds = 171 episodes/rung, artefacts in
+`runs/d68_rerun_paired_comparison/`), paired against round-robin:
+
+| candidate | checkpoint | ratio | cTTI | **both** |
+|---|---|---|---|---|
+| `reward_balance` | `lstm_balance_d67_control_seed2_s3` (rung 17c) | 89.5% | 85.4% | **81.9%** |
+| `reward_balance_improved` | `lstm_balance_d67_treatment_s1` (rung 15a) | 90.6% | 69.6% | **64.3%** |
+
+**Gap: 17.6 percentage points. Far outside the 5 pp margin. `reward_balance` is selected.**
+
+Same ranking against rung 5 (`recency`, the actual bar): `reward_balance` 54.4% both, versus
+`reward_balance_improved`'s 35.1%.
+
+**What changed, and what didn't.** `reward_balance_improved`'s number is identical to D68's
+original measurement (64.3%) — its selected checkpoint never changed, so there was nothing to
+re-measure. `reward_balance`'s number moved from 65.5% to 81.9% because D61 found a materially
+better checkpoint once seeds 1 and 2 gave it more to compare against — the single-seed selection
+had picked a checkpoint 16.4 points weaker on this exact headline than one two more seeds of
+training happened to produce. **This is the opposite of noise washing the gap out; it is noise
+in the original single-seed selection being corrected by having more to select from.** D68's own
+prediction was symmetric — either candidate's number could have moved — and this session did not
+know which way it would break before running it.
+
+**Decision: `reward_balance` is the selected reward candidate.** `reward_balance_improved` is not
+discarded — it remains registered, passes D62, and stays available — but it is no longer carried
+forward as a co-equal candidate. Future RL work in this repository trains on `reward_balance`
+unless a new decision reopens the question.
+
+**Evidence.** `python -m rfenv.selection` against both arms' full 12-checkpoint sets, this
+session. `python -m rfenv.compare --rungs round_robin,recency,lstm_balance_d67_control_seed2_300k_400k,lstm_balance_d67_treatment_100k_400k
+--seeds 3 --sampled 10 --figures`, this session, artefacts in `runs/d68_rerun_paired_comparison/`.
+The 16 new checkpoints (2 arms × 2 seeds × 4 snapshots) are registered as ladder rungs 16a-16d
+(control seed 1), 17a-17d (control seed 2), 18a-18d (treatment seed 1), 19a-19d (treatment seed 2).
+
 ## D69 — hand-rolled policies outside `baselines/` are now a structural test failure, not a review catch
 
 D56 (`step % N_BANDS` scored and called `round_robin`) was the third time a policy built by hand

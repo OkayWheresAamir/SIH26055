@@ -150,7 +150,15 @@ candidate, so it cancels; it is not the bar.
 checkpoint (`lstm_balance_d67_control_s3`, `lstm_balance_d67_treatment_s1`), paired against
 round-robin: `reward_balance` 65.5% both, `reward_balance_improved` 64.3% both. **1.2 pp apart,
 inside the 5 pp margin — no candidate selected, per the rule's own text.** Both clear rung 5
-decisively; between themselves, D47 declines to pick. Full accounting in D68.
+decisively; between themselves, D47 declined to pick.
+
+**Resolved 2026-09-11 with matched seeds.** Two more seeds per arm fed a fuller D61 selection: the
+treatment checkpoint was unchanged, but the control arm's pick moved to a materially stronger
+checkpoint (`lstm_balance_d67_control_seed2_s3`, net dominance +36.1% against the single-seed
+pick's +25.0%). Re-applying D47 on the new pair: `reward_balance` **81.9%** both,
+`reward_balance_improved` **64.3%** both (identical to before — its checkpoint never changed).
+**17.6 pp apart, decisively outside the margin — `reward_balance` is selected.** Full accounting
+in D68.
 
 ### Two traps, both measured on real data (D14)
 
@@ -325,8 +333,9 @@ why torch's generator is now seeded per rung.
    passed** -- **`hit_z` and `hit_y` both failed**, ranking rung 4 above every sweeping policy
    (D14's tension in reward form), and were **retired from `REWARDS` entirely** 2026-09-10 as a
    consequence. `reward_balance_improved`, added the same day, also passed. **D47 has since run
-   (D68) against both survivors and selected neither** -- 65.5% vs 64.3% paired-both against
-   round-robin, inside the rule's own 5 pp no-selection margin. See §"Choosing between reward
+   (D68) and, once resolved with matched seeds, selected `reward_balance`** -- 81.9% vs
+   `reward_balance_improved`'s 64.3% paired-both against round-robin, a 17.6 pp gap, decisively
+   outside the rule's own 5 pp no-selection margin. See §"Choosing between reward
    candidates (D47)" above for the full table.
 
 ### The development split (D60, D61)
