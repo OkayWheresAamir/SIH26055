@@ -1,0 +1,74 @@
+{
+  "run": "lstm_weighted",
+  "description": "weighted (D57 midpoint), fails D62 camper-margin at 0.4sigma",
+  "checkpoint": "lstm_weighted_s4.zip",
+  "sha256": "ad2fb0922fcb5a57615581e36a280bb4410ca3123b9bf3368b3d546c1bd292d2",
+  "algorithm": "RecurrentPPO",
+  "policy": "RecurrentActorCriticPolicy",
+  "reward": "weighted",
+  "observation_width": 146,
+  "action_space": "Discrete(36)",
+  "seed": 0,
+  "total_timesteps": 400000,
+  "hyperparameters": {
+    "ent_coef": 0.01,
+    "gamma": 0.997,
+    "n_steps": 8192
+  },
+  "resolved": {
+    "learning_rate": 0.0003,
+    "gamma": 0.997,
+    "n_steps": 8192,
+    "batch_size": 128,
+    "n_epochs": 10,
+    "ent_coef": 0.01,
+    "gae_lambda": 0.95,
+    "vf_coef": 0.5,
+    "max_grad_norm": 0.5
+  },
+  "argv": [
+    "C:\\Code\\sih\\SIH26055\\rfenv\\rl\\recurrent_ppo.py",
+    "--reward",
+    "weighted",
+    "--timesteps",
+    "500000",
+    "--seed",
+    "0",
+    "--hyperparam",
+    "ent_coef=0.01",
+    "--hyperparam",
+    "gamma=0.997",
+    "--hyperparam",
+    "n_steps=8192",
+    "--checkpoint",
+    "runs/checkpoints/lstm_weighted.zip",
+    "--checkpoint-freq",
+    "100000",
+    "--run-name",
+    "lstm_weighted",
+    "--description",
+    "weighted (D57 midpoint), fails D62 camper-margin at 0.4sigma"
+  ],
+  "command": "C:\\Code\\sih\\SIH26055\\venv\\Scripts\\python.exe -m rfenv.rl.recurrent_ppo --reward weighted --timesteps 500000 --seed 0 --hyperparam ent_coef=0.01 --hyperparam gamma=0.997 --hyperparam n_steps=8192 --checkpoint runs/checkpoints/lstm_weighted.zip --checkpoint-freq 100000 --run-name lstm_weighted --description \"weighted (D57 midpoint), fails D62 camper-margin at 0.4sigma\"",
+  "git": {
+    "commit": "40547cb83bbd9294cc1178293f6b6205cd11ecb8",
+    "dirty": false
+  },
+  "started_at": "2026-09-10T19:03:18Z",
+  "wall_clock_s": 4578.9,
+  "versions": {
+    "python": "3.12.10",
+    "stable_baselines3": "2.9.0",
+    "torch": "2.14.0+cpu",
+    "gymnasium": "1.3.0",
+    "numpy": "2.5.3",
+    "sb3_contrib": "2.9.0"
+  },
+  "hardware": {
+    "os": "Windows-11-10.0.26200-SP0",
+    "machine": "AMD64",
+    "processor": "Intel64 Family 6 Model 165 Stepping 2, GenuineIntel",
+    "cpu_count": 12,
+    "cuda": null
+  }
+}
