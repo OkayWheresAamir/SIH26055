@@ -28,6 +28,53 @@ a { color: #17181a; }
 <p><strong>Version 1 · 2026-09-06 · Owner: Aamir.</strong>
 <strong>Audience:</strong> the RL lane, as the input to the reward / PPO work.</p>
 <blockquote>
+<p><strong>AMENDED 2026-09-09 — three things below are now out of date; see D52, D53 and D54.</strong>
+<strong>(1)</strong> ~~The registered reward candidates are <code>hit_z</code>, <code>hit_y</code>, <code>reward_balance</code>.~~
+<strong>CORRECTED 2026-09-10:</strong> the live registry is <code>reward_balance</code>, <code>greedy</code>, <code>explore</code>, <code>weighted</code>.
+<code>hit_z</code> and <code>hit_y</code> — this document's default and its worked comparison reward throughout — were
+<strong>retired entirely</strong> after both failed D62's screen (point 7, below); every <code>--reward hit_z</code> or
+<code>--reward hit_y</code> command anywhere in this document now raises. The key <code>first_intercept</code> also no
+longer exists — candidate 3 was renamed and rewritten (D50, D53).
+<strong>(2)</strong> <code>reward_balance</code>'s camping cost is charged against airtime share
+(<code>-3.0 * visit_density[action] * n_slots</code>), not a consecutive-repeat streak — the streak version
+was defeated for free by alternating between two bands, and measurably ranked a 2-band ping-pong
+above round-robin (D53).
+<strong>(3)</strong> Inference <strong>samples</strong> the policy; it no longer takes the argmax. <code>RLScheduler</code> and
+<code>RecurrentRLScheduler</code> take <code>deterministic</code>, defaulting to <code>False</code>, so every code snippet below
+showing <code>deterministic=True</code> is stale except for rung 7 (a DQN's greedy action <em>is</em> its policy).
+<strong>(4)</strong> The observation is <strong>183 wide</strong>, and its box is no longer <code>[0, 1]</code> (D55, D67):
+<code>camp_time</code> was dropped as measurably inert, <code>visit_density</code> now reads in fair shares (ceiling
+36.0) and <code>staleness</code> in reference sweeps (ceiling 13.95). Every checkpoint that predates this is
+unloadable. <strong>(5)</strong> <code>reward_balance</code> separates catastrophe from competence but not competence from
+excellence over round-robin ~~-- measured, it scores rung 5 and round-robin within +2.3 +/- 11.7
+of each other over 8 seeds, so round-robin is roughly the ceiling it can teach (D56, open).~~
+<strong>WITHDRAWN 2026-09-10 -- that measurement was wrong (D56).</strong> It scored a hand-written
+<code>step % N_BANDS</code> sweep and called it round-robin; round-robin is <code>EQUAL_AIRTIME_CYCLE</code> (D43).
+Against the real rung, <code>reward_balance</code> separates rung 5 from round-robin by <strong>+59.0 +/- 19.4 on
+8/8 seeds</strong> -- three times the seed noise, not three percent of it.</p>
+<p><strong>(6)</strong> The registered set grew to <strong>six</strong> under D57 (<code>hit_z</code>, <code>hit_y</code>, <code>reward_balance</code>,
+<code>greedy</code>, <code>explore</code>, <code>weighted</code>), then back down to <strong>four</strong> when <code>hit_z</code>/<code>hit_y</code> were retired
+(point 7). D29's three-candidate cap is formally lifted for the designed axis D57 added;
+<code>greedy</code>/<code>explore</code> are the exploit/explore corners and are <em>expected</em> to fail on their own,
+<code>weighted</code> (alpha=0.3) is the knob between them.</p>
+<p><strong>(7)</strong> Every candidate is now screened before anything trains on it (D62): rungs 2, 4, 5, 6a
+scored 8 seeds each, PASS only if rung 5 clearly separates from round-robin and the camper sits
+clearly below both. <strong><code>hit_z</code> and <code>hit_y</code> -- this document's own default and worked reward --
+both FAILED</strong>, ranking the camper above every sweeping policy, and were <strong>removed from
+<code>REWARDS</code> as a consequence</strong> (point 1). <code>reward_balance</code> is the only survivor.
+Run <code>python -m rfenv.reward_gate</code> before training on anything else here. D47's selection rule is
+gated behind this screen and has still never been run.</p>
+<p><strong>(8)</strong> Training no longer samples the full 47-config pool (D60). The train/eval leak this
+caused -- the RL policy could see the same emitters it was scored against, which the baselines
+never could -- is closed: <code>EmitterPool.from_train()</code> (all 47) is now the <em>evaluation</em> pool only;
+<code>split.training_pool()</code> (35 configs) is what <code>make_train_env</code> actually trains on, with <strong>zero</strong>
+emitters shared with the 12-config validation half. <strong>No RL result in this document predates the
+split and none of them is clean.</strong></p>
+<p><strong>(9)</strong> Checkpoint selection is pre-registered (D61): highest
+<code>P(dominates rung 5) - P(dominated by rung 5)</code> on the validation half, fixed in
+<code>rfenv/selection.py</code> before the run that uses it -- not picked by eye from a compare table.</p>
+<p><strong>(10)</strong> <code>measured_dbm</code> is ratified (D59) and stays in the observation.</p>
+<p>The PDF beside this file is older still and does not carry any of these amendments.</p>
 <p><strong>Read this before designing anything against it.</strong> This document is <strong>not a proposal</strong>. The
 state and action spaces described here are <strong>already built, tested and running</strong> — they are what
 <code>rfenv/env.py</code> has exposed since 2026-09-04, what all seven baseline schedulers were measured on
@@ -44,10 +91,11 @@ entry's own recorded measurement and are labelled as such, not re-measured here.
 <h2>0. The one-line answer</h2>
 <pre><code>Current situation  →  What the agent knows (STATE)  →  What it can do (ACTION)
 ──────────────────────────────────────────────────────────────────────────────
- t slots elapsed       109 floats in [0,1], built ONLY       pick 1 of 36 bands
- of 600 (30 s);        from its own past looks:              to point the receiver
- 36 bands, unknown     per-band hit rate, visit              at next. That is the
- who is transmitting   density, staleness, + clock           entire action space.
+ t slots elapsed       146 floats, built ONLY from its       pick 1 of 36 bands
+ of 600 (30 s);        from its own past looks: per-band      to point the receiver
+ 36 bands, unknown     hit rate, visit density, staleness,    at next. That is the
+ who is transmitting   current band, + clock, camp time,      entire action space.
+                       last measured level
 </code></pre>
 <p>The problem statement calls interception <em>"a two dimensional search problem since it involves
 adjusting receiver's frequency at correct time"</em> (<code>SIH26055_PROBLEM_STATEMENT.md</code> §Detailed
@@ -79,11 +127,21 @@ band that was empty a second ago may be busy now. That is the whole problem.</p>
 <hr />
 <h2>2. STATE — what the agent knows at each timestep</h2>
 <h3>2.1 The observation space</h3>
-<pre><code class="language-python">observation_space = spaces.Box(low=0.0, high=1.0, shape=(109,), dtype=np.float32)   # rfenv/env.py:162
+<pre><code class="language-python">observation_space = spaces.Box(low=low, high=high, dtype=np.float32)   # shape (183,)
 </code></pre>
-<p><strong>109 = 36 × 3 + 1.</strong> Every component is natively a fraction, so the box is the unit interval and
-<strong>no scaling or normalisation layer is needed anywhere</strong> — verified at runtime, <code>obs.min() = 0.0</code>,
-<code>obs.max() = 1.0</code>. Ratified as <strong>D34</strong> (<code>SETTLED</code>).</p>
+<p><strong>183 = 36 × 5 + 3, and the box is NOT the unit interval (D55, D67).</strong> Two blocks declare ceilings above 1.0 so that 1.0 means something inside each — <code>visit_density</code> reaches <code>N_BANDS</code> = 36.0 (a fully camped episode) and <code>staleness</code> reaches <code>N_SLOTS / SWEEP_SLOTS</code> = 13.95 (a band untouched all episode). Everything else is a fraction or a one-hot and
+<strong>no scaling or normalisation layer is needed anywhere</strong>.</p>
+<p>D34 ratified the base <strong>109 = 36 × 3 + 1</strong> (hit rate, visit density, staleness, clock). <strong>D49
+extended it</strong> with <code>current_band</code> (36-wide one-hot of the band just dwelt on), <code>camp_time</code> (consecutive slots on that band / N_SLOTS) and <code>measured_dbm</code> (the last dwell's mean measured level, clamped and rescaled); <strong>D55 then dropped <code>camp_time</code> as measurably inert and rescaled <code>visit_density</code> and <code>staleness</code></strong>;
+<strong>D67 appended <code>hit_streak</code></strong> (36-wide, consecutive declared hits per band across visits, capped and
+rescaled) <strong>and <code>current_hit_streak</code></strong> (that scalar for the band just dwelt on) — 109 → 145 → 146 →
+147 → 146 → 183, in that order. D34 remains the base; D49 and D67 are the extensions and the reason
+for the current width. Each extension appended rather than reordered, so every earlier slice offset
+in <code>baselines/guard.py</code> is unchanged and no heuristic rung needed touching — but <strong>every checkpoint
+trained before an extension is permanently unloadable</strong>, which is the cost D49, D55 and D67 each
+paid deliberately. Note that
+<strong>every trained checkpoint breaks at each such change</strong>: SB3 sizes a policy's input layer at
+construction, so a width change is a retrain, not a reload.</p>
 <p>Layout, in order (<code>rfenv/env.py::_observation</code>):</p>
 <table>
 <thead>
@@ -110,8 +168,8 @@ band that was empty a second ago may be busy now. That is the whole problem.</p>
 <tr>
 <td><code>72:108</code></td>
 <td><strong>per-band staleness</strong></td>
-<td><code>(t − last_slot[b]) / 600</code>; <strong><code>1.0</code> if never visited</strong></td>
-<td>float32, <code>[0, 1]</code></td>
+<td><code>(t − last_slot[b]) / 43</code>, i.e. in reference sweeps (D55); <strong><code>600/43 = 13.95</code> if never visited</strong></td>
+<td>float32, <code>[0, 13.95]</code></td>
 </tr>
 <tr>
 <td><code>108</code></td>
@@ -121,7 +179,7 @@ band that was empty a second ago may be busy now. That is the whole problem.</p>
 </tr>
 </tbody>
 </table>
-<p>Never-visited bands read staleness <code>1.0</code> — maximally stale (verified: at <code>reset()</code>, all 36 staleness
+<p>Never-visited bands read staleness <code>13.95</code> — maximally stale, the whole episode expressed in sweeps (verified: at <code>reset()</code>, all 36 staleness
 components are exactly 1.0). So an unexplored band looks at least as attractive as one last seen at
 <em>t</em> = 0. That is a deliberate exploration prior baked into the encoding.</p>
 <h3>2.2 Each state variable against the five criteria</h3>
@@ -158,7 +216,7 @@ components are exactly 1.0). So an unexplored band looks at least as attractive 
 <td><strong>What makes this restless rather than a plain bandit.</strong> A band ignored for 10 s may have become busy without telling you. The payoff distribution moves while you are not looking. It is the explore signal</td>
 <td><strong>Yes</strong>, from own scan history</td>
 <td><strong>Yes</strong> — looking at a band resets its staleness to 0</td>
-<td>float32 <code>[0,1]</code></td>
+<td>float32 <code>[0, 13.95]</code>, in sweeps (D55)</td>
 <td>PS: scheduling <em>"against spatially scanning and frequency agile emitters"</em>; drives <strong>minimise intercept time</strong></td>
 </tr>
 <tr>
@@ -181,7 +239,7 @@ intelligence enters (<strong>D19, D20</strong>), and nothing truth-side leaks in
 </blockquote>
 <p>Training is offline and the policy is frozen before deployment, so the reward is a <strong>training-time
 construct discarded at inference</strong>. It may read the truth grid <code>Z</code>, per-emitter signal levels,
-<code>first_e</code> — anything. The <strong>observation</strong> may not, because the 109-vector is all a fielded receiver
+<code>first_e</code> — anything. The <strong>observation</strong> may not, because the 183-vector is all a fielded receiver
 would actually have.</p>
 <p>This is enforced in code, not by convention. <code>rfenv/baselines.py:69</code>:</p>
 <pre><code class="language-python">OBSERVABLE_INFO = frozenset({&quot;slot&quot;, &quot;time_s&quot;, &quot;band&quot;, &quot;dwell_slots&quot;, &quot;Y&quot;})
@@ -333,7 +391,7 @@ them: assigning each pulse to the emitter with the nearest median bearing scored
 <p><strong>The case against.</strong> That accuracy is a <strong>ceiling</strong>, not an achievable figure — it used true labels
 and whole-episode medians. It degrades exactly where the problem is hardest (96.7% → 86.1% going
 from 19 to 99 emitters). And it costs real structure: L1's grid combines cells by <code>max</code>, which is
-meaningless on per-emitter bearings, and the fixed-width 109-vector would need a variable-length
+meaningless on per-emitter bearings, and the fixed-width observation vector would need a variable-length
 bearing set encoded by binning or online clustering.</p>
 <p><strong>The trigger that decides it:</strong> a trained agent failing to explore in a way that hit rate, visit
 density and staleness demonstrably cannot fix. Measurable <strong>once a policy exists</strong>, meaningless
@@ -372,7 +430,7 @@ from rfenv.baselines import OBSERVABLE_INFO
 env = ScanEnv(pool=EmitterPool.from_train(), reward='hit_z')
 obs, info = env.reset(seed=0)
 print('action_space     ', env.action_space)          # Discrete(36)
-print('observation_space', env.observation_space)     # Box(0.0, 1.0, (109,), float32)
+print('observation_space', env.observation_space)     # Box((146,), float32); high is per-dim, D55
 print('obs shape/range  ', obs.shape, obs.min(), obs.max())
 print('rewards available', sorted(REWARDS))
 print('observable info  ', sorted(OBSERVABLE_INFO))

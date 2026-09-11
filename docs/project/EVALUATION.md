@@ -259,7 +259,8 @@ because a mean can clear a mean while losing most scenarios.
 > unvisited piled on the 1.0 ceiling. Rung 5 -- the bar in this very table -- already corrected the
 > second by hand, and its docstring records that skipping that correction collapses it into rung 4.
 > `visit_density` now reads in fair shares and `staleness` in reference sweeps, `camp_time` is gone,
-> and the vector is **146** wide. Rung 5's ranking is unchanged (verified on 1,408 of 1,408 steps),
+> and the vector went to **146** wide at D55 (**183** today, after D67 appended the hit-streak
+> blocks; the figure below is D55's state, not the current width). Rung 5's ranking is unchanged (verified on 1,408 of 1,408 steps),
 > so **every heuristic and reference row in the table above still stands**. Every RL checkpoint,
 > however, is now unloadable.
 

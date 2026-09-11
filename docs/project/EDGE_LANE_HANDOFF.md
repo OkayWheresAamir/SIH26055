@@ -5,8 +5,8 @@ who owns positioning, the edge and the tagline, and who needs to answer feasibil
 questions about this project without having built it.
 
 > **⚠ Correction, 2026-09-09 — this document was circulated with a stale number.**
-> Version 1 said the observation is **109 numbers**. It is now **146**: `36 x 4 + 2` (D55; it
-> passed through 147 on the way). The RL lane
+> Version 1 said the observation is **109 numbers**. It is now **183**: `36 x 5 + 3` (D55 took it
+> to 146 via 145 and 147; D67 appended two hit-streak blocks). The RL lane
 > extended the vector after this brief was sent — `current_band` (a 36-wide one-hot of the band
 > just dwelt on) and `measured_dbm` (the last dwell's
 > mean measured level), recorded as **D49**. The four occurrences below are corrected in place.
@@ -142,7 +142,7 @@ this project deliberately lives in *validation*, not in the design.
         |
         v
  L3  AGENT         a standard reinforcement-learning interface:
-                   36 possible actions, 146 numbers of observation
+                   36 possible actions, 183 numbers of observation
 ```
 
 **L0 — Scenario.** The dataset gives us 92 recorded situations. We do not replay them as-is for
@@ -166,7 +166,7 @@ false alarm) and sometimes miss a real but faint transmission. Those two error r
 receiver's character, they are measured, and — importantly — **no scheduler can change them.**
 
 **L3 — Agent.** A standard Gymnasium environment, the same interface every reinforcement-learning
-library in the world expects. The action is one of 36 bands. The observation is 146 numbers:
+library in the world expects. The action is one of 36 bands. The observation is 183 numbers:
 for each band, how often listening there has paid off, how often we have been there, how long
 since we last were, and whether it is the band we are on right now — plus how far through the
 episode we are, and how loud the last look was. All 146
@@ -348,7 +348,7 @@ impossible, but it is expensive, and the cost should be known before it is pitch
 
 ### The information ones — these define what "deployable" means here
 
-6. **The agent sees only its own hits and misses.** 146 numbers, all derived from its own scan
+6. **The agent sees only its own hits and misses.** 183 numbers, all derived from its own scan
    history. No threat library, no pre-mission intelligence, no carry-over from the previous
    episode. This is the problem statement's *"absence of prior reliable intelligence"* taken
    literally. *Kills:* anything that starts "the agent knows that this band usually contains…".

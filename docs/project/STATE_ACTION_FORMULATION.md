@@ -17,7 +17,7 @@
 > **(3)** Inference **samples** the policy; it no longer takes the argmax. `RLScheduler` and
 > `RecurrentRLScheduler` take `deterministic`, defaulting to `False`, so every code snippet below
 > showing `deterministic=True` is stale except for rung 7 (a DQN's greedy action *is* its policy).
-> **(4)** The observation is **146 wide, not 147**, and its box is no longer `[0, 1]` (D55):
+> **(4)** The observation is **183 wide**, and its box is no longer `[0, 1]` (D55, D67):
 > `camp_time` was dropped as measurably inert, `visit_density` now reads in fair shares (ceiling
 > 36.0) and `staleness` in reference sweeps (ceiling 13.95). Every checkpoint that predates this is
 > unloadable. **(5)** `reward_balance` separates catastrophe from competence but not competence from
@@ -125,15 +125,21 @@ band that was empty a second ago may be busy now. That is the whole problem.
 ### 2.1 The observation space
 
 ```python
-observation_space = spaces.Box(low=low, high=high, dtype=np.float32)   # shape (146,)
+observation_space = spaces.Box(low=low, high=high, dtype=np.float32)   # shape (183,)
 ```
 
-**146 = 36 × 4 + 2, and the box is NOT the unit interval (D55).** Two blocks declare ceilings above 1.0 so that 1.0 means something inside each — `visit_density` reaches `N_BANDS` = 36.0 (a fully camped episode) and `staleness` reaches `N_SLOTS / SWEEP_SLOTS` = 13.95 (a band untouched all episode). Everything else is a fraction or a one-hot and
+**183 = 36 × 5 + 3, and the box is NOT the unit interval (D55, D67).** Two blocks declare ceilings above 1.0 so that 1.0 means something inside each — `visit_density` reaches `N_BANDS` = 36.0 (a fully camped episode) and `staleness` reaches `N_SLOTS / SWEEP_SLOTS` = 13.95 (a band untouched all episode). Everything else is a fraction or a one-hot and
 **no scaling or normalisation layer is needed anywhere**.
 
 D34 ratified the base **109 = 36 × 3 + 1** (hit rate, visit density, staleness, clock). **D49
-extended it** with `current_band` (36-wide one-hot of the band just dwelt on), `camp_time` (consecutive slots on that band / N_SLOTS) and `measured_dbm` (the last dwell's mean measured level, clamped and rescaled); **D55 then dropped `camp_time` as measurably inert and rescaled `visit_density` and `staleness`** — 109 → 145 → 146 → 147 → 146, in that
-order. D34 remains the base; D49 is the extension and the reason for the current width. Note that
+extended it** with `current_band` (36-wide one-hot of the band just dwelt on), `camp_time` (consecutive slots on that band / N_SLOTS) and `measured_dbm` (the last dwell's mean measured level, clamped and rescaled); **D55 then dropped `camp_time` as measurably inert and rescaled `visit_density` and `staleness`**;
+**D67 appended `hit_streak`** (36-wide, consecutive declared hits per band across visits, capped and
+rescaled) **and `current_hit_streak`** (that scalar for the band just dwelt on) — 109 → 145 → 146 →
+147 → 146 → 183, in that order. D34 remains the base; D49 and D67 are the extensions and the reason
+for the current width. Each extension appended rather than reordered, so every earlier slice offset
+in `baselines/guard.py` is unchanged and no heuristic rung needed touching — but **every checkpoint
+trained before an extension is permanently unloadable**, which is the cost D49, D55 and D67 each
+paid deliberately. Note that
 **every trained checkpoint breaks at each such change**: SB3 sizes a policy's input layer at
 construction, so a width change is a retrain, not a reload.
 
@@ -171,7 +177,7 @@ This is **D29**, and it is the single most important rule for this lane:
 
 Training is offline and the policy is frozen before deployment, so the reward is a **training-time
 construct discarded at inference**. It may read the truth grid `Z`, per-emitter signal levels,
-`first_e` — anything. The **observation** may not, because the 146-vector is all a fielded receiver
+`first_e` — anything. The **observation** may not, because the 183-vector is all a fielded receiver
 would actually have.
 
 This is enforced in code, not by convention. `rfenv/baselines.py:69`:
