@@ -11,10 +11,19 @@ whole point of it — follow them before doing anything else.
 
 **Build status (2026-09-04).** `rfenv/` has L0 (`scenario.py`), L1 (`truth.py`), L2
 (`receiver.py`), L3 (`env.py`), the artefact layer (`metrics.py`, `render.py`), `validate.py`
-and now the baseline ladder (`baselines/`, `compare.py`) all built, with **287 passing tests**
-under `tests/` (42 skipped — mostly rungs whose checkpoints are absent or stale; 1 failing,
-`test_heldout_split_is_refused_without_an_explicit_flag`, which needs the held-out split present). **`ENVIRONMENT_SPEC.md`
+and now the baseline ladder (`baselines/`, `compare.py`) all built. **`ENVIRONMENT_SPEC.md`
 §Build order is complete.**
+
+**Suite status (2026-09-11, on a machine with no training stack and no checkpoints): 261 passed,
+290 skipped, 0 failed.** The skip count is high by design — 57 rungs are registered and every
+RL-backed one skips without `stable_baselines3` or its checkpoint, because the training stack is
+deliberately optional (`requirements.txt`). It must stay that way: a test module that imports the
+training stack at *module* level aborts collection of the **whole** suite on such a machine, which
+has now happened twice. **Run `python scripts/doctor.py` before saying any chunk is finished** — it
+checks the six things that have actually gone wrong here (unpushed commits, uncommitted decisions,
+duplicate decision numbers, module-level training imports, rungs without checkpoints, and the
+observation width drifting out of the documents) and exits non-zero if a pull would not give
+someone what you think you handed them.
 
 **The four validation gates ran for the first time on 2026-09-04** (`python -m rfenv.validate`,
 47 train configs, seed 0, artefacts in `runs/validation/`): **gates 2, 3 and 4 PASS; gate 1 is
