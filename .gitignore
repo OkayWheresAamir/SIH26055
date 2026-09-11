@@ -21,7 +21,14 @@ CLAUDE.local.md
 
 # Evaluation artefacts — episode logs, waterfalls, metrics.json. Derived from
 # the environment and rebuilt by re-running it; this repo stays clean of them.
-runs/
+# Checkpoints are the exception: nothing regenerates them, and they have to
+# reach teammates somehow. `runs/*` not `runs/`, because git does not look
+# inside an excluded directory and the negations would never fire.
+runs/*
+!runs/checkpoints/
+runs/checkpoints/*
+!runs/checkpoints/*.zip
+!runs/checkpoints/*.json
 
 # Dated copies of runs/ taken before a destructive re-run. Same reasoning as
 # runs/ itself, and they are large (the 2026-09-09 one is 224 MB): the
