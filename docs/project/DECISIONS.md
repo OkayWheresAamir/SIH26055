@@ -3270,6 +3270,93 @@ Removing two long-standing registry keys touched more than the registry:
 
 ---
 
+## D64 — the scheduler takes a threat priority from outside; it does not compute one
+
+**Status:** `SETTLED` (2026-09-11) for the direction. Implementation brief:
+`docs/project/THREAT_WEIGHTING_BRIEF.md`. Two things inside it are open and named at the end.
+
+**The gap.** A modern ES system already knows which emitters are dangerous — the threat library is
+in the processing unit, the operator has a mission brief. **None of it reaches the scan
+scheduler**, which sweeps a schedule computed before the mission. The PS names this exactly:
+*"Open loop strategies … may lose time to nonthreatening emitters by not giving time to new or
+threatening ones."* The word "threat" appears **zero times** in `EVALUATION.md`.
+
+**Decision.** The scheduler accepts a per-band priority vector `p`, learns to use it (sampled per
+episode during training), and defaults to `p = 1` — which is the plain PS objective, unchanged.
+`p` has two sources and they are **the same code**: a human operator, or a downstream categoriser.
+
+**Threat is not ours to define, and this is measured, not assumed.** Threat is doctrine plus
+mission context; a fire-control radar is dangerous because of what it is attached to, not because
+of anything in its pulse train. Three attempts to derive it from data, all failed:
+
+1. **Infer it from what the receiver observes.** Band level, which needs no attribution, over 772
+   occupied (config, band) pairs: hit rate AUC **0.483**, mean level **0.405**, max level
+   **0.381**, level std **0.429**, intermittency **0.617**. **Nothing clears 0.62.** Mechanism:
+   `S = max` over contributors (D25) — a 0.3 kW fire-control radar sharing a band with a 750 kW
+   weather radar never reaches that band's statistics. Emitter level is no better and needs
+   attribution anyway (deinterleaving, out of scope by D12/D19).
+2. **Use "hard to intercept" as a proxy.** **AUC 0.514** for predicting HIGH threat — a coin flip.
+   Median duty does trend (HIGH 0.682, MEDIUM 0.890, LOW 0.966) but the distributions overlap
+   almost completely. Difficulty is driven by transmit power (`r = +0.485`; duty 0.112 → 0.999
+   across power quartiles), **not** by range (`r = −0.051`), and not by threat.
+3. **"Threat = the busiest bands."** **Inverted.** Threat fraction by band-density quartile runs
+   **0.379 / 0.227 / 0.116 / 0.091** from sparsest to busiest — 4.2× more threat-dense in the
+   quietest bands. The camper parks precisely where the threats are not, which gives D14's camper
+   pathology an operational reason as well as a metric one.
+
+**Withdrawn in the process.** An earlier draft of this entry weighted the reward by
+`1 + λ(1 − duty_e)` and called the result "threat-weighted". Finding 2 kills it; do not
+reintroduce it. The 7.5% "threat signature" it was built on (frequency-agile ∧ footprint wider
+than one band window) captures only **12%** of HIGH-threat emitters and was an unrepresentative
+slice with memorable names in it.
+
+**Consequence, and it is the point: there is no autonomous threat mode, and we do not claim one.**
+A self-categorising scheduler would be false. What we claim is the interface — and **no
+scan-scheduling paper in the reference set has it**: Köksal, Apfeld, Gul & Erer, Clarkson and
+Teissier all give every emitter the same dwell.
+
+**Where categorisation belongs.** ADITI 4.0's own decomposition (transcript p.2): *"the system
+basically consists of antenna, receiver, **processing unit, database** to provide the means to
+intercept, identify, analyze and localize."* Categorisation is a processing-unit function over the
+full PDW stream from dwells the scheduler already won. We are a different box, and the
+*"feedback based decision making mechanism"* ADITI asks for between them is this interface.
+**SIH26055 does not ask for categorisation** and the 2026-09-01 audit records ADITI as context for
+intent, not scope — so we specify that box and leave it out of scope.
+
+Also relevant to D20: asked directly whether a threat library would be supplied, the officer
+answered *"this I cannot comment now"* (p.8), and an academic in the room argued a cognitive system
+should *"generate your own"* — uncontradicted. D20's cold start, corroborated from the customer's
+own outreach. **D20 is unaffected by this entry:** the *scheduler* still starts with no emitter
+intelligence; `p` is mission input, not a learned prior.
+
+**The example threat library, for scoring and the demo.**
+`metadata/transmitters/*/.attrs['function']` names 68 emitter types; classified as a real RWR
+would: **HIGH** (fire control, engagement, missile guidance, counter-battery, LPI) **656, 38.5%**;
+**MEDIUM** (air-defence search, early warning, surveillance, maritime patrol) **775, 45.5%**;
+**LOW** (weather, marine navigation, airport/ground movement, SAR, GPR) **273, 16.0%**. **Labelled
+as an example instance, never as our threat model**, fixed in code before any scheduler is scored
+against it.
+
+**What does not move.** `rfenv/constants.py` untouched — D42 puts reward candidates and
+observation extensions deliberately outside the freeze list, D57 lifted D29's cap. No gate or
+baseline re-runs. `DEFAULT_REWARD` stays `reward_balance` as the control arm. The cost that *is*
+real: `p` widens the observation 146 → 182, so **every existing checkpoint dies**, as at D49 and
+D55.
+
+**Open inside this decision:**
+
+1. **Threat-split reporting in `EVALUATION.md` §4 is not yet adopted.** A scorecard change, so
+   gated. It needs no retrain and is step 0 of the brief — recommended, not taken.
+2. **The `p` sampling distribution during training is unspecified.** It decides whether the policy
+   generalises across priority settings or overfits one. Fix it before the retrain.
+
+**Evidence.** Measured 2026-09-11 via scratch scripts against `data/turing/stare/train_stare/*.h5`
+and `rfenv.truth`/`rfenv.scenario` at the frozen γ = −111 dB — all 47 stare replays, 1,704
+detectable emitters, 2,363 train transmitters, 772 occupied band-pairs. Sourced: the PS Background
+paragraph; ADITI transcript pp. 2 and 8, read 2026-09-11.
+
+---
+
 ## Consistency audit — 2026-08-30
 
 Requested by the team: a check that the decisions form one coherent story. Result: **two real

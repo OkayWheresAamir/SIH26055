@@ -84,6 +84,11 @@ def test_training_does_not_sample_the_evaluation_pool():
     of this module's tests still run and this one just skips on a machine that
     doesn't have it installed.
     """
+    # Imported here, not at module level: rfenv.rl.common hard-imports
+    # stable_baselines3, and a module-level import of it aborts COLLECTION of
+    # the whole suite on a machine with no training stack -- not one skip, no
+    # tests at all. Every other test in this file is pure-numpy and must keep
+    # running there. (scripts/doctor.py enforces this.)
     pytest.importorskip("stable_baselines3")
     from rfenv.rl.common import make_train_env
 
