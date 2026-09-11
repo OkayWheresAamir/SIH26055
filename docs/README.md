@@ -28,8 +28,9 @@ These are ours. They are kept current; if a chat changes a decision, it changes 
 | `RESEARCH_MAP.md` | Every document in `reference/` classified: what it establishes, what it does not, its authority level. |
 | `RL_LANE_HANDOFF.md` (+ generated `.pdf`) | Onboarding handoff for the RL lane: the rung-7 target, role split for two or three people, a day-by-day task list, the evaluation rules, and the edge candidates. |
 | `PPT_LANE_HANDOFF.md` (+ generated `.pdf`) | Onboarding handoff for the presentation lane: slide-by-slide content with its source for every number, the figures that already exist, and the traps. |
+| `THREAT_WEIGHTING_BRIEF.md` | **D63 as something the RL lane can build.** The scheduler takes a threat priority from outside and learns to use it; the three measurements showing why it cannot compute one itself; the example threat library; the order of work. |
 
-The two handoffs are **derived from the four files above — where they disagree, those win.** The `.md` is the source; regenerate the PDFs after any edit with
+The handoffs are **derived from the four files above — where they disagree, those win.** The `.md` is the source; regenerate the PDFs after any edit with
 `.venv/bin/python -m scripts.md2pdf docs/project/RL_LANE_HANDOFF.md docs/project/PPT_LANE_HANDOFF.md`.
 
 ## `protocol/` — how we work
