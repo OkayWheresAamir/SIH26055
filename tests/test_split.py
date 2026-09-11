@@ -12,7 +12,6 @@ import pytest
 
 from rfenv import split
 from rfenv.env import DEFAULT_REWARD
-from rfenv.rl.common import make_train_env
 from rfenv.scenario import TRAIN_SPLIT, EmitterPool, list_configs
 
 
@@ -80,6 +79,14 @@ def test_training_does_not_sample_the_evaluation_pool():
     scenarios from. Reverting it would re-open the leak while every other test
     stayed green.
     """
+    # Imported here, not at module level: rfenv.rl.common hard-imports
+    # stable_baselines3, and a module-level import of it aborts COLLECTION of
+    # the whole suite on a machine with no training stack -- not one skip, no
+    # tests at all. Every other test in this file is pure-numpy and must keep
+    # running there. (scripts/doctor.py enforces this.)
+    pytest.importorskip("stable_baselines3")
+    from rfenv.rl.common import make_train_env
+
     env = make_train_env(reward=DEFAULT_REWARD)
     assert len(env._pool) == len(split.training_pool())
     assert len(env._pool) < len(EmitterPool.from_train())
