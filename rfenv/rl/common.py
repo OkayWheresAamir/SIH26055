@@ -48,9 +48,11 @@ import time
 from pathlib import Path
 
 import numpy as np
+import torch
 from stable_baselines3 import DQN
 from stable_baselines3.common.callbacks import BaseCallback, CheckpointCallback
 
+from rfenv.constants import N_BANDS
 from rfenv.env import DEFAULT_REWARD, ScanEnv
 from rfenv.scenario import EmitterPool
 
@@ -482,22 +484,89 @@ class RecurrentRLScheduler:
     0.603/0.714. PPO optimises expected return under the sampled policy and never
     evaluates the mode, so sampling is also what the reported training return
     actually measured. Pass `deterministic=True` only to reproduce an older row.
+
+    **`priority`, D70's inference-time knob (`THREAT_WEIGHTING_BRIEF.md` / PDF §3 step 1).** An
+    optional 36-wide, non-negative vector that reweights the policy's own sampled action
+    distribution by `log(priority)` before an action is drawn -- no retrain, no observation
+    change, no manifest mismatch: the checkpoint's weights are never touched, only the logits
+    it produces are shifted. `None` (the default) reproduces today's behaviour exactly, bit for
+    bit -- verified by `tests/test_rl.py`.
+
+    Mathematically this is an exact reweighting, not an approximation:
+    `P'(a) ~ P(a) * priority[a]`. SB3 exposes no hook between `get_distribution()` and sampling,
+    so `_predict_reweighted` below reproduces `RecurrentActorCriticPolicy.predict()`'s own body
+    (sb3-contrib 2.9.0) up to the point the action distribution is built, intercepts it there,
+    and resumes the same call SB3 would have made. `priority[a] == 0` drives that band's
+    probability to (numerically) exactly zero -- floored at `float32` tiny before the log rather
+    than passed through as a literal zero, so the result is a very small probability, not a NaN
+    from `log(0)`.
+
+    This is the PDF brief's explicit fallback if the full retrain (§3 step 3, which actually
+    widens the observation) fails its own screen: "This is the demo, and the fallback if step 3
+    fails." A priority-reweighted scheduler only ever wraps an already-trained, already-selected
+    checkpoint -- it never creates a new one, so it carries no manifest of its own.
     """
 
-    def __init__(self, model, *, deterministic: bool = False):
+    def __init__(self, model, *, deterministic: bool = False,
+                 priority: np.ndarray | None = None):
         self.model = model
         self.deterministic = deterministic
         self._lstm_state = None
+        if priority is None:
+            self._log_priority = None
+        else:
+            priority = np.asarray(priority, dtype=np.float32)
+            if priority.shape != (N_BANDS,):
+                raise ValueError(
+                    f"priority must be shape ({N_BANDS},), got {priority.shape}")
+            if np.any(priority < 0):
+                raise ValueError("priority must be non-negative")
+            floor = np.finfo(np.float32).tiny
+            self._log_priority = np.log(np.maximum(priority, floor)).astype(np.float32)
 
     def __call__(self, obs, info) -> int:
         episode_start = np.array([info.get("slot", 0) == 0])
-        action, self._lstm_state = self.model.predict(
-            obs,
-            state=self._lstm_state,
-            episode_start=episode_start,
-            deterministic=self.deterministic,
-        )
-        return int(action)
+        if self._log_priority is None:
+            action, self._lstm_state = self.model.predict(
+                obs,
+                state=self._lstm_state,
+                episode_start=episode_start,
+                deterministic=self.deterministic,
+            )
+            return int(action)
+        return self._predict_reweighted(obs, episode_start)
+
+    def _predict_reweighted(self, obs, episode_start: np.ndarray) -> int:
+        """`RecurrentActorCriticPolicy.predict()`'s own body, reproduced so the action
+        distribution can be shifted by `self._log_priority` between `get_distribution()` and
+        sampling -- the one point SB3 gives no hook for. Every other step (obs-to-tensor,
+        hidden-state dtype/shape, the `state=None` zero-init on episode 1, `.cpu().numpy()` on
+        the way out) mirrors sb3-contrib 2.9.0's `predict()`/`_predict()` exactly, so this
+        differs from an un-reweighted call only in the one line that adds `self._log_priority`
+        to the policy's own logits.
+        """
+        policy = self.model.policy
+        policy.set_training_mode(False)
+        obs_t, _ = policy.obs_to_tensor(obs)
+        n_envs = obs_t.shape[0] if not isinstance(obs_t, dict) else next(iter(obs_t.values())).shape[0]
+        if self._lstm_state is None:
+            zeros = np.concatenate(
+                [np.zeros(policy.lstm_hidden_state_shape) for _ in range(n_envs)], axis=1)
+            self._lstm_state = (zeros, zeros)
+        with torch.no_grad():
+            states = (
+                torch.tensor(self._lstm_state[0], dtype=torch.float32, device=policy.device),
+                torch.tensor(self._lstm_state[1], dtype=torch.float32, device=policy.device),
+            )
+            episode_starts_t = torch.tensor(episode_start, dtype=torch.float32, device=policy.device)
+            dist, states = policy.get_distribution(obs_t, states, episode_starts_t)
+            log_p = torch.as_tensor(self._log_priority, dtype=torch.float32, device=policy.device)
+            reweighted_logits = dist.distribution.logits + log_p
+            dist.distribution = torch.distributions.Categorical(logits=reweighted_logits)
+            action = dist.get_actions(deterministic=self.deterministic)
+            states = (states[0].cpu().numpy(), states[1].cpu().numpy())
+        self._lstm_state = states
+        return int(action.cpu().numpy().reshape(-1)[0])
 
 
 class EpisodeMetricsCallback(BaseCallback):
