@@ -4585,3 +4585,257 @@ tests, reported here in full with method and numbers rather than only a conclusi
 repository's own provenance rules. `runs/` is gitignored; the compare.py artefacts are reproducible
 from the commands in `scratch/TRAINING_JOURNEY.md` §18; the diagnostic scripts themselves were not
 saved to the repository.
+
+---
+
+## D75 — The observation may carry the agent's own previous action and outcome ("v3"), and the reward it is shown is the `Y`-based one
+
+**Status:** `BUILT` (2026-09-19). Mechanism built, tested and registered; **no training run yet**,
+so nothing here is a result. The matched pair and the ablation that would make it one are specified
+below and pre-registered before either is run.
+
+**What was asked for.** An "online" agent, in the sense the PS means: *"in the absence of prior
+reliable intelligence of emitters"*, *"trained based on hits and misses"*. A recurrent policy is
+already a learned online algorithm — its hidden state integrates evidence across a mission and
+changes behaviour with no gradient step — but this repository never gave that recurrence the two
+inputs the RL² construction depends on: what the agent last did, and what came back.
+
+**What was built.** A fourth layout, `"v3"` = `"v2p"` (398) plus three blocks, **436 wide**:
+
+| block | width | contents |
+|---|---|---|
+| `prev_action` | 36 | one-hot of the last band chosen; **all-zero before the first step** |
+| `prev_reward` | 1 | `reward_balance_obs` (below), clipped to ±6.0 and rescaled to [0, 1] |
+| `prev_hit` | 1 | did the last dwell declare anything (`dwell.Y.any()`) |
+
+Appended last, so every `"v2p"` offset holds and `"v1"`/`"v2"`/`"v2p"` are byte-identical —
+asserted, not assumed (`tests/test_backward_compat_hashes.py`, digests taken at `d4f4361`).
+
+**The honest part, recorded now rather than discovered later: 36 of those 38 columns already
+existed.** `step()` assigns `self._current_band = action` and `self._prev_action = action` from the
+same value, so the `prev_action` one-hot is **bit-identical to the `current_band` block at every
+step after the first**; `prev_hit` is likewise `current_hit_streak > 0`. The two pairs differ only
+in the cold-start sentinel: `current_band` reads one-hot at band 0 after `reset()`, claiming a dwell
+that never happened, while `prev_action` reads the zero vector, which is off the one-hot simplex and
+so unreachable by any real action. Two consequences follow and both are binding. **(1) `prev_reward`
+is the only genuinely new information in this layout**, and any claim about `"v3"` must say so.
+**(2) An ablation that corrupts `prev_action` alone will read null by construction**, because the
+policy can read `current_band` instead — so the ablation below corrupts both together. The layout
+keeps the redundant blocks because the RL² interface is conventional and 38 columns is cheap, not
+because they carry information.
+
+**`reward_balance_obs`, and why the training reward is not what the policy sees.** The question
+raised directly: if a scheduler just points and takes what comes back, are `Y` and `Z` not the same
+thing? They are not, and the gap is sensitivity, not hypothesis. `receiver.py`'s whole detection
+model is `Y[b,t] = 1 iff S[b,t] + n >= gamma`; an emitter can be transmitting into a band the
+receiver is staring straight at and still go undeclared because its received level sits below
+`gamma`. Measured at the frozen operating point: **Pd = 0.8421**
+(`runs/d74_followup_treatment_comparison/metrics.json`, re-read 2026-09-19), so roughly one
+truly-occupied cell in six returns silence, and **Pfa = 1.35e-3** in the other direction. If `Y` and
+`Z` were the same, Pd would be 1, Pfa would be 0, and three of the figures of merit the PS names by
+name would be degenerate.
+
+So feeding `step()`'s reward into the observation would not be showing the agent what it heard — it
+would be a truth channel. The agent already holds `hit_rate`, `visit_density`, `staleness` and
+`n_slots`; given `reward_balance`'s value it can solve the remaining term for `0.5 * dwell.Z.sum()`
+and learn about emitters it never detected. `reward_balance_obs` is the same formula with
+`dwell.Y` substituted for `dwell.Z`, implemented as
+`reward_balance(dataclasses.replace(dwell, Z=dwell.Y), ...)` so the two can never drift apart and
+**`reward_balance`'s own source bytes are untouched** — a fact about the file, not an intention.
+
+**This does not reopen D29.** D29 governs what the *reward* may read and is unchanged:
+`reward_balance` still reads `Z`, still trains every arm, still scores every rung. What D75 adds is
+a second, separately-computed quantity on the *observation* side, which D19/D20 already govern and
+which `reward_balance_obs` satisfies. This is ordinary asymmetric actor-critic with the two halves
+kept apart — privileged critic, deployable actor — and it is what keeps a `"v3"` rung
+`deployable=True` and its numbers comparable to 17c and 23a. D29's own sentence *"the restriction
+would only bite if we ever fine-tuned online, which we do not"* is the thing D77 changes, and D77
+resolves it the same way: by fine-tuning on the observable reward, not by relaxing D29.
+
+`reward_balance_obs` is deliberately **not** a `REWARDS` entry — `reward_gate.py` screens
+`sorted(REWARDS)` by default, so registering it would silently create a D62 screening obligation and
+add a candidate to a set whose size is itself a recorded decision (D57, D63). Same precedent
+`priority_reward_bonus` set in D74.
+
+**The clamp, measured.** `_REWARD_OBS_CLAMP = 6.0`, set from the analytic bound rather than from a
+percentile so it is mathematically incapable of binding: the four terms bound to `[-6.0, +3.0]`
+(`0.5*hit_rate <= 0.5`; `(1.5-vd)*st <= 1.5`; `0.5*Y.sum() <= 1.0` at `n_slots <= 2`;
+`-3.0*vd*n_slots >= -6.0`). Checked against the code: over **23,025 steps** of
+round_robin/recency/camper × 3 seeds × 5 stare replays the realised range was **[-4.5053, +2.5000]**
+(p1 -3.3578, p99 +1.5000, mean -0.0065, median +0.0392), and a deliberate camper pinned to a wide
+2-slot band — the worst case the negative term admits — reached **-5.9992**, approaching the
+analytic bound without crossing it. Both measured 2026-09-19. The clamp is symmetric so that exactly
+zero maps to exactly 0.5, which is what makes the first-step sentinel truthful rather than arbitrary;
+`reward_balance_obs` was **never exactly zero** in 23,025 steps, so the sentinel is unambiguous.
+
+**The ablation, pre-registered.** Corruption is a property of the environment a checkpoint is scored
+in, not of the checkpoint, so it lives on `ScanEnv(corrupt_obs_blocks=...)` and runs as a second
+`compare.py` invocation with the same rung keys and seeds. It is **corruption, not permutation** —
+permuting a width-1 block is the identity and would silently test nothing — implemented as a
+resample from the block's own recent history, which preserves its marginal and destroys the
+correspondence. The draw comes from a **separate generator**, never `self.np_random`: drawing from
+the env's own stream would shift the receiver's noise and the paired comparison would stop being
+paired. Verified: the measured-level sequence is bit-identical between a clean and a corrupted run.
+
+| arm | corrupted | tests |
+|---|---|---|
+| clean | — | baseline |
+| A | `prev_reward` | **the primary test** — the only genuinely new signal |
+| B | `prev_action` + `current_band` | "does it read its last action" — both, they are the same 36 numbers |
+| C | all three new blocks | the headline, with the duplication caveat attached |
+| D | `hit_rate` | **positive control** |
+
+Arm D is not optional. If corrupting a block the policy has leaned on since D34 does not degrade it
+either, the ablation is measuring nothing and every null in A–C is uninterpretable — which is the
+lesson D74 paid for twice.
+
+**Criterion, fixed before the runs.** Paired per-episode deltas over the standard 47 × 3 episodes;
+the headline triple reported together (`EVALUATION.md` §4); Wilcoxon signed-rank plus a 95% bootstrap
+CI on the mean paired delta for coverage and for censored intercept time. A block counts as read
+only if the CI excludes zero **and** the relative effect clears D47's 5% margin on at least one
+headline metric **and** arm D degrades at least as much. A null is a reportable outcome here, as it
+was in D73 and D74, not something to tune away.
+
+**Evidence.** `rfenv/env.py` (`reward_balance_obs`, `_normalise_prev_reward`, `_REWARD_OBS_CLAMP`,
+the three `_BLOCK_SPECS` entries, `OBS_LAYOUTS["v3"]`, `corrupt_obs_blocks`/`_corrupt`,
+`last_reward_obs`); `tests/test_v3_observation.py` (30 tests: the layout, the cold-start sentinels
+asserted *together* with `current_band` so the deliberate disagreement is documented, the
+`prev_action == current_band` redundancy pinned so a later change to either is noticed, the formula
+in isolation including *two dwells with the same `Y` and different `Z` being indistinguishable* —
+the deployability claim in mechanical form — and the `OBSERVABLE_INFO` allowlist pinned as a literal
+so nobody widens it to smuggle the reward through); `tests/test_backward_compat_hashes.py` (the
+golden digests, taken before any of this landed).
+
+---
+
+## D76 — An episode may run longer than one recording, and you can watch it
+
+**Status:** `BUILT` (2026-09-19). Mechanism built and tested; no long-mission result yet.
+
+**Why.** A 30 s episode is the task definition (D35) and stays the evaluation unit. But an agent that
+adapts *during* a mission has nothing to adapt over in 300–600 decisions, and online fine-tuning
+(D77) needs far more than one episode's worth of transitions before an update means anything. The
+request was for missions that run until stopped.
+
+**`constants.py` is not touched.** `N_SLOTS = 600` and `EPISODE_S = 30.0` are frozen (D42), pinned
+by `tests/test_freeze.py` with per-value literals and a digest tripwire, and D25 says moving anything
+there re-validates from gate 1 and re-runs every baseline. Instead `ScanEnv(episode_slots=...)` is a
+**per-environment length** defaulting to `N_SLOTS`, so every existing call site takes a bit-identical
+path — asserted by the golden digests, not assumed.
+
+**The world is stitched, not tiled.** A recording *is* 30 s; there is no one-hour scenario to load.
+`TruthGrid.stitch` lays independent draws end to end. Tiling a single recording was rejected
+outright: it would hand the agent an exactly periodic world to memorise, and `ScanEnv` refuses
+`episode_slots > N_SLOTS` with a fixed `scenario=` for that reason.
+
+**Emitter identity is per segment, deliberately**, and this is the entry's main honest limitation.
+The same physical emitter may appear in two segments as two identities. Merging them would mean an
+emitter found in segment 0 could never be found again for the rest of the mission, which would
+silently destroy coverage; two segments are two opportunities. The cost is that **there is no
+temporal continuity across a seam** — at each 600-slot boundary the whole world is replaced at once.
+That is stated in `stitch`'s own docstring rather than hidden. A dwell straddling a seam reads two
+cells from two different worlds, which needs no special case but is not physics. `cells` is
+upcast int16 → int32 in the stitched copies: 32767 // 600 = **54 segments = 27 simulated minutes**,
+past which int16 would wrap silently rather than fail.
+
+**Two observation blocks would have left their declared Box and now cannot.** `clock` divides by this
+episode's own length. `staleness` is clipped to its declared ceiling — at **both** sites that write
+it, the observation's and the reward's, which must agree (D52). Measured: the clip **provably never
+binds at 600**, since the most stale a band can be is `599/43 = 13.930` against a ceiling of
+`600/43 = 13.953`, so this is bit-identical for every episode that has ever run; at 72,000 slots the
+same band would read 1,674.
+
+**`episode_metrics()` carried a latent correctness bug at length**, not a rescale. It censored a
+missed emitter at the **full episode**, so an hour-long mission would charge a segment-0 miss
+3,600 s and the figure would stop being comparable with every 30 s number in this repository. It now
+censors at the emitter's own segment end, `((on_e // N_SLOTS) + 1) * N_SLOTS`, which evaluates to
+exactly 600 at the default. `avg_intercept_rate_per_s` likewise divides by this episode's length.
+
+**Cost, measured 2026-09-19.** ~0.65 MB per segment (grid plus index), so **~78 MB per simulated
+hour**; an hour-long grid builds in under a second. The per-slot log is the other term at ~20 MB per
+simulated hour of dict overhead, bounded by the new `log_window_slots`; a windowed env is **refused**
+by `metrics.artefacts.write_run` rather than writing a header claiming a length its rows do not have.
+
+**Watching it.** `rfenv/live.py` (numpy and stdlib only) carries the view contract — structural,
+`open`/`update`/`close`, like `rollout.run_episode`'s policy, no ABC — plus `NullView` (the default,
+so the zero-cost path is the default path) and `AnsiHeatStrip`: 36 band rows of coloured blocks
+painted straight to the terminal, no window, no display, works over SSH. `rfenv/render/live.py`
+carries the matplotlib panel, separately, because importing `rfenv.render` sets the Agg backend for
+the whole process. The view is owned by the driver and handed the env; `ScanEnv.render_mode` and
+`render()` are untouched. Degradation is ordered and tested: not a tty → a plain progress line with
+**zero escape bytes** (that stream is usually a log file, where control codes are corruption);
+`NO_COLOR` or a console that refuses virtual-terminal mode → ASCII glyphs; no interactive matplotlib
+backend → a warning and the terminal view, because a plotting backend must never be able to kill a
+one-hour run.
+
+**Evidence.** `rfenv/truth.py` (`n_slots`, `stitch`), `rfenv/receiver.py` (dwell bounds from the
+grid), `rfenv/env.py` (`episode_slots`, `_build_grid`, `log_window_slots`, the clock and staleness
+bounds, the censoring fix), `rfenv/metrics/artefacts.py`, `rfenv/baselines/apfeld.py` (`n_slots`
+kwarg — its `series` is indexed by absolute slot and rung 6 is the serious bar),
+`rfenv/baselines/ladder.py` (`band_at_slot_from_log`), `rfenv/live.py`, `rfenv/render/live.py`;
+`tests/test_continuous_grid.py` (23 tests) and `tests/test_live_view.py` (15 tests).
+
+---
+
+## D77 — Online fine-tuning exists, on a continuous grid, and its gradient sees the observable reward
+
+**Status:** `BUILT` (2026-09-19). Mechanism built and tested; no adaptation result yet.
+
+**What this changes about D29.** D29 records, correctly for its time, that *"there is no online
+learning after deployment anywhere in the architecture"* and that the observation/reward asymmetry
+*"would only bite if we ever fine-tuned online, which we do not."* We now do. **D29's rule is not
+relaxed** — it is satisfied, by fine-tuning on `reward_balance_obs` (D75) rather than on `step()`'s
+return value. A gradient taken against a reward that reads `Z` describes a simulator, not a
+receiver, and the "adapts in the field" claim would be false. `ObservableRewardWrapper` makes that
+mechanical rather than argued. Scoring is untouched: `total_reward` and `episode_metrics()` still
+report the truth-fed reward, so an adapted checkpoint is judged on the same yardstick as every other
+rung.
+
+**Updates are per rollout, not per mission, and the arithmetic is the reason.** A 30 s episode is
+300–600 decisions against the `n_steps=8192` these checkpoints trained at — one mission cannot fill
+a fourteenth of one rollout, and at `gamma=0.997` the effective horizon (~333 steps) is comparable
+to the whole episode, so the advantages would be dominated by the terminal bootstrap. A per-mission
+update is not a small update, it is a noisy one, and **this module does not offer one.** Fine-tuning
+runs only on a continuous grid (D76), at `n_steps=2048` — about two simulated minutes, ~30 updates
+per simulated hour. That number is pre-registered here rather than tuned afterwards. Defaults are
+conservative because adaptation starts from a policy that already works and the risk is wrecking it:
+`learning_rate=1e-5` (against 3e-4 for training), `clip_range=0.1`, `target_kl=0.02`, and
+`ent_coef=0.01` retained because this rung's documented failure mode is collapse onto one band (D54).
+
+**SB3 owns the loop.** The recurrent rollout buffer, sequence masking and GAE-through-LSTM-state are
+already correct in sb3-contrib and reimplementing `collect_rollouts` is where a silent correctness
+bug would live. The cost, stated plainly: during fine-tuning the acting loop is SB3's, not
+`RecurrentRLScheduler`, so the deployable `(obs, info) -> int` contract is not exercised *there*. It
+does not need to be — that contract matters at evaluation, which happens afterwards on the saved
+checkpoint through the ordinary ladder, unchanged, and a test runs an adapted checkpoint through
+`run_episode` under `guarded()` to prove it.
+
+This is also **the repository's first resume path**. `train()` has always constructed a fresh model;
+nothing before this called `learn(reset_num_timesteps=False)`. One detail fails silently and is
+called out in the code: `n_steps` is baked into the checkpoint and read while the rollout buffer is
+built inside `_setup_model()`, so it must be passed through `RecurrentPPO.load(custom_objects=...)`
+— assigning `model.n_steps` afterwards leaves the old buffer and the run collects 8192 transitions
+per update with no error and no warning. Pinned by a test.
+
+Ctrl-C is a supported way to stop: the adapted checkpoint is saved with a manifest recording the
+interruption. The rollout in progress is discarded, which is correct — a partial rollout has no
+advantages to learn from.
+
+**What is measured, when this is run.** Coverage per 30 s segment against segment index, streamed to
+`segments.jsonl` as it happens (so a run interrupted after 40 minutes has still said something).
+**That series is the result for this capability**; nothing else answers whether online adaptation
+helps. Two arms, and the second has a leakage story that must be told in the same sentence as its
+number: *generic* — adapt on a grid drawn from `split.training_pool()`, score on the standard ladder,
+no leak; *in-situ* — adapt on a grid stitched from one scenario's own emitters and score on that
+scenario, which is the real deployment claim and is train-on-test by construction. Adapting on
+`validation_pool()` and then scoring on `compare.py`'s stare replays is **not** a valid combination:
+those replays come from the full 47-config train split and the combination leaks quietly.
+
+**Evidence.** `rfenv/rl/online.py` (`ObservableRewardWrapper`, `make_online_env`, `fine_tune`,
+`OnlineViewCallback`, `SegmentMetricsCallback`, the CLI); `tests/test_online.py` (11 tests, module
+skipped without the training stack: the wrapper returns the observable reward at every step and it
+really does differ from the truth reward; a fine-tune moves the weights **and** advances
+`num_timesteps` from the checkpoint's own count; **at `learning_rate=0` the weights come back
+bit-identical**, which is the no-op control that rules out the harness perturbing the policy by some
+route other than the optimiser; `custom_objects` really resizes the rollout buffer; an adapted
+checkpoint still runs through `run_episode` under `guarded()`).

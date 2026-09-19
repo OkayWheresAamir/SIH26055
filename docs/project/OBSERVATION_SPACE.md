@@ -2,7 +2,8 @@
 
 **What this file is.** A complete, element-by-element reference for `ScanEnv`'s observation
 vector: every block, what it means, its dtype, its range, how it's computed, and how long it
-persists. It documents the three layouts that exist today ("v1", "v2" and "v2p" — D30/D71/D72/D74)
+persists. It documents the four layouts that exist today ("v1", "v2", "v2p" and "v3" —
+D30/D71/D72/D74/D75)
 and nothing else — it is not a decision record (that's `DECISIONS.md`,
 D34/D49/D55/D67/D30/D71/D72/D74) and not a working brief (that's `STATE_ACTION_FORMULATION.md`). If
 a number here disagrees with `rfenv/env.py`, the code wins; this file describes it, it does not
@@ -13,19 +14,21 @@ define it.
 session, 2026-09-14 (D30/D71), updated the same session for D72's `pulse_count` addition, and again
 2026-09-19 for the "v2p" `band_priority` block described in §2.4 (D74, `MEASURED`: the mechanism is
 built and registered, but a control-arm comparison plus a permutation ablation found it was never
-learned at the scale tested — see §2.4 for the numbers).
+learned at the scale tested — see §2.4 for the numbers), and again the same day for "v3"'s three
+in-context blocks in §2.5 (D75, `BUILT` — no training run yet, so there is no result to quote).
 
 ---
 
-## 1. The three layouts
+## 1. The four layouts
 
-`ScanEnv(obs_version="v1" | "v2" | "v2p")` picks which vector gets built. It defaults to `"v1"`.
+`ScanEnv(obs_version="v1" | "v2" | "v2p" | "v3")` picks which vector gets built. It defaults to `"v1"`.
 
 | | width | dtype | added by | every checkpoint before |
 |---|---|---|---|---|
 | **"v1"** | 183 | `float32` | D34, extended D49, rescaled D55, extended D67 | — (this is the baseline) |
 | **"v2"** | 362 | `float32` | D30, resolved as D71 (2026-09-14), extended by D72 (2026-09-14) | trains on "v1"; "v2" is opt-in, additive |
 | **"v2p"** | 398 | `float32` | "v2" + `band_priority` (D74, `MEASURED` — see §2.4) | trains on "v1" or "v2"; "v2p" is opt-in, additive |
+| **"v3"** | 436 | `float32` | "v2p" + `prev_action`/`prev_reward`/`prev_hit` (D75, `BUILT` — see §2.5) | trains on any earlier layout; "v3" is opt-in, additive |
 
 **"v1" never changes when "v2" or "v2p" exist.** Unlike every previous observation change in this
 project (D49, D55, D67), which widened the vector in place and made every prior checkpoint
@@ -34,7 +37,7 @@ permanently unloadable, "v2" and "v2p" are separate, parallel layouts. A checkpo
 existing. **A checkpoint trained on D71's own 326-wide "v2" is invalidated by D72 the same way** —
 "v2" itself is not immune to widening in place, only "v1" is guaranteed stable; none exist yet, so
 nothing on disk is affected. `rfenv.rl.common.known_observation_widths()` returns
-`{183, 362, 398}` — all three are live, current, and correct, simultaneously.
+`{183, 362, 398, 436}` — all four are live, current, and correct, simultaneously.
 
 **Both layouts are built from a single per-band bookkeeping system.** `ScanEnv` always tracks
 every quantity below internally (`self._hit_rate_array`, `self._band_pulse_width`, etc.)
@@ -205,6 +208,47 @@ promoted, code not removed — nothing defaults to it. Full account: `DECISIONS.
 
 ---
 
+### 2.5 "v3"-only blocks (D75, `BUILT` 2026-09-19 — no training run yet)
+
+Three blocks, appended after `band_priority`, that hand the recurrent policy its own last decision
+and what that decision returned. This is the RL² construction: a recurrent policy shown its previous
+action and previous outcome can run an adaptation rule *inside* the episode, in its hidden state,
+with no gradient step — which is what "online" means in the PS's sense of working *"in the absence of
+prior reliable intelligence"*.
+
+| block | width | range | what it is |
+|---|---|---|---|
+| `prev_action` | 36 | `[0, 1]` | one-hot of the last band chosen. **All-zero before the first step** |
+| `prev_reward` | 1 | `[0, 1]` | `reward_balance_obs`, clipped to ±6.0 and affinely rescaled |
+| `prev_hit` | 1 | `[0, 1]` | `1.0` if the last dwell declared anything (`dwell.Y.any()`), else `0.0` |
+
+**36 of these 38 columns already existed, and the documentation says so up front.** `step()` assigns
+`self._current_band = action` and `self._prev_action = action` from the same value, so `prev_action`
+is **bit-identical to the `current_band` block at every step after the first**, and `prev_hit` is
+`current_hit_streak > 0`. They differ only at the cold start: `current_band` reads one-hot at band 0
+after `reset()` — claiming a dwell that never happened — while `prev_action` reads the zero vector,
+which is off the one-hot simplex and therefore unreachable by any real action. So **`prev_reward` is
+the only genuinely new information in this layout**, and an ablation corrupting `prev_action` alone
+would read null by construction. A test pins the equality, so a later change to either block is
+noticed rather than discovered.
+
+**`prev_reward` is not the training reward.** It is `reward_balance_obs` — `reward_balance` with
+`dwell.Y` substituted for `dwell.Z`, i.e. what the receiver *declared* rather than what was truly
+transmitting. This matters because the agent already holds `hit_rate`, `visit_density`, `staleness`
+and `n_slots`: given the training reward's value it could solve the remaining term for
+`0.5 * dwell.Z.sum()` and learn about emitters it never detected, which no fielded receiver can do.
+The two differ by exactly the receiver's own sensitivity — Pd = 0.8421, Pfa = 1.35e-3 at the frozen
+operating point — and keeping them apart is what leaves a "v3" rung `deployable=True`. D29 is
+unchanged: the *reward* still reads truth, and still trains and scores every arm.
+
+The clamp is `±6.0`, set from the formula's analytic bound (`[-6.0, +3.0]`) rather than from a
+percentile, so it cannot bind on real data. It is symmetric so that exactly-zero reward maps to
+exactly `0.5`, which makes the first-step fill truthful rather than arbitrary. Measured over 23,025
+steps of round_robin/recency/camper: realised range `[-4.5053, +2.5000]`, and **never exactly zero**,
+so the sentinel is unambiguous. Full account: `DECISIONS.md` D75.
+
+---
+
 ## 3. Two encoding decisions worth understanding, not just reading off the table
 
 **`visit_density` and `staleness` are not on `[0, 1]`, on purpose (D55).** Both used to be
@@ -287,6 +331,18 @@ heuristic rung currently needs to address past index 144 under it (see §5).
 `obs_version="v1"`, `"v2"` or `"v2p"`. Everything from index 144 onward diverges, because
 `measured_dbm` (1-wide) is replaced by `measured_dbm_band` (36-wide) at that point and every later
 block shifts. "v2" and "v2p" agree on every index up to 362; "v2p" simply appends one more block.
+
+### "v3" (436 wide, appends the three in-context blocks after `band_priority`; D75)
+
+| Index range | Block |
+|---|---|
+| `0 : 398` | exactly "v2p", unchanged |
+| `398 : 434` | `prev_action` |
+| `434` | `prev_reward` |
+| `435` | `prev_hit` |
+
+Append-only, so every "v2p" offset holds — a test asserts `obs_v3[:398]` is byte-identical to the
+"v2p" vector for identically seeded, identically acted environments.
 
 ---
 
