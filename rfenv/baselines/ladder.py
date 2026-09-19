@@ -659,7 +659,10 @@ def _key_entropy(key: str) -> int:
 
 def band_at_slot_from_log(log: list[dict]) -> np.ndarray:
     """The band tuned at each slot, from an episode log. Used by the renders."""
-    out = np.full(N_SLOTS, -1, dtype=np.int64)
+    # Sized from the log itself, not the constant, so a stitched mission (D76)
+    # renders too. Identical for a 600-slot episode, which covers every slot.
+    n_slots = max((row["slot"] for row in log), default=N_SLOTS - 1) + 1
+    out = np.full(max(n_slots, N_SLOTS), -1, dtype=np.int64)
     for row in log:
         out[row["slot"]] = row["band"]
     return out

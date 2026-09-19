@@ -128,7 +128,7 @@ def current_observation_width() -> int:
 
 def known_observation_widths() -> set[int]:
     """Every width `ScanEnv` can currently build, one per `OBS_LAYOUTS` entry
-    (`{183, 362, 398}` for "v1"/"v2"/"v2p" as of the band-priority "v2p" layout).
+    (`{183, 362, 398, 436}` for "v1"/"v2"/"v2p"/"v3" as of D75's in-context blocks).
     `require_loadable()` accepts a checkpoint recorded against any of these --
     not only "v1"'s -- because all three are live, supported layouts now, not
     one current width and two stale ones.
@@ -341,7 +341,7 @@ def add_manifest_arguments(ap) -> None:
     ap.add_argument("--hyperparam", action="append", metavar="KEY=VALUE",
                     help="a constructor argument to pass to the algorithm, repeatable "
                          "(e.g. --hyperparam ent_coef=0.01). Recorded verbatim.")
-    ap.add_argument("--obs-version", default="v1", choices=("v1", "v2", "v2p"),
+    ap.add_argument("--obs-version", default="v1", choices=("v1", "v2", "v2p", "v3"),
                     help="observation layout (D30): v1 (default, 183-wide, every "
                          "pre-D30 checkpoint), v2 (362-wide, adds PulseWidth/AoA/"
                          "per-band amplitude/pulse count, D72), or v2p (398-wide, "

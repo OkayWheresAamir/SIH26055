@@ -768,7 +768,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--gif-stride", type=int, default=8,
                      help="slots between animation frames, --figures only (default 8)")
     ap.add_argument("--gif-fps", type=int, default=12, help="--figures only")
-    ap.add_argument("--obs-version", default="v1", choices=("v1", "v2", "v2p"),
+    ap.add_argument("--obs-version", default="v1", choices=("v1", "v2", "v2p", "v3"),
                     help="observation layout (D30/D71) every rung in this run sees. "
                          "A trained checkpoint must match what it was trained on, or "
                          "predict() raises mid-episode; heuristic rungs work under either.")
