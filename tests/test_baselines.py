@@ -90,7 +90,7 @@ def worlds():
 
 def bands_taken(key, scenario, grid, seed=0):
     """The band tuned at each of the 600 slots, for one rung on one episode."""
-    env = ScanEnv(scenario=scenario)
+    env = ScanEnv(scenario=scenario, obs_version=B.BY_KEY[key].obs_version)
     run_episode(env, B.make(key, seed=seed, grid=grid), seed=seed)
     return np.array([row["band"] for row in env.log], dtype=np.int64), env
 
@@ -126,7 +126,7 @@ def test_a_rung_never_names_a_band_that_is_not_an_action(worlds, key):
     """
     scenario, grid = worlds["config_2"]
     _skip_if_untrained(key, grid)
-    env = ScanEnv(scenario=scenario)
+    env = ScanEnv(scenario=scenario, obs_version=B.BY_KEY[key].obs_version)
     policy = B.make(key, seed=0, grid=grid)
     obs, info = env.reset(seed=0)
     for _ in range(20):
@@ -262,7 +262,7 @@ def test_a_scheduler_never_sees_truth(worlds, key):
     """
     scenario, grid = worlds["config_2"]
     _skip_if_untrained(key, grid)
-    env = ScanEnv(scenario=scenario)
+    env = ScanEnv(scenario=scenario, obs_version=B.BY_KEY[key].obs_version)
     seen: set[str] = set()
     policy = B.make(key, seed=0, grid=grid)
 

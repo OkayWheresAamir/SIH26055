@@ -25,6 +25,116 @@ duplicate decision numbers, module-level training imports, rungs without checkpo
 observation width drifting out of the documents) and exits non-zero if a pull would not give
 someone what you think you handed them.
 
+**The observation gained a second, opt-in layout on 2026-09-14 (D30 resolved as D71).**
+`rfenv/scenario.py` now reads PulseWidth and AoA, the two PDW columns it always silently discarded;
+`ScanEnv(obs_version="v1"|"v2")` picks between the original 183-wide vector (default, every
+existing checkpoint) and a new 326-wide one that adds them plus a per-band amplitude upgrade. This
+is the first observation change that did not invalidate every prior checkpoint (D49, D55, D67 all
+did) — "v2" is additive, not a replacement, and `rfenv.rl.common.known_observation_widths()` now
+returns both. `_observation_blocks()` builds every block as a named dict; `OBS_LAYOUTS` selects and
+orders the subset that ships, so `observation_space` and the flat vector can never disagree. AoA is
+stored as `(sin θ, cos θ)`, not a raw angle, and gated on a declared hit the same way `measured_dbm`
+already is — what ships is one raw last-bearing reading per band, not the bearing-*clustering*
+feature D30's own measurement showed is AoA's real value (still not built). Full account: D71.
+**Checkpoints were reorganised the same session** — `runs/checkpoints/` was 150 files flat,
+unnavigable; it is now `runs/checkpoints/v1/<model_name>/` (`git mv`, history-preserving), with
+`v2/` as the sibling for anything trained on the new layout. A RecurrentPPO run mirroring rung 17c's
+own config (`reward_balance`, seed 2, 400k steps) started training on "v2" the same session; no
+result yet.
+
+**"v2" widened again the same day, to 362, on a direct request (D72).** `pulse_count` is a sixth
+"v2"-only block: the illumination count `C` (`truth.py`) at the loudest slot of a band's last
+declared hit, gated on `Y` the same way PulseWidth/AoA are, `log1p`-normalised against the same
+reference (`_DENSITY_REF_PULSES = 64`) `reward_balance_improved` already prices `C` by on the
+reward side. This reopens D29/D34's own exclusion of pulse count from the observation — a question
+already measured and declined once this session by `PDW_COMPLETENESS_AND_BAND_DENSITY_BRIEF.md` on
+mechanical grounds: `C` is built with no gamma gate at all, so it counts contributions that would
+never individually cross the threshold, and literal `C` has no path to existing outside the
+simulator's own bookkeeping. `Y`-gating narrows that gap — only cells the receiver actually declared
+a hit on ever write a value — but does not close it: a hit's `pulse_count` can still include
+sub-threshold co-located emitters a real per-pulse-resolving receiver would not have logged. Unlike
+D71, this one was not free: the three "v2" snapshots D71's own retrain had already produced
+(`lstm_balance_v2_control_seed2_s1/s2/s3`, 326-wide, 385,024/400,000 steps) are now permanently
+unloadable, the same cost every past observation change has carried. `known_observation_widths()`
+now returns `{183, 362}`. Full account: D72.
+
+**The first result on the widened "v2" observation landed 2026-09-18 (D73, `MEASURED`, single
+seed).** Two RecurrentPPO checkpoints, both on the 362-wide "v2" layout, same split/hyperparameters/
+seed, only the reward differing: `reward_balance` (rung 20d) scored 0.111 interception ratio / 3.30 s
+censored intercept time / 36.3% paired-both-vs-recency; `reward_balance_improved_v2` (rung 21a) scored
+0.136 / 2.82 s / 45.6% — ahead on every column, the same direction D65 found on "v1". **Not read as
+settled** — one training seed per arm, the same caveat D65 gave and never resolved, and not directly
+comparable to the "v1" D64/D65 numbers since observation width, reward formula and the sampled-scenario
+draw all differ at once. Neither row is promoted as the number to carry forward. Full account: D73,
+`EVALUATION.md` §5.
+
+**A band-priority reward was built, trained, and measured null this week (D74, 2026-09-18 to
+2026-09-19).** A fully-specified, library-free request: a fourth observation layout, "v2p"
+(398-wide = "v2" plus one more 36-wide block, `band_priority`), and an additive reward term in
+`ScanEnv.step()` — `reward += priority_coef * band_priority[dwell.band] * len(newly)`, gated on
+discovering something new, not on occupying the band (D53's camping exploit is exactly what per-slot
+gating would reopen). This is a synthetic, no-library successor to D70 (which sourced its priority
+vector from an external threat classification and had its own implementation deleted, uncommitted,
+unexplained, before this session) — `band_priority` here is sampled per episode from the env's own
+RNG, not read from any emitter-type table. It is **not** a new `REWARDS` entry and does not touch
+`reward_gate.py`'s D62 screen.
+
+Two RecurrentPPO checkpoints, matched pair, both complete: treatment
+(`lstm_balance_v2p_priority_seed2`, real per-episode elevated bands, rung 22a) and control
+(`lstm_balance_v2p_uniform_seed2`, `priority_uniform=True` — same reward-term scale, no real signal,
+rung 22b). **The comparison** (round_robin/recency + each rung, 513 episodes apiece): treatment
+**0.120** ratio / **3.28 s** cTTI / **0.891** coverage / **44.4%** beats-recency-both; control
+**0.128** / **2.70 s** / **0.908** / **61.4%** — **the control beat the treatment on every column**.
+Three follow-up checks explain why, in order: camping ruled out directly (only ~7% more airtime on
+elevated bands, inconsistent in direction — nowhere near overcommitment); treatment measurably more
+diffuse than control across the *whole* spectrum, not just priority bands (entropy 3.255 vs 3.051,
+24.95 vs 18.95 of 36 bands touched — plausibly because control's constant input made for an easier,
+more stationary training problem than treatment's genuinely varying one); and, decisively, a
+**permutation ablation** — the same trained treatment checkpoint run on identical episodes with
+`band_priority` either real or shuffled across bands — found its airtime correlates with true
+priority equally poorly either way (+0.018 real vs +0.019 shuffled, real beats shuffled in only
+13/30 episodes) and performance does not degrade when the signal is corrupted. **The agent never
+learned to use `band_priority` at all** — treatment's underperformance is a training-difficulty
+story, not a misused-signal story.
+
+`compare.py` gained matching `--band-priority`/`--priority-uniform` flags, resolved *per rung*
+rather than only from the CLI: `Rung` (`ladder.py`) carries its own `band_priority`/
+`priority_uniform`/... fields, `resolve_priority_kwargs` lets a registered rung's own training
+config override the caller's flags, and rung 22a/22b can sit in the same `compare.py` invocation
+instead of needing two. `--figures` also writes `priority_animation_config_*.gif` automatically
+whenever a compared rung is priority-trained (real signal, not the uniform control) — the episode's
+elevated band(s) highlighted directly on the animated schedule, no extra flag needed.
+
+**Not adopted, not promoted, code not removed.** Nothing defaults to `band_priority=True`, so
+nothing else is affected by leaving the mechanism registered. Unlike D66's phase-switch gate (a
+specific mechanism shown actively worse than its baseline, removed after being measured), this is a
+null result at one configuration (`priority_coef=0.5`, 3-6/36 bands, default LSTM capacity, 400k
+steps, one seed) with named, untried paths (bigger coefficient, more capacity, more steps) — not
+scoped or recommended here, a new experiment if picked up again. Full account: D74; mechanism:
+`OBSERVATION_SPACE.md` §2.4; numbers: `MODEL_COMPARISON.md`'s Width 398 section;
+`scratch/TRAINING_JOURNEY.md` §18.
+
+**The named paths were tried, the same day, and the answer didn't change (D74 follow-up,
+2026-09-19).** A new `priority_reward_bonus` function (`env.py`, still not a `REWARDS` entry) adds a
+second, decaying per-slot occupancy term on top of the original discovery bonus — requested directly
+despite the D53 camping-exploit risk, and kept clear of it by anchoring its decay to cumulative
+`visit_density` (D55's own fix) rather than a resettable streak, verified with a dedicated
+ping-pong-vs-sweep test. `priority_coef` 0.5→2.0, the elevated value itself now configurable
+(`priority_high`, was a hardcoded constant) raised 3.0→5.0, LSTM hidden size doubled 256→512,
+timesteps doubled 400k→800k. Result: treatment (rung 23a) **0.154 / 2.43 s / 0.907 / 73.1%**
+beats-recency-both — the highest figure measured anywhere in this project, ahead of D68's settled
+best (17c, 54.4%) — against control (rung 23b) **0.121 / 2.74 s / 0.911 / 45.6%**, the opposite
+direction from the original pair. **A second permutation ablation says this is not the mechanism
+working**: the strengthened checkpoint's airtime correlates with true priority identically whether
+fed real or shuffled values (+0.031 both ways, real beats shuffled 12/30 — a coin flip). 23a's lead
+is read as single-seed training variance, not a real effect — the direction flipped between the two
+pairs while the ablation answer ("no, it doesn't read the signal") stayed the same both times. One
+open thread this does surface, separate from the priority question: a 512-wide, 800k-step checkpoint
+outperforms every smaller/shorter one measured so far on both arms — whether that holds with the
+priority mechanism removed entirely is untested. Verdict unchanged: **not adopted, not promoted,
+code not removed.** Full account: D74 (same entry, extended); numbers: `MODEL_COMPARISON.md`'s
+Width 398 section; `scratch/TRAINING_JOURNEY.md` §18.
+
 **The four validation gates ran for the first time on 2026-09-04** (`python -m rfenv.validate`,
 47 train configs, seed 0, artefacts in `runs/validation/`): **gates 2, 3 and 4 PASS; gate 1 is
 MEASURED** — D37 fixed its convention and deliberately left its threshold undecided. Every

@@ -154,6 +154,7 @@ def compare_animation(
     fps: int = 15,
     figsize_per_row: float = 2.4,
     dpi: int = 100,
+    band_priority: np.ndarray | None = None,
 ):
     """`schedule_timeline`'s rows, in motion -- the path and hits revealed slot
     by slot instead of all 600 at once.
@@ -175,6 +176,13 @@ def compare_animation(
     dependency). Figures/artists are built once and only their data is updated
     per frame, not rebuilt -- 600 slots at `stride=1` would be prohibitively
     slow otherwise.
+
+    `band_priority` (this task, "v2p"): the episode's `(N_BANDS,)` priority
+    array, `1.0` ordinary / `3.0` elevated, sampled once per episode and fixed
+    for its whole duration (`ScanEnv.reset()`) -- so unlike the path and hits,
+    the highlight it draws is static, one translucent stripe per elevated band,
+    drawn once behind every row rather than updated per frame. `None` (the
+    default) draws nothing extra, unchanged from before this parameter existed.
     """
     from matplotlib.animation import PillowWriter
 
@@ -188,6 +196,9 @@ def compare_animation(
     )
     Z = np.asarray(grid.Z, dtype=bool)
     series = {label: M.schedule_series(runs[label]) for label in labels}
+    priority_bands = (
+        np.flatnonzero(np.asarray(band_priority) > 1.5) if band_priority is not None else ()
+    )
 
     dynamic = {}
     for row, label in enumerate(labels):
@@ -198,6 +209,8 @@ def compare_animation(
             extent=(0.0, EPISODE_S, -0.5, N_BANDS - 0.5),
             cmap="Greys_r", vmin=0.0, vmax=1.6, alpha=0.55,
         )
+        for b in priority_bands:
+            ax.axhspan(b - 0.5, b + 0.5, color="#ffd60a", alpha=0.22, zorder=1, linewidth=0)
         ax.set_facecolor("#101010")
         ax.set_ylim(-0.5, N_BANDS - 0.5)
         _band_axis(ax)
@@ -206,6 +219,15 @@ def compare_animation(
             fontsize=9, color="white", fontweight="bold",
             bbox=dict(boxstyle="round,pad=0.2", fc="black", alpha=0.55, ec="none"),
         )
+        if row == 0 and len(priority_bands):
+            ax.text(
+                0.99, 0.97,
+                f"priority band{'s' if len(priority_bands) != 1 else ''}: "
+                f"{', '.join(str(b) for b in priority_bands)}",
+                transform=ax.transAxes, va="top", ha="right", fontsize=8,
+                color="#ffd60a", fontweight="bold",
+                bbox=dict(boxstyle="round,pad=0.2", fc="black", alpha=0.55, ec="none"),
+            )
         (path_line,) = ax.step([], [], where="post", color=PATH_COLOUR, linewidth=1.0, alpha=0.9)
         hit_scatter = ax.scatter([], [], s=10, color=HIT_COLOUR, zorder=4)
         (now_marker,) = ax.plot([], [], "o", color="white", markersize=5.5, zorder=5,
@@ -346,8 +368,9 @@ def pareto(
     **Names go in the legend, not on the markers.** The interesting rungs cluster
     in the bottom-left corner -- five of them inside one second and 0.08 of ratio
     -- and annotating each in place makes that corner illegible, which is the one
-    part of the plot a reader has come for. Each marker carries only its rung
-    number.
+    part of the plot a reader has come for. Markers carry no text at all --
+    plain coloured dots, identified only through the legend (rung number and
+    label together).
 
     `points` is `{key: {interception_ratio, censored_mean_intercept_time_s,
     emitter_coverage, rung, reference, label}}`, normally the per-scheduler
@@ -391,9 +414,6 @@ def pareto(
             alpha=0.85, zorder=3,
             label=f"{rung:>2}  {label}   (cov {coverage:.2f})",
         )
-        ax.annotate(rung, (x, y), ha="center", va="center", fontsize=7,
-                    color="#222" if reference else "white", zorder=4,
-                    fontweight="bold")
 
     ax.set_xlabel("censored mean intercept time (s)   ->  worse")
     ax.set_ylabel("interception ratio   ->  better")

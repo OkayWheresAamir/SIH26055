@@ -1,0 +1,54 @@
+{
+  "run": "lstm_balance_improved_v2_d72_seed2",
+  "description": "reward_balance_improved_v2, D60 split, D72 observation (362-wide v2). RESUMED from lstm_balance_improved_v2_d72_seed2_s4.zip (200,000/400,000 steps, manifest started_at 2026-09-14T20:36:44Z), a checkpoint that has now survived two separate laptop crashes with zero further progress preserved between them: the original run died mid-training (background job b5za3jie1, no completion record), and a first resume attempt (job bt90c474m, launched 2026-09-14, confirmed running at 200,000+ steps) also died before reaching its first 50k-step snapshot -- no s5 was ever written, so this attempt (2026-09-18) still resumes from s4, not from further along. checkpoint-freq is unchanged at 50k, matching lstm_balance_v2_d72_seed2's own config. This segment continues training (RecurrentPPO.load + learn(reset_num_timesteps=False)) rather than restarting from scratch -- total wall-clock across every segment is the sum of each manifest's own wall_clock_s, not this number alone. Paired against lstm_balance_v2_d72_seed2 -- same split/hyperparameters/seed, only the reward differs, mirroring D65's methodology.",
+  "checkpoint": "lstm_balance_improved_v2_d72_seed2_s7.zip",
+  "sha256": "a6071078b9bc9a9efa36c040df0e2634cd7c72e614520ece4e046cf72ee011a4",
+  "algorithm": "RecurrentPPO",
+  "policy": "RecurrentActorCriticPolicy",
+  "reward": "reward_balance_improved_v2",
+  "observation_width": 362,
+  "action_space": "Discrete(36)",
+  "seed": 2,
+  "total_timesteps": 350000,
+  "hyperparameters": {
+    "ent_coef": 0.01,
+    "gamma": 0.997,
+    "n_steps": 8192
+  },
+  "resolved": {
+    "learning_rate": 0.0003,
+    "gamma": 0.997,
+    "n_steps": 8192,
+    "batch_size": 128,
+    "n_epochs": 10,
+    "ent_coef": 0.01,
+    "gae_lambda": 0.95,
+    "vf_coef": 0.5,
+    "max_grad_norm": 0.5
+  },
+  "argv": [
+    "C:/Users/DELL/AppData/Local/Temp/resume_run2.py"
+  ],
+  "command": "C:\\Code\\sih\\SIH26055\\venv\\Scripts\\python.exe C:/Users/DELL/AppData/Local/Temp/resume_run2.py",
+  "git": {
+    "commit": "64840f8dc80adec7ef8a9864052fdf2f6d7b8488",
+    "dirty": true
+  },
+  "started_at": "2026-09-18T09:01:57Z",
+  "wall_clock_s": 2334.0,
+  "versions": {
+    "python": "3.12.10",
+    "stable_baselines3": "2.9.0",
+    "torch": "2.14.0+cpu",
+    "gymnasium": "1.3.0",
+    "numpy": "2.5.3",
+    "sb3_contrib": "2.9.0"
+  },
+  "hardware": {
+    "os": "Windows-11-10.0.26200-SP0",
+    "machine": "AMD64",
+    "processor": "Intel64 Family 6 Model 165 Stepping 2, GenuineIntel",
+    "cpu_count": 12,
+    "cuda": null
+  }
+}

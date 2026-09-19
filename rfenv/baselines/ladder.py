@@ -35,6 +35,22 @@ class Rung:
     factory: Callable
     deployable: bool = True   # False = reads truth, reported as a reference line
     needs_grid: bool = False
+    obs_version: str = "v1"   # D30/D71: which ScanEnv(obs_version=...) this rung needs
+    # This task: what this rung was itself trained/built with, so `compare.py` can
+    # build its env correctly -- and, in `figures()`, decide whether to draw a
+    # priority-marked animation -- without the caller having to pass matching
+    # `--band-priority`/`--priority-uniform`/... flags by hand and risk a silent
+    # mismatch. `band_priority=False` (the default) leaves every existing rung
+    # exactly as it was; only a rung that actually needs the block sets it True.
+    band_priority: bool = False
+    priority_uniform: bool = False
+    priority_coef: float = 0.5
+    priority_n_bands: tuple[int, int] = (3, 6)
+    # D74 follow-up: the elevated value and the decaying per-slot occupancy
+    # term, both off/at-D74's-own-defaults unless a rung declares otherwise.
+    priority_high: float = 3.0
+    occupancy_coef: float = 0.0
+    occupancy_decay_cap: float = 2.0
 
 
 def _dqn_rung_factory(checkpoint_path: Path) -> Callable:
@@ -52,7 +68,7 @@ def _dqn_rung_factory(checkpoint_path: Path) -> Callable:
         Rung("deep_q_network_hit_y", "7a", "DQN (hit_y)",
              "Same algorithm, trained on hit_y -- retired from REWARDS "
              "after failing D62's screen (D29).",
-             _dqn_rung_factory(Path("runs/checkpoints/deep_q_network_hit_y.zip"))),
+             _dqn_rung_factory(Path("runs/checkpoints/v1/deep_q_network_hit_y/deep_q_network_hit_y.zip"))),
 
     A different algorithm gets its own equivalent factory -- see
     `_ppo_rung_factory` immediately below for the worked example.
@@ -128,9 +144,9 @@ def _seed_torch(rng) -> None:
 # for rung 9, sb3-contrib) a hard dependency of this module for everyone, even
 # those who never touch an RL rung. tests/test_baselines.py's
 # _UNTRAINED_RUNG_CHECKPOINTS duplicates the same paths for the same reason.
-_DQN_DEFAULT_CHECKPOINT = Path("runs/checkpoints/deep_q_network.zip")
-_PPO_DEFAULT_CHECKPOINT = Path("runs/checkpoints/ppo.zip")
-_RECURRENT_PPO_DEFAULT_CHECKPOINT = Path("runs/checkpoints/recurrent_ppo.zip")
+_DQN_DEFAULT_CHECKPOINT = Path("runs/checkpoints/v1/deep_q_network/deep_q_network.zip")
+_PPO_DEFAULT_CHECKPOINT = Path("runs/checkpoints/v1/ppo/ppo.zip")
+_RECURRENT_PPO_DEFAULT_CHECKPOINT = Path("runs/checkpoints/v1/recurrent_ppo/recurrent_ppo.zip")
 
 
 LADDER: tuple[Rung, ...] = (
@@ -172,7 +188,7 @@ LADDER: tuple[Rung, ...] = (
          "retired from REWARDS after failing D62's screen (D29). A worked "
          "example of the variant-registration pattern this docstring "
          "describes, not yet a tuned comparison (5,000 timesteps).",
-         _dqn_rung_factory(Path("runs/checkpoints/deep_q_network_hit_y.zip"))),
+         _dqn_rung_factory(Path("runs/checkpoints/v1/deep_q_network_hit_y/deep_q_network_hit_y.zip"))),
 
     # More trained DQN variants register here, one Rung(...) line each -- see
     # _dqn_rung_factory's docstring for the exact pattern (rungs "7b", "7c", ...,
@@ -186,25 +202,25 @@ LADDER: tuple[Rung, ...] = (
     Rung("ppo_first_intercept_800k", "8a", "PPO (first_intercept, 800k)",
             "Ours. Second naive pass: untuned SB3 PPO, trained on first_intercept (D29). "
             "Sees only the D34 observation.",
-            _ppo_rung_factory(Path("runs/checkpoints/ppo_fi.zip"))),
+            _ppo_rung_factory(Path("runs/checkpoints/v1/ppo_fi/ppo_fi.zip"))),
 
     Rung("ppo_first_intercept_100k", "8b", "PPO (first_intercept, 100k)",
             "Ours. Second naive pass: untuned SB3 PPO, trained on first_intercept (D29). "
             "Sees only the D34 observation.",
-            _ppo_rung_factory(Path("runs/checkpoints/ppo_fi_100k.zip"))),
+            _ppo_rung_factory(Path("runs/checkpoints/v1/ppo_fi/ppo_fi_100k.zip"))),
 
     Rung("ppo_first_intercept_2M", "8c", "PPO (first_intercept, 2M)",
                 "Ours. Second naive pass: untuned SB3 PPO, trained on first_intercept (D29). "
                 "Sees only the D34 observation.",
-                _ppo_rung_factory(Path("runs/checkpoints/ppo_fi_2M.zip"))),
+                _ppo_rung_factory(Path("runs/checkpoints/v1/ppo_fi/ppo_fi_2M.zip"))),
     # Commented out, not deleted: weighted_camp (the reward this was trained on)
     # was retired from REWARDS (env.py), and the observation shape has since
     # moved past what this checkpoint was trained against too. Re-enable only
-    # after re-registering weighted_camp and retraining runs/checkpoints/ppo_wt_cmp_1M.zip.
+    # after re-registering weighted_camp and retraining runs/checkpoints/v1/ppo_wt_cmp/ppo_wt_cmp_1M.zip.
     # Rung("ppo_weighted_camp", "8d", "PPO (weighted_camp, 1M)",
     #     "Ours. Second naive pass: untuned SB3 PPO, trained on weighted_camp (D29). "
     #     "Sees only the D34 observation.",
-    #     _ppo_rung_factory(Path("runs/checkpoints/ppo_wt_cmp_1M.zip"))),
+    #     _ppo_rung_factory(Path("runs/checkpoints/v1/ppo_wt_cmp/ppo_wt_cmp_1M.zip"))),
     # More trained PPO variants register the same way, one Rung(...) line each
     # using _ppo_rung_factory (rungs "8d", "8e", ...) -- give each a label that
     # names what's different about it (D29 candidate, timestep count, ...), not
@@ -238,67 +254,67 @@ LADDER: tuple[Rung, ...] = (
     #         "trained on hit_z (D29). Sees the same D34 observation as every "
     #         "other rung, but the policy carries an LSTM hidden state across "
     #         "the episode instead of acting on each look alone.",
-    #         _recurrent_ppo_rung_factory(Path("runs/checkpoints/lstm_ppo5_100000_steps.zip"))),
+    #         _recurrent_ppo_rung_factory(Path("runs/checkpoints/v1/lstm_ppo5/lstm_ppo5_100000_steps.zip"))),
     # Rung("recurrent_ppo_first_intercept_200k", "9b", "Recurrent PPO (LSTM),200k",
     #         "Ours. Third algorithm: sb3-contrib RecurrentPPO (MlpLstmPolicy), "
     #         "trained on hit_z (D29). Sees the same D34 observation as every "
     #         "other rung, but the policy carries an LSTM hidden state across "
     #         "the episode instead of acting on each look alone.",
-    #         _recurrent_ppo_rung_factory(Path("runs/checkpoints/lstm_ppo5_200000_steps.zip"))),
+    #         _recurrent_ppo_rung_factory(Path("runs/checkpoints/v1/lstm_ppo5/lstm_ppo5_200000_steps.zip"))),
     # Rung("recurrent_ppo_first_intercept_300k", "9c", "Recurrent PPO (LSTM),300k",
     #         "Ours. Third algorithm: sb3-contrib RecurrentPPO (MlpLstmPolicy), "
     #         "trained on hit_z (D29). Sees the same D34 observation as every "
     #         "other rung, but the policy carries an LSTM hidden state across "
     #         "the episode instead of acting on each look alone.",
-    #         _recurrent_ppo_rung_factory(Path("runs/checkpoints/lstm_ppo4_300000_steps.zip"))),
+    #         _recurrent_ppo_rung_factory(Path("runs/checkpoints/v1/lstm_ppo4/lstm_ppo4_300000_steps.zip"))),
     # Rung("recurrent_ppo_first_intercept_400k", "9d", "Recurrent PPO (LSTM),400k",
     #         "Ours. Third algorithm: sb3-contrib RecurrentPPO (MlpLstmPolicy), "
     #         "trained on hit_z (D29). Sees the same D34 observation as every "
     #         "other rung, but the policy carries an LSTM hidden state across "
     #         "the episode instead of acting on each look alone.",
-    #         _recurrent_ppo_rung_factory(Path("runs/checkpoints/lstm_ppo4_400000_steps.zip"))),
+    #         _recurrent_ppo_rung_factory(Path("runs/checkpoints/v1/lstm_ppo4/lstm_ppo4_400000_steps.zip"))),
 
 
     Rung("lstm_balance_100k_1M", "9a", "Recurrent PPO (reward_balance, 100k)",
      "Ours. Trained on reward_balance after D52/D53/D55, 100k timesteps.",
-     _recurrent_ppo_rung_factory(Path("runs/checkpoints/lstm_balance_1M_s1.zip"))),
+     _recurrent_ppo_rung_factory(Path("runs/checkpoints/v1/lstm_balance/lstm_balance_1M_s1.zip"))),
     
     Rung("lstm_balance_200k_1M", "9b", "Recurrent PPO (reward_balance, 200k)",
      "Ours. Trained on reward_balance after D52/D53/D55, 200k timesteps.",
-     _recurrent_ppo_rung_factory(Path("runs/checkpoints/lstm_balance_1M_s2.zip"))),
+     _recurrent_ppo_rung_factory(Path("runs/checkpoints/v1/lstm_balance/lstm_balance_1M_s2.zip"))),
 
     Rung("lstm_balance_300k_1M", "9c", "Recurrent PPO (reward_balance, 300k)",
          "Ours. Trained on reward_balance after D52/D53/D55, 300k timesteps.",
-         _recurrent_ppo_rung_factory(Path("runs/checkpoints/lstm_balance_1M_s3.zip"))),
+         _recurrent_ppo_rung_factory(Path("runs/checkpoints/v1/lstm_balance/lstm_balance_1M_s3.zip"))),
 
     Rung("lstm_balance_400k_1M", "9d", "Recurrent PPO (reward_balance, 400k)",
         "Ours. Trained on reward_balance after D52/D53/D55, 400k timesteps.",
-        _recurrent_ppo_rung_factory(Path("runs/checkpoints/lstm_balance_1M_s4.zip"))),
+        _recurrent_ppo_rung_factory(Path("runs/checkpoints/v1/lstm_balance/lstm_balance_1M_s4.zip"))),
 
     Rung("lstm_balance_500k_1M", "9e", "Recurrent PPO (reward_balance, 500k)",
             "Ours. Trained on reward_balance after D52/D53/D55, 500k timesteps.",
-            _recurrent_ppo_rung_factory(Path("runs/checkpoints/lstm_balance_1M_s5.zip"))),
+            _recurrent_ppo_rung_factory(Path("runs/checkpoints/v1/lstm_balance/lstm_balance_1M_s5.zip"))),
     
     Rung("lstm_balance_600k_1M", "9f", "Recurrent PPO (reward_balance, 600k)",
                 "Ours. Trained on reward_balance after D52/D53/D55, 600k timesteps.",
-                _recurrent_ppo_rung_factory(Path("runs/checkpoints/lstm_balance_1M_s6.zip"))),
+                _recurrent_ppo_rung_factory(Path("runs/checkpoints/v1/lstm_balance/lstm_balance_1M_s6.zip"))),
     
     Rung("lstm_balance_700k_1M", "9g", "Recurrent PPO (reward_balance, 700k)",
                 "Ours. Trained on reward_balance after D52/D53/D55, 700k timesteps.",
-                _recurrent_ppo_rung_factory(Path("runs/checkpoints/lstm_balance_1M_s7.zip"))),
+                _recurrent_ppo_rung_factory(Path("runs/checkpoints/v1/lstm_balance/lstm_balance_1M_s7.zip"))),
         
     
     Rung("lstm_balance_800k_1M", "9h", "Recurrent PPO (reward_balance, 800k)",
                 "Ours. Trained on reward_balance after D52/D53/D55, 800k timesteps.",
-                _recurrent_ppo_rung_factory(Path("runs/checkpoints/lstm_balance_1M_s8.zip"))),
+                _recurrent_ppo_rung_factory(Path("runs/checkpoints/v1/lstm_balance/lstm_balance_1M_s8.zip"))),
     
     Rung("lstm_balance_900k_1M", "9i", "Recurrent PPO (reward_balance, 900k)",
                 "Ours. Trained on reward_balance after D52/D53/D55, 900k timesteps.",
-                _recurrent_ppo_rung_factory(Path("runs/checkpoints/lstm_balance_1M_s9.zip"))),
+                _recurrent_ppo_rung_factory(Path("runs/checkpoints/v1/lstm_balance/lstm_balance_1M_s9.zip"))),
     
     Rung("lstm_balance_1M", "9j", "Recurrent PPO (reward_balance, 1M)",
                 "Ours. Trained on reward_balance after D52/D53/D55, 1M timesteps.",
-                _recurrent_ppo_rung_factory(Path("runs/checkpoints/lstm_balance_1M.zip"))),
+                _recurrent_ppo_rung_factory(Path("runs/checkpoints/v1/lstm_balance/lstm_balance_1M.zip"))),
 
 
 
@@ -306,19 +322,19 @@ LADDER: tuple[Rung, ...] = (
 
     Rung("lstm_balance_clean_100k_400k", "10a", "Recurrent PPO (reward_balance clean, 100k-400k)",
             "Ours. Trained on reward_balance after D52/D53/D55, 100k out of 400k timesteps.",
-            _recurrent_ppo_rung_factory(Path("runs/checkpoints/clean_lstm_s1.zip"))),
+            _recurrent_ppo_rung_factory(Path("runs/checkpoints/v1/clean_lstm/clean_lstm_s1.zip"))),
 
       Rung("lstm_balance_clean_200k_400k", "10b", "Recurrent PPO (reward_balance clean, 200k-400k)",
                 "Ours. Trained on reward_balance after D52/D53/D55, 200k out of 400k timesteps.",
-                _recurrent_ppo_rung_factory(Path("runs/checkpoints/clean_lstm_s2.zip"))),
+                _recurrent_ppo_rung_factory(Path("runs/checkpoints/v1/clean_lstm/clean_lstm_s2.zip"))),
 
      Rung("lstm_balance_clean_300k_400k", "10c", "Recurrent PPO (reward_balance clean, 300k-400k)",
                     "Ours. Trained on reward_balance after D52/D53/D55, 300k out of 400k timesteps.",
-                    _recurrent_ppo_rung_factory(Path("runs/checkpoints/clean_lstm_s3.zip"))),
+                    _recurrent_ppo_rung_factory(Path("runs/checkpoints/v1/clean_lstm/clean_lstm_s3.zip"))),
 
      Rung("lstm_balance_clean_400k", "10d", "Recurrent PPO (reward_balance clean, 400k)",
                     "Ours. Trained on reward_balance after D52/D53/D55, 400k out of 400k timesteps.",
-                    _recurrent_ppo_rung_factory(Path("runs/checkpoints/clean_lstm_s4.zip"))),
+                    _recurrent_ppo_rung_factory(Path("runs/checkpoints/v1/clean_lstm/clean_lstm_s4.zip"))),
 
 
 
@@ -327,22 +343,22 @@ LADDER: tuple[Rung, ...] = (
     Rung("lstm_balance_improved_100k_400k", "11a", "Recurrent PPO (reward_balance_improved, 100k-400k)",
             "Ours. Treatment arm of the D64 paired comparison: reward_balance_improved, "
             "100k out of 400k timesteps, same split/hyperparameters/seed as rung 10a.",
-            _recurrent_ppo_rung_factory(Path("runs/checkpoints/lstm_balance_improved_s1.zip"))),
+            _recurrent_ppo_rung_factory(Path("runs/checkpoints/v1/lstm_balance_improved/lstm_balance_improved_s1.zip"))),
 
     Rung("lstm_balance_improved_200k_400k", "11b", "Recurrent PPO (reward_balance_improved, 200k-400k)",
             "Ours. Treatment arm of the D64 paired comparison: reward_balance_improved, "
             "200k out of 400k timesteps, same split/hyperparameters/seed as rung 10b.",
-            _recurrent_ppo_rung_factory(Path("runs/checkpoints/lstm_balance_improved_s2.zip"))),
+            _recurrent_ppo_rung_factory(Path("runs/checkpoints/v1/lstm_balance_improved/lstm_balance_improved_s2.zip"))),
 
     Rung("lstm_balance_improved_300k_400k", "11c", "Recurrent PPO (reward_balance_improved, 300k-400k)",
             "Ours. Treatment arm of the D64 paired comparison: reward_balance_improved, "
             "300k out of 400k timesteps, same split/hyperparameters/seed as rung 10c.",
-            _recurrent_ppo_rung_factory(Path("runs/checkpoints/lstm_balance_improved_s3.zip"))),
+            _recurrent_ppo_rung_factory(Path("runs/checkpoints/v1/lstm_balance_improved/lstm_balance_improved_s3.zip"))),
 
     Rung("lstm_balance_improved_400k", "11d", "Recurrent PPO (reward_balance_improved, 400k)",
             "Ours. Treatment arm of the D64 paired comparison: reward_balance_improved, "
             "400k out of 400k timesteps, same split/hyperparameters/seed as rung 10d.",
-            _recurrent_ppo_rung_factory(Path("runs/checkpoints/lstm_balance_improved_s4.zip"))),
+            _recurrent_ppo_rung_factory(Path("runs/checkpoints/v1/lstm_balance_improved/lstm_balance_improved_s4.zip"))),
 
 
     # D67: the observation gains hit_streak, 146 -> 183. Every rung above this
@@ -352,44 +368,44 @@ LADDER: tuple[Rung, ...] = (
     Rung("lstm_balance_d67_control_100k_400k", "14a", "Recurrent PPO (reward_balance, D67 obs, 100k-400k)",
             "Ours. Control arm retrained under D67's 183-wide observation (hit_streak), "
             "100k out of 400k timesteps.",
-            _recurrent_ppo_rung_factory(Path("runs/checkpoints/lstm_balance_d67_control_s1.zip"))),
+            _recurrent_ppo_rung_factory(Path("runs/checkpoints/v1/lstm_balance_d67_control/lstm_balance_d67_control_s1.zip"))),
 
     Rung("lstm_balance_d67_control_200k_400k", "14b", "Recurrent PPO (reward_balance, D67 obs, 200k-400k)",
             "Ours. Control arm retrained under D67's 183-wide observation (hit_streak), "
             "200k out of 400k timesteps.",
-            _recurrent_ppo_rung_factory(Path("runs/checkpoints/lstm_balance_d67_control_s2.zip"))),
+            _recurrent_ppo_rung_factory(Path("runs/checkpoints/v1/lstm_balance_d67_control/lstm_balance_d67_control_s2.zip"))),
 
     Rung("lstm_balance_d67_control_300k_400k", "14c", "Recurrent PPO (reward_balance, D67 obs, 300k-400k)",
             "Ours. Control arm retrained under D67's 183-wide observation (hit_streak), "
             "300k out of 400k timesteps -- the single-seed D61 pick (+25.0% net dominance); "
             "superseded by rung 17c (+36.1%) once seeds 1/2 were added for D47/D68's re-run.",
-            _recurrent_ppo_rung_factory(Path("runs/checkpoints/lstm_balance_d67_control_s3.zip"))),
+            _recurrent_ppo_rung_factory(Path("runs/checkpoints/v1/lstm_balance_d67_control/lstm_balance_d67_control_s3.zip"))),
 
     Rung("lstm_balance_d67_control_400k", "14d", "Recurrent PPO (reward_balance, D67 obs, 400k)",
             "Ours. Control arm retrained under D67's 183-wide observation (hit_streak), "
             "400k out of 400k timesteps.",
-            _recurrent_ppo_rung_factory(Path("runs/checkpoints/lstm_balance_d67_control_s4.zip"))),
+            _recurrent_ppo_rung_factory(Path("runs/checkpoints/v1/lstm_balance_d67_control/lstm_balance_d67_control_s4.zip"))),
 
     Rung("lstm_balance_d67_treatment_100k_400k", "15a", "Recurrent PPO (reward_balance_improved, D67 obs, 100k-400k)",
             "Ours. Treatment arm retrained under D67's 183-wide observation (hit_streak), "
             "100k out of 400k timesteps -- the D61-selected checkpoint, both before and after "
             "seeds 1/2 were added for D47/D68's re-run (+33.3% net dominance either way).",
-            _recurrent_ppo_rung_factory(Path("runs/checkpoints/lstm_balance_d67_treatment_s1.zip"))),
+            _recurrent_ppo_rung_factory(Path("runs/checkpoints/v1/lstm_balance_d67_treatment/lstm_balance_d67_treatment_s1.zip"))),
 
     Rung("lstm_balance_d67_treatment_200k_400k", "15b", "Recurrent PPO (reward_balance_improved, D67 obs, 200k-400k)",
             "Ours. Treatment arm retrained under D67's 183-wide observation (hit_streak), "
             "200k out of 400k timesteps.",
-            _recurrent_ppo_rung_factory(Path("runs/checkpoints/lstm_balance_d67_treatment_s2.zip"))),
+            _recurrent_ppo_rung_factory(Path("runs/checkpoints/v1/lstm_balance_d67_treatment/lstm_balance_d67_treatment_s2.zip"))),
 
     Rung("lstm_balance_d67_treatment_300k_400k", "15c", "Recurrent PPO (reward_balance_improved, D67 obs, 300k-400k)",
             "Ours. Treatment arm retrained under D67's 183-wide observation (hit_streak), "
             "300k out of 400k timesteps.",
-            _recurrent_ppo_rung_factory(Path("runs/checkpoints/lstm_balance_d67_treatment_s3.zip"))),
+            _recurrent_ppo_rung_factory(Path("runs/checkpoints/v1/lstm_balance_d67_treatment/lstm_balance_d67_treatment_s3.zip"))),
 
     Rung("lstm_balance_d67_treatment_400k", "15d", "Recurrent PPO (reward_balance_improved, D67 obs, 400k)",
             "Ours. Treatment arm retrained under D67's 183-wide observation (hit_streak), "
             "400k out of 400k timesteps.",
-            _recurrent_ppo_rung_factory(Path("runs/checkpoints/lstm_balance_d67_treatment_s4.zip"))),
+            _recurrent_ppo_rung_factory(Path("runs/checkpoints/v1/lstm_balance_d67_treatment/lstm_balance_d67_treatment_s4.zip"))),
 
 
     # D68's escalation (1.2 pp gap, inside D47's 5 pp margin) prompted a matched-seed
@@ -402,84 +418,195 @@ LADDER: tuple[Rung, ...] = (
     Rung("lstm_balance_d67_control_seed1_100k_400k", "16a", "Recurrent PPO (reward_balance, D67 obs, seed 1, 100k-400k)",
             "Ours. Control arm, matched-seed retrain for D47/D68, seed 1, "
             "100k out of 400k timesteps.",
-            _recurrent_ppo_rung_factory(Path("runs/checkpoints/lstm_balance_d67_control_seed1_s1.zip"))),
+            _recurrent_ppo_rung_factory(Path("runs/checkpoints/v1/lstm_balance_d67_control_seed1/lstm_balance_d67_control_seed1_s1.zip"))),
 
     Rung("lstm_balance_d67_control_seed1_200k_400k", "16b", "Recurrent PPO (reward_balance, D67 obs, seed 1, 200k-400k)",
             "Ours. Control arm, matched-seed retrain for D47/D68, seed 1, "
             "200k out of 400k timesteps.",
-            _recurrent_ppo_rung_factory(Path("runs/checkpoints/lstm_balance_d67_control_seed1_s2.zip"))),
+            _recurrent_ppo_rung_factory(Path("runs/checkpoints/v1/lstm_balance_d67_control_seed1/lstm_balance_d67_control_seed1_s2.zip"))),
 
     Rung("lstm_balance_d67_control_seed1_300k_400k", "16c", "Recurrent PPO (reward_balance, D67 obs, seed 1, 300k-400k)",
             "Ours. Control arm, matched-seed retrain for D47/D68, seed 1, "
             "300k out of 400k timesteps.",
-            _recurrent_ppo_rung_factory(Path("runs/checkpoints/lstm_balance_d67_control_seed1_s3.zip"))),
+            _recurrent_ppo_rung_factory(Path("runs/checkpoints/v1/lstm_balance_d67_control_seed1/lstm_balance_d67_control_seed1_s3.zip"))),
 
     Rung("lstm_balance_d67_control_seed1_400k", "16d", "Recurrent PPO (reward_balance, D67 obs, seed 1, 400k)",
             "Ours. Control arm, matched-seed retrain for D47/D68, seed 1, "
             "400k out of 400k timesteps.",
-            _recurrent_ppo_rung_factory(Path("runs/checkpoints/lstm_balance_d67_control_seed1_s4.zip"))),
+            _recurrent_ppo_rung_factory(Path("runs/checkpoints/v1/lstm_balance_d67_control_seed1/lstm_balance_d67_control_seed1_s4.zip"))),
 
     Rung("lstm_balance_d67_control_seed2_100k_400k", "17a", "Recurrent PPO (reward_balance, D67 obs, seed 2, 100k-400k)",
             "Ours. Control arm, matched-seed retrain for D47/D68, seed 2, "
             "100k out of 400k timesteps.",
-            _recurrent_ppo_rung_factory(Path("runs/checkpoints/lstm_balance_d67_control_seed2_s1.zip"))),
+            _recurrent_ppo_rung_factory(Path("runs/checkpoints/v1/lstm_balance_d67_control_seed2/lstm_balance_d67_control_seed2_s1.zip"))),
 
     Rung("lstm_balance_d67_control_seed2_200k_400k", "17b", "Recurrent PPO (reward_balance, D67 obs, seed 2, 200k-400k)",
             "Ours. Control arm, matched-seed retrain for D47/D68, seed 2, "
             "200k out of 400k timesteps.",
-            _recurrent_ppo_rung_factory(Path("runs/checkpoints/lstm_balance_d67_control_seed2_s2.zip"))),
+            _recurrent_ppo_rung_factory(Path("runs/checkpoints/v1/lstm_balance_d67_control_seed2/lstm_balance_d67_control_seed2_s2.zip"))),
 
     Rung("lstm_balance_d67_control_seed2_300k_400k", "17c", "Recurrent PPO (reward_balance, D67 obs, seed 2, 300k-400k)",
             "Ours. Control arm, matched-seed retrain for D47/D68, seed 2, "
             "300k out of 400k timesteps -- the D61-selected checkpoint once all 12 "
             "control-arm checkpoints (seeds 0/1/2) were scored together (+36.1% net dominance, "
             "ahead of seed 0's own 300k at +25.0%, rung 14c).",
-            _recurrent_ppo_rung_factory(Path("runs/checkpoints/lstm_balance_d67_control_seed2_s3.zip"))),
+            _recurrent_ppo_rung_factory(Path("runs/checkpoints/v1/lstm_balance_d67_control_seed2/lstm_balance_d67_control_seed2_s3.zip"))),
 
     Rung("lstm_balance_d67_control_seed2_400k", "17d", "Recurrent PPO (reward_balance, D67 obs, seed 2, 400k)",
             "Ours. Control arm, matched-seed retrain for D47/D68, seed 2, "
             "400k out of 400k timesteps.",
-            _recurrent_ppo_rung_factory(Path("runs/checkpoints/lstm_balance_d67_control_seed2_s4.zip"))),
+            _recurrent_ppo_rung_factory(Path("runs/checkpoints/v1/lstm_balance_d67_control_seed2/lstm_balance_d67_control_seed2_s4.zip"))),
 
     Rung("lstm_balance_d67_treatment_seed1_100k_400k", "18a", "Recurrent PPO (reward_balance_improved, D67 obs, seed 1, 100k-400k)",
             "Ours. Treatment arm, matched-seed retrain for D47/D68, seed 1, "
             "100k out of 400k timesteps.",
-            _recurrent_ppo_rung_factory(Path("runs/checkpoints/lstm_balance_d67_treatment_seed1_s1.zip"))),
+            _recurrent_ppo_rung_factory(Path("runs/checkpoints/v1/lstm_balance_d67_treatment_seed1/lstm_balance_d67_treatment_seed1_s1.zip"))),
 
     Rung("lstm_balance_d67_treatment_seed1_200k_400k", "18b", "Recurrent PPO (reward_balance_improved, D67 obs, seed 1, 200k-400k)",
             "Ours. Treatment arm, matched-seed retrain for D47/D68, seed 1, "
             "200k out of 400k timesteps.",
-            _recurrent_ppo_rung_factory(Path("runs/checkpoints/lstm_balance_d67_treatment_seed1_s2.zip"))),
+            _recurrent_ppo_rung_factory(Path("runs/checkpoints/v1/lstm_balance_d67_treatment_seed1/lstm_balance_d67_treatment_seed1_s2.zip"))),
 
     Rung("lstm_balance_d67_treatment_seed1_300k_400k", "18c", "Recurrent PPO (reward_balance_improved, D67 obs, seed 1, 300k-400k)",
             "Ours. Treatment arm, matched-seed retrain for D47/D68, seed 1, "
             "300k out of 400k timesteps.",
-            _recurrent_ppo_rung_factory(Path("runs/checkpoints/lstm_balance_d67_treatment_seed1_s3.zip"))),
+            _recurrent_ppo_rung_factory(Path("runs/checkpoints/v1/lstm_balance_d67_treatment_seed1/lstm_balance_d67_treatment_seed1_s3.zip"))),
 
     Rung("lstm_balance_d67_treatment_seed1_400k", "18d", "Recurrent PPO (reward_balance_improved, D67 obs, seed 1, 400k)",
             "Ours. Treatment arm, matched-seed retrain for D47/D68, seed 1, "
             "400k out of 400k timesteps.",
-            _recurrent_ppo_rung_factory(Path("runs/checkpoints/lstm_balance_d67_treatment_seed1_s4.zip"))),
+            _recurrent_ppo_rung_factory(Path("runs/checkpoints/v1/lstm_balance_d67_treatment_seed1/lstm_balance_d67_treatment_seed1_s4.zip"))),
 
     Rung("lstm_balance_d67_treatment_seed2_100k_400k", "19a", "Recurrent PPO (reward_balance_improved, D67 obs, seed 2, 100k-400k)",
             "Ours. Treatment arm, matched-seed retrain for D47/D68, seed 2, "
             "100k out of 400k timesteps.",
-            _recurrent_ppo_rung_factory(Path("runs/checkpoints/lstm_balance_d67_treatment_seed2_s1.zip"))),
+            _recurrent_ppo_rung_factory(Path("runs/checkpoints/v1/lstm_balance_d67_treatment_seed2/lstm_balance_d67_treatment_seed2_s1.zip"))),
 
     Rung("lstm_balance_d67_treatment_seed2_200k_400k", "19b", "Recurrent PPO (reward_balance_improved, D67 obs, seed 2, 200k-400k)",
             "Ours. Treatment arm, matched-seed retrain for D47/D68, seed 2, "
             "200k out of 400k timesteps.",
-            _recurrent_ppo_rung_factory(Path("runs/checkpoints/lstm_balance_d67_treatment_seed2_s2.zip"))),
+            _recurrent_ppo_rung_factory(Path("runs/checkpoints/v1/lstm_balance_d67_treatment_seed2/lstm_balance_d67_treatment_seed2_s2.zip"))),
 
     Rung("lstm_balance_d67_treatment_seed2_300k_400k", "19c", "Recurrent PPO (reward_balance_improved, D67 obs, seed 2, 300k-400k)",
             "Ours. Treatment arm, matched-seed retrain for D47/D68, seed 2, "
             "300k out of 400k timesteps.",
-            _recurrent_ppo_rung_factory(Path("runs/checkpoints/lstm_balance_d67_treatment_seed2_s3.zip"))),
+            _recurrent_ppo_rung_factory(Path("runs/checkpoints/v1/lstm_balance_d67_treatment_seed2/lstm_balance_d67_treatment_seed2_s3.zip"))),
 
     Rung("lstm_balance_d67_treatment_seed2_400k", "19d", "Recurrent PPO (reward_balance_improved, D67 obs, seed 2, 400k)",
             "Ours. Treatment arm, matched-seed retrain for D47/D68, seed 2, "
             "400k out of 400k timesteps.",
-            _recurrent_ppo_rung_factory(Path("runs/checkpoints/lstm_balance_d67_treatment_seed2_s4.zip"))),
+            _recurrent_ppo_rung_factory(Path("runs/checkpoints/v1/lstm_balance_d67_treatment_seed2/lstm_balance_d67_treatment_seed2_s4.zip"))),
+
+    # D30/D71: first checkpoint trained on the 326-wide "v2" observation
+    # (PulseWidth/AoA/per-band amplitude). Otherwise mirrors
+    # lstm_balance_d67_control_seed2 (rung 17) exactly -- same reward, split,
+    # hyperparameters, seed -- so this is comparable to that run's own
+    # snapshots. Only usable against a ScanEnv built with obs_version="v2";
+    # require_loadable() (common.py) now accepts either known width, but the
+    # env itself must still match or predict() raises mid-episode.
+    Rung("lstm_balance_v2_control_seed2_100k_400k", "20a", "Recurrent PPO (reward_balance, D71 v2 obs, seed 2, 100k)",
+            "Ours. v2-observation control run, seed 2, 100k out of 400k timesteps. "
+            "Needs ScanEnv(obs_version='v2').",
+            _recurrent_ppo_rung_factory(Path("runs/checkpoints/v2/lstm_balance_v2_control_seed2/lstm_balance_v2_control_seed2_s1.zip")),
+            obs_version="v2"),
+
+    Rung("lstm_balance_v2_control_seed2_200k_400k", "20b", "Recurrent PPO (reward_balance, D71 v2 obs, seed 2, 200k)",
+            "Ours. v2-observation control run, seed 2, 200k out of 400k timesteps. "
+            "Needs ScanEnv(obs_version='v2').",
+            _recurrent_ppo_rung_factory(Path("runs/checkpoints/v2/lstm_balance_v2_control_seed2/lstm_balance_v2_control_seed2_s2.zip")),
+            obs_version="v2"),
+
+    Rung("lstm_balance_v2_control_seed2_300k_400k", "20c", "Recurrent PPO (reward_balance, D71 v2 obs, seed 2, 300k)",
+            "Ours. v2-observation control run, seed 2, 300k out of 400k timesteps. "
+            "Needs ScanEnv(obs_version='v2').",
+            _recurrent_ppo_rung_factory(Path("runs/checkpoints/v2/lstm_balance_v2_control_seed2/lstm_balance_v2_control_seed2_s3.zip")),
+            obs_version="v2"),
+
+    # D72: the seed-2 control/treatment pair above (rung 20a-c) trained on the
+    # 326-wide "v2" that predates pulse_count and never finished (385,024/400,000
+    # steps) -- D72's width bump to 362 made those three snapshots permanently
+    # unloadable (`known_observation_widths()` no longer contains 326 at all),
+    # so this is not a continuation of that run, it is a fresh retrain on the
+    # widened layout. Mirrors D71's own pairing: same split, hyperparameters
+    # (ent_coef=0.01, gamma=0.997, n_steps=8192) and seed (2), only the reward
+    # differs between the two rungs below, per D65's paired-comparison method.
+    Rung("lstm_balance_v2_d72_seed2_400k", "20d", "Recurrent PPO (reward_balance, D72 v2 obs, seed 2, 400k)",
+            "Ours. D72-observation (362-wide, pulse_count added) control run, seed 2, "
+            "401,408 out of 400k timesteps, completed in one uninterrupted run. "
+            "Needs ScanEnv(obs_version='v2').",
+            _recurrent_ppo_rung_factory(Path("runs/checkpoints/v2/lstm_balance_v2_d72_seed2/lstm_balance_v2_d72_seed2.zip")),
+            obs_version="v2"),
+
+    Rung("lstm_balance_improved_v2_d72_seed2_400k", "21a", "Recurrent PPO (reward_balance_improved_v2, D72 v2 obs, seed 2, 400k)",
+            "Ours. Paired against lstm_balance_v2_d72_seed2_400k (rung 20d) -- same "
+            "split, hyperparameters and seed, only the reward differs (D65's "
+            "methodology). 404,800 out of 400k timesteps; interrupted by two laptop "
+            "crashes and resumed both times from its own last checkpoint-freq snapshot "
+            "(RecurrentPPO.load + learn(reset_num_timesteps=False)), recorded in the "
+            "checkpoint's own manifest description. Needs ScanEnv(obs_version='v2').",
+            _recurrent_ppo_rung_factory(Path("runs/checkpoints/v2/lstm_balance_improved_v2_d72_seed2/lstm_balance_improved_v2_d72_seed2.zip")),
+            obs_version="v2"),
+
+    # This task: band-priority reward, additive on top of reward_balance, not a
+    # new REWARDS candidate (env.py's step()). New "v2p" layout (398-wide, D71's
+    # "v2" plus band_priority) -- both rungs need ScanEnv(obs_version="v2p").
+    # `band_priority`/`priority_uniform`/`priority_coef`/`priority_n_bands` are
+    # each set below, per rung (`Rung`'s own fields, added this task) -- so
+    # `compare.py` builds each one's env correctly on its own, without the
+    # caller having to pass matching `--band-priority`/`--priority-uniform`
+    # flags by hand and risk silently evaluating the treatment checkpoint under
+    # an all-ones vector. The two can now sit in the same `compare.py`
+    # invocation and the same figure; `--band-priority` etc. remain available
+    # as a manual override for a rung that doesn't declare its own (every rung
+    # above this comment).
+    Rung("lstm_balance_v2p_priority_seed2_400k", "22a", "Recurrent PPO (reward_balance, v2p+priority, seed 2, 400k)",
+            "Ours. Treatment arm: band_priority=True, priority_uniform=False -- 3-6 of "
+            "36 bands elevated to priority 3.0 each episode, real signal to condition "
+            "on. Same split/hyperparameters/seed as the D72 pair (rungs 20d/21a). "
+            "Needs ScanEnv(obs_version='v2p', band_priority=True).",
+            _recurrent_ppo_rung_factory(Path("runs/checkpoints/v2p/lstm_balance_v2p_priority_seed2/lstm_balance_v2p_priority_seed2.zip")),
+            obs_version="v2p", band_priority=True, priority_uniform=False,
+            priority_coef=0.5, priority_n_bands=(3, 6)),
+
+    Rung("lstm_balance_v2p_uniform_seed2_400k", "22b", "Recurrent PPO (reward_balance, v2p+priority, control, seed 2, 400k)",
+            "Ours. Control arm, paired against rung 22a: identical in every other "
+            "respect, priority_uniform=True -- band_priority stays all-ones every "
+            "episode (same reward-term scale, no real signal to use). Isolates "
+            "whether rung 22a's behaviour (if different) comes from reading the "
+            "priority vector or just the reward-scale increase the term adds "
+            "uniformly. Needs ScanEnv(obs_version='v2p', band_priority=True, "
+            "priority_uniform=True).",
+            _recurrent_ppo_rung_factory(Path("runs/checkpoints/v2p/lstm_balance_v2p_uniform_seed2/lstm_balance_v2p_uniform_seed2.zip")),
+            obs_version="v2p", band_priority=True, priority_uniform=True,
+            priority_coef=0.5, priority_n_bands=(3, 6)),
+
+    # D74 follow-up: stronger discovery bonus (priority_coef 0.5->2.0,
+    # priority_high 3.0->5.0), plus the new decaying occupancy term
+    # (priority_reward_bonus, env.py) -- occupancy_coef/occupancy_decay_cap
+    # are Rung fields too now, resolved by compare.py the same automatic way
+    # as the other priority fields. LSTM hidden size (512, doubled) is not a
+    # Rung field -- RecurrentPPO.load() reconstructs the policy architecture
+    # from the checkpoint's own saved policy_kwargs, nothing to declare here.
+    Rung("lstm_balance_v2p_priority_strong_seed2_800k", "23a", "Recurrent PPO (reward_balance, v2p+priority strengthened, seed 2, 800k)",
+            "Ours. Treatment arm, D74 follow-up: priority_coef=2.0, priority_high=5.0, "
+            "occupancy_coef=0.3, occupancy_decay_cap=6.0, 512-wide LSTM (doubled), "
+            "800k timesteps (doubled) -- testing whether D74's null result was a "
+            "signal-strength/capacity/budget limitation. Paired against "
+            "lstm_balance_v2p_uniform_strong_seed2_800k (rung 23b). "
+            "Needs ScanEnv(obs_version='v2p', band_priority=True).",
+            _recurrent_ppo_rung_factory(Path("runs/checkpoints/v2p/lstm_balance_v2p_priority_strong_seed2/lstm_balance_v2p_priority_strong_seed2.zip")),
+            obs_version="v2p", band_priority=True, priority_uniform=False,
+            priority_coef=2.0, priority_n_bands=(3, 6), priority_high=5.0,
+            occupancy_coef=0.3, occupancy_decay_cap=6.0),
+
+    Rung("lstm_balance_v2p_uniform_strong_seed2_800k", "23b", "Recurrent PPO (reward_balance, v2p+priority strengthened, control, seed 2, 800k)",
+            "Ours. Control arm, paired against rung 23a: identical except "
+            "priority_uniform=True. Needs ScanEnv(obs_version='v2p', "
+            "band_priority=True, priority_uniform=True).",
+            _recurrent_ppo_rung_factory(Path("runs/checkpoints/v2p/lstm_balance_v2p_uniform_strong_seed2/lstm_balance_v2p_uniform_strong_seed2.zip")),
+            obs_version="v2p", band_priority=True, priority_uniform=True,
+            priority_coef=2.0, priority_n_bands=(3, 6), priority_high=5.0,
+            occupancy_coef=0.3, occupancy_decay_cap=6.0),
 
 
     Rung("camper_oracle", "—", "Greedy static, truth-fed (D14's camper)",
