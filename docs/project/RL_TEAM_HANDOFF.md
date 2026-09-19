@@ -55,6 +55,43 @@
 >
 > **(10)** `measured_dbm` is ratified (D59) and stays in the observation.
 >
+> **AMENDED 2026-09-14 — (11)** The 183-wide observation above is now called **"v1"**, and it is
+> still the default (`ScanEnv(obs_version="v1")`, implicit) — every checkpoint this document
+> describes stays exactly as loadable as it was. A second, opt-in **"v2"** layout also exists now
+> (D30 resolved as D71): 326 wide, adding PulseWidth and AoA (`sin θ, cos θ`, gated on a declared
+> hit) plus an upgrade of `measured_dbm` from one global last-dwell scalar to a per-band block.
+> Pass `--obs-version v2` to any trainer to use it. `rfenv.rl.common.known_observation_widths()`
+> returns `{183, 326}` now, not a single number — code that assumed one "current" width (as
+> `require_loadable()` itself did until this fix) needs to check membership, not equality. No
+> checkpoint has trained on "v2" long enough to report a result as this is written.
+>
+> **AMENDED 2026-09-14 — (12)** "v2" widened again the same day: **362 wide**, not 326.
+> `pulse_count` (D72) — `C`, `Y`-gated, `log1p`-normalised, appended after `aoa_cos` — is a sixth
+> "v2"-only block, reopening D29/D34's exclusion of pulse count on a direct request; see D72 for the
+> gap gating narrows but does not close. `known_observation_widths()` now returns `{183, 362}`. The
+> three "v2" snapshots D71's retrain had already produced (326-wide) are now permanently unloadable.
+>
+> **AMENDED 2026-09-18 — (13)** A third layout, **"v2p"**, now exists: "v2" plus one more 36-wide
+> block, `band_priority` (398 wide total) — a per-episode, exogenous priority signal (`1.0`
+> ordinary / `3.0` elevated on 3-6 bands, or all-`1.0` for a control arm), paired with an additive,
+> discovery-gated reward term in `ScanEnv.step()` (not a new `REWARDS` entry). Two RecurrentPPO
+> checkpoints (rungs 22a treatment / 22b control) were trained and compared 2026-09-18. **Result
+> runs the wrong way**: control beat treatment on every column, 61.4% vs 44.4% beats-recency-both.
+> Camping ruled out (~7% more airtime on priority bands, inconsistent across episodes); treatment
+> more diffuse overall (entropy 3.255 vs 3.051, 24.95 vs 18.95/36 bands touched); **a permutation
+> ablation (2026-09-19) settled it: the agent never learned to use `band_priority`** at all
+> (airtime correlates with true priority equally poorly real or shuffled, +0.018 vs +0.019) — a
+> training-difficulty story, not a misused-signal one. Single seed. **`DECISIONS.md` D74,
+> `MEASURED`** — not adopted, not promoted, code not removed. Mechanism: `OBSERVATION_SPACE.md`
+> §2.4; numbers: `MODEL_COMPARISON.md` Width 398.
+>
+> **Same-day follow-up (2026-09-19):** tried stronger — new decaying occupancy term, priority_coef
+> 0.5→2.0, elevated value 3.0→5.0, LSTM 256→512, timesteps 400k→800k (rungs 23a/23b). Treatment hit
+> **73.1%** beats-recency-both, the highest in this project — but a second permutation ablation found
+> the same "no": airtime correlates with true priority identically whether real or shuffled (+0.031
+> both ways). Still never learned; 23a's lead over its control read as training variance. Verdict
+> unchanged, same D74 entry.
+>
 > The PDF beside this file is older still and does not carry any of these amendments.
 
 

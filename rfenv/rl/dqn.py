@@ -22,7 +22,7 @@ from rfenv.rl.common import (
     finish_training, make_train_env, require_loadable, training_callbacks,
 )
 
-DEFAULT_CHECKPOINT = Path("runs/checkpoints/deep_q_network.zip")
+DEFAULT_CHECKPOINT = Path("runs/checkpoints/v1/deep_q_network/deep_q_network.zip")
 
 
 def train(
@@ -38,6 +38,15 @@ def train(
     run: str | None = None,
     description: str = "",
     hyperparameters: dict | None = None,
+    obs_version: str = "v1",
+    band_priority: bool = False,
+    priority_coef: float = 0.5,
+    priority_n_bands: tuple[int, int] = (3, 6),
+    priority_uniform: bool = False,
+    priority_high: float = 3.0,
+    occupancy_coef: float = 0.0,
+    occupancy_decay_cap: float = 2.0,
+    device: str = "auto",
 ) -> DQN:
     """Build SB3 DQN with library defaults and train it. Tune nothing (Day 1).
 
@@ -64,8 +73,12 @@ def train(
     """
     started_at = time.time()
     hyperparameters = dict(hyperparameters or {})
-    env = make_train_env(reward=reward)
-    model = DQN(dqn_type, env, seed=seed, verbose=verbose, **hyperparameters)
+    env = make_train_env(reward=reward, obs_version=obs_version,
+                          band_priority=band_priority, priority_coef=priority_coef,
+                          priority_n_bands=priority_n_bands, priority_uniform=priority_uniform,
+                          priority_high=priority_high, occupancy_coef=occupancy_coef,
+                          occupancy_decay_cap=occupancy_decay_cap)
+    model = DQN(dqn_type, env, seed=seed, verbose=verbose, device=device, **hyperparameters)
     manifest_kwargs = {"reward": reward, "hyperparameters": hyperparameters,
                        "started_at": started_at, "description": description}
     callbacks = training_callbacks(

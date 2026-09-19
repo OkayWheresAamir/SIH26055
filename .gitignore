@@ -26,7 +26,7 @@ CLAUDE.local.md
 # inside an excluded directory and the negations would never fire.
 runs/*
 !runs/checkpoints/
-runs/checkpoints/*
+
 !runs/checkpoints/*.zip
 !runs/checkpoints/*.json
 
