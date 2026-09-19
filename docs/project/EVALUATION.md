@@ -405,6 +405,36 @@ gradient consumes), not a settled result. **Matched seed counts per arm is what 
 if either, becomes the one carried forward past this comparison) has not been made, and both are
 reported here as measured rather than one being promoted over the other by this document.
 
+### The first result on the widened "v2" observation (D72, D73) — measured 2026-09-18
+
+D71 added PulseWidth/AoA/per-band amplitude as an opt-in 326-wide "v2" layout; D72 widened it
+again to 362 the same day, adding `pulse_count` (gated illumination count). The seed-2 pair D71
+started training on 326-wide "v2" never finished (385,024/400,000 steps) and was made permanently
+unloadable by D72's width change -- this is the first pair to finish training on the *widened*
+"v2", not a continuation of that one.
+
+Same pairing discipline as D64/D65: `reward_balance` (rung 20d, control) against
+`reward_balance_improved_v2` (rung 21a, treatment), identical split/hyperparameters/seed (2),
+`ScanEnv(obs_version="v2")`. The treatment run was interrupted by two laptop crashes and resumed
+both times from its own last snapshot (`RecurrentPPO.load` + `learn(reset_num_timesteps=False)`),
+recorded in its manifest.
+
+`python -m rfenv.compare --rungs round_robin,recency,lstm_balance_v2_d72_seed2_400k,lstm_balance_improved_v2_d72_seed2_400k --seeds 3 --sampled 10 --figures --obs-version v2 --out runs/d72_paired_comparison`
+-- 4 rungs x 57 scenarios x 3 seeds = **684 episodes**:
+
+| # | scheduler | interception ratio | censored intercept time (s) | emitter coverage | beats recency on **both** |
+|---|---|---|---|---|---|
+| 2 | round_robin | 0.060 | 4.18 | 0.865 | 3.5% |
+| 5 | recency | 0.111 | 3.34 | 0.887 | -- |
+| 20d | Recurrent PPO, D72 v2 (`reward_balance`, 400k) | 0.111 | 3.30 | 0.902 | 36.3% |
+| 21a | Recurrent PPO, D72 v2 (`reward_balance_improved_v2`, 400k) | 0.136 | 2.82 | 0.912 | **45.6%** |
+
+**Both clear the bar; the treatment is ahead of the control on every column** here too, the same
+direction D65 found on "v1". **Not directly comparable to the D64/D65 numbers above** -- observation
+width, reward formula (`_DENSITY_SHRINKAGE_V2 = 0.75` against 0.5) and the sampled-scenario draws
+all differ at once. **Not read as settled**: one training seed per arm, same caveat D65 gave and
+did not resolve. Full account: D73.
+
 **Reproduce the full ladder with:**
 
 ```bash

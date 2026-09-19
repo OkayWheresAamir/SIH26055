@@ -81,19 +81,44 @@ that primary is not in this repository.
   report, which would be worth having. **Needs someone to read both definitions side by side.**
   Until then, treat them as different quantities that share a name.
 
-**Owned by the RL lane, off the pre-freeze path:**
-- **D30** — do `AoA` and `PulseWidth` enter the observation vector? They are measured PDW fields
-  `rfenv/scenario.py` currently discards. Bearing-based attribution was measured at 96.7%
-  (`config_2`) and 86.1% (`config_921`), and it is the only observable that separates a dwell
-  finding a *new* emitter from one re-finding a known emitter — D14's camper pathology in
-  information terms, and what would make D29's candidate 3 actionable rather than merely
-  scorable. **Re-scoped 2026-09-04** from "awaiting a human decision": the observation vector is
-  not on the freeze list and the four gates never read it, so adding AoA later costs a policy
-  retrain, not a re-validation. Decided by a trained agent failing to explore in a way the
-  current vector demonstrably cannot fix — measurable once baselines exist, meaningless before.
-  **The baselines now exist (D46), so this is decidable.** Rung 5 reads three components of the
-  D34 vector and Pareto-dominates the floor on 70.2% of episodes, which is the reference an AoA
-  extension would have to beat.
+**Resolved since the 2026-08-28 list:**
+- **A band-priority reward, "v2p" (D74, `MEASURED` 2026-09-19).** A fourth observation layout
+  (398-wide, "v2" + `band_priority`) and an additive, discovery-gated reward term in
+  `ScanEnv.step()`, on a direct, fully-specified request — not the same thing as `DECISIONS.md` D70
+  ("the scheduler takes a threat priority from outside; it does not compute one"), which took a
+  priority vector from an external threat library; this one has no library, the priority values are
+  synthetic and sampled per episode. Two RecurrentPPO checkpoints tested whether a policy actually
+  uses the signal (treatment, real per-episode elevated bands) versus merely benefiting from a
+  larger reward scale (control, `priority_uniform=True`, no real signal): **the control beat the
+  treatment on every headline metric** (61.4% vs 44.4% beats-recency-both). Camping was ruled out
+  directly (~7% more airtime on elevated bands, inconsistent across episodes); treatment was
+  measurably more diffuse than control across the whole spectrum (entropy 3.255 vs 3.051, 24.95 vs
+  18.95/36 bands touched); a **permutation ablation settled it**: the trained checkpoint's airtime
+  correlates with true priority equally poorly fed real or shuffled values (+0.018 vs +0.019) — **it
+  never learned to use `band_priority` at all**, so the underperformance is a training-difficulty
+  story (control's input is constant, an easier problem), not a misused-signal one. Single seed, not
+  read as settled beyond this configuration. **Tried stronger the same day (follow-up): a new
+  decaying occupancy term, `priority_coef` 0.5→2.0, elevated value 3.0→5.0, LSTM 256→512, timesteps
+  400k→800k. Treatment hit 73.1% beats-recency-both (this project's highest), but a second
+  permutation ablation found the same "no" — airtime correlates with true priority identically
+  whether real or shuffled (+0.031 both ways). Still never learned; the lead is read as training
+  variance, not the mechanism.** Not adopted, not promoted, code not removed — nothing
+  defaults to it. See `OBSERVATION_SPACE.md` §2.4 for the mechanism, `MODEL_COMPARISON.md` Width 398
+  for the numbers.
+- **D30 → D71 (2026-09-14), widened by D72 the same day.** `AoA` and `PulseWidth`, the two measured
+  PDW fields `rfenv/scenario.py` used to discard, now enter the observation — as an opt-in "v2"
+  layout alongside the original "v1" (183-wide, still the default, every existing checkpoint
+  unaffected), not a replacement. "v2" was 326-wide as D71 shipped it; D72, the same day, appended a
+  sixth block (`pulse_count`, gated illumination count `C`) taking it to 362. "v1" is untouched by
+  both; "v2" itself is not immune to widening in place, and D72 paid that cost once, on the three
+  checkpoint snapshots D71's own retrain had produced. Approved directly on the case already made
+  here, without separately measuring the
+  trigger this entry originally set (a trained agent failing to explore for want of these features).
+  What ships is one raw last-bearing reading per band, `Y`-gated; the bearing-*clustering* feature
+  this entry's own 96.7%/86.1% attribution numbers actually argue for — comparing a reading against
+  others already seen in that band, which is what would make D29's candidate 3 (a novelty reward)
+  actionable — is still not built. See D71 for the full account, including why this did not, in the
+  end, need the per-cell bearing list or deinterleaving problem this entry warned it would cost.
 
 > Closed since the 2026-08-28 list: **D4** (accepted 2026-09-01 — the continuous-signal
 > environment with derived binary occupancy), **D5's sub-question** (do all hits score equally,

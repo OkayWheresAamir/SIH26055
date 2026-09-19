@@ -233,6 +233,7 @@ def test_all_reward_candidates_run_and_differ():
     when candidate 3 was renamed and the default was not.
     """
     assert set(REWARDS) == {"reward_balance", "reward_balance_improved",
+                           "reward_balance_improved_v2",
                            "greedy", "explore", "weighted"}
     assert DEFAULT_REWARD in REWARDS
 
