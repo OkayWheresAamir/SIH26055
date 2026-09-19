@@ -56,12 +56,33 @@ from rfenv.scenario import EmitterPool
 
 
 def make_train_env(*, reward: str = DEFAULT_REWARD,
-                   pool: EmitterPool | None = None) -> ScanEnv:
+                   pool: EmitterPool | None = None,
+                   obs_version: str = "v1",
+                   band_priority: bool = False,
+                   priority_coef: float = 0.5,
+                   priority_n_bands: tuple[int, int] = (3, 6),
+                   priority_uniform: bool = False,
+                   priority_high: float = 3.0,
+                   occupancy_coef: float = 0.0,
+                   occupancy_decay_cap: float = 2.0) -> ScanEnv:
     """A fresh-scenario-per-reset training env (D25, D32) -- what RL trains on.
 
     `reward` is threaded straight through to ScanEnv, which is the whole
     "reward as a hyperparameter" requirement -- ScanEnv already validates it
-    against `REWARDS`.
+    against `REWARDS`. `obs_version` (D30) is the same story for the
+    observation layout -- "v1" (default, 183-wide, every pre-D30 checkpoint),
+    "v2" (362-wide, adds PulseWidth/AoA/per-band amplitude/pulse count, D72),
+    or "v2p" (398-wide, adds `band_priority`, this task).
+
+    `band_priority`/`priority_coef`/`priority_n_bands`/`priority_uniform`/
+    `priority_high`/`occupancy_coef`/`occupancy_decay_cap` pass straight
+    through to `ScanEnv(...)` -- see its docstring, `step()`'s own comment,
+    and `priority_reward_bonus`'s docstring (D74 follow-up: the decaying
+    per-slot occupancy term, off by default at `occupancy_coef=0.0`) for what
+    each does. `priority_uniform=True` is the control arm (D70's open item 2,
+    resolved for the no-library case): same reward terms, same scale, `p`
+    always all-ones, so a control-vs-treatment comparison isn't confounded by
+    either term's own reward-scale shift.
 
     **The pool is the training half only (D60), not all 47 configs.** It used to
     be `EmitterPool.from_train()` -- every train-split emitter, which is the same
@@ -78,7 +99,11 @@ def make_train_env(*, reward: str = DEFAULT_REWARD,
     if pool is None:
         from rfenv.split import training_pool
         pool = training_pool()
-    return ScanEnv(pool=pool, reward=reward)
+    return ScanEnv(pool=pool, reward=reward, obs_version=obs_version,
+                    band_priority=band_priority, priority_coef=priority_coef,
+                    priority_n_bands=priority_n_bands, priority_uniform=priority_uniform,
+                    priority_high=priority_high, occupancy_coef=occupancy_coef,
+                    occupancy_decay_cap=occupancy_decay_cap)
 
 
 # --------------------------------------------------------------------------- #
@@ -99,6 +124,17 @@ def current_observation_width() -> int:
     """
     from rfenv.baselines.guard import CURRENT_HIT_STREAK
     return CURRENT_HIT_STREAK + 1
+
+
+def known_observation_widths() -> set[int]:
+    """Every width `ScanEnv` can currently build, one per `OBS_LAYOUTS` entry
+    (`{183, 362, 398}` for "v1"/"v2"/"v2p" as of the band-priority "v2p" layout).
+    `require_loadable()` accepts a checkpoint recorded against any of these --
+    not only "v1"'s -- because all three are live, supported layouts now, not
+    one current width and two stale ones.
+    """
+    from rfenv.env import OBS_LAYOUTS, obs_width
+    return {obs_width(v) for v in OBS_LAYOUTS}
 
 
 def manifest_path(checkpoint: str | Path) -> Path:
@@ -194,7 +230,7 @@ _RESOLVED_KEYS = (
     "learning_rate", "gamma", "n_steps", "batch_size", "n_epochs", "ent_coef",
     "gae_lambda", "vf_coef", "max_grad_norm", "target_update_interval",
     "exploration_fraction", "exploration_final_eps", "buffer_size",
-    "learning_starts", "tau",
+    "learning_starts", "tau", "device",
 )
 
 
@@ -305,6 +341,55 @@ def add_manifest_arguments(ap) -> None:
     ap.add_argument("--hyperparam", action="append", metavar="KEY=VALUE",
                     help="a constructor argument to pass to the algorithm, repeatable "
                          "(e.g. --hyperparam ent_coef=0.01). Recorded verbatim.")
+    ap.add_argument("--obs-version", default="v1", choices=("v1", "v2", "v2p"),
+                    help="observation layout (D30): v1 (default, 183-wide, every "
+                         "pre-D30 checkpoint), v2 (362-wide, adds PulseWidth/AoA/"
+                         "per-band amplitude/pulse count, D72), or v2p (398-wide, "
+                         "adds band_priority, this task). Passed to "
+                         "ScanEnv(obs_version=...); the checkpoint this produces is "
+                         "only loadable against whichever one it trained on.")
+    ap.add_argument("--band-priority", action="store_true",
+                    help="enable the band-priority reward/observation term (this task, "
+                         "D70's no-library form). Requires --obs-version v2p. `p` is "
+                         "resampled every episode from ScanEnv's own RNG -- see "
+                         "--priority-coef/--priority-n-bands/--priority-uniform.")
+    ap.add_argument("--priority-coef", type=float, default=0.5,
+                    help="lambda in `reward += lambda * p[band] * len(newly)` (default "
+                         "0.5, a conservative starting point -- see reward_gate's own "
+                         "screening caution before raising it). No effect unless "
+                         "--band-priority is set.")
+    ap.add_argument("--priority-n-bands", type=int, nargs=2, default=(3, 6), metavar=("LO", "HI"),
+                    help="inclusive range of bands elevated to priority each episode "
+                         "(default 3 6). No effect unless --band-priority is set, and "
+                         "ignored entirely under --priority-uniform.")
+    ap.add_argument("--priority-uniform", action="store_true",
+                    help="control arm: `p` stays all-ones every episode instead of "
+                         "sampling elevated bands, keeping the reward terms' scale "
+                         "identical without giving the policy anything to condition on. "
+                         "No effect unless --band-priority is set.")
+    ap.add_argument("--priority-high", type=float, default=3.0,
+                    help="the elevated band's priority value (default 3.0, D74's own "
+                         "value). No effect unless --band-priority is set.")
+    ap.add_argument("--occupancy-coef", type=float, default=0.0,
+                    help="D74 follow-up: coefficient on a second, decaying per-slot "
+                         "priority term -- `occupancy_coef * p[band] * decay * n_slots`, "
+                         "added alongside the discovery term (--priority-coef), not "
+                         "instead of it. Default 0.0 disables it exactly, reproducing "
+                         "D74's own recorded runs. See priority_reward_bonus's own "
+                         "docstring (env.py) for why this stays clear of D53's camping "
+                         "exploit despite being a genuine per-slot bonus. No effect "
+                         "unless --band-priority is set.")
+    ap.add_argument("--occupancy-decay-cap", type=float, default=2.0,
+                    help="fair-share visit_density at which the occupancy term above "
+                         "has decayed to zero (default 2.0 -- twice an equal share). "
+                         "No effect unless --occupancy-coef is nonzero.")
+    ap.add_argument("--device", default="auto", choices=("auto", "cpu", "cuda"),
+                    help="torch device passed to the algorithm's constructor (default "
+                         "'auto': SB3 picks cuda if torch.cuda.is_available(), else cpu). "
+                         "These policies are small MLPs/LSTMs -- SB3's own guidance is "
+                         "that GPU rarely beats CPU here once transfer overhead is "
+                         "counted, so 'auto' choosing cpu on a CUDA-capable machine is "
+                         "not a bug. Recorded in the manifest's `resolved.device`.")
 
 
 def read_manifest(checkpoint: str | Path) -> dict | None:
@@ -367,12 +452,12 @@ def require_loadable(checkpoint: str | Path) -> None:
     is then nothing to check against, and refusing on ignorance would break
     rungs that are actually fine.
     """
-    current = current_observation_width()
+    known = known_observation_widths()
     manifest = read_manifest(checkpoint) or {}
     recorded = manifest.get("observation_width")
     if recorded is None:
         recorded = checkpoint_observation_width(checkpoint)
-    if recorded is None or recorded == current:
+    if recorded is None or recorded in known:
         return
 
     detail = ""
@@ -392,11 +477,11 @@ def require_loadable(checkpoint: str | Path) -> None:
         )
     raise ValueError(
         f"{Path(checkpoint).name} was trained against a {recorded}-wide observation, "
-        f"but ScanEnv now builds a {current}-wide one -- this checkpoint cannot be "
+        f"but ScanEnv now builds one of {sorted(known)} -- this checkpoint cannot be "
         f"used and will fail inside predict() if forced.\n"
         f"{detail}"
-        f"(D49 -- an observation change invalidates every checkpoint that predates it. "
-        f"Retrain, or compare against the environment it was trained on.)"
+        f"(D49/D30 -- an observation change invalidates every checkpoint that predates "
+        f"it. Retrain, or compare against the environment it was trained on.)"
     )
 
 
@@ -583,12 +668,15 @@ def training_callbacks(
     replacement for the final `model.save(checkpoint)` each `train()` still
     does at the end, but a way to get several checkpoints from one run instead
     of only the last one, e.g. to compare a rung at 200k/400k/600k timesteps
-    without re-running training three times. Snapshots land in `checkpoint`'s
-    own directory as `<run>_s1.zip`, `<run>_s2.zip`, ... each with its `.json`
-    beside it; `runs/checkpoints/` stays flat, one `.zip` plus one `.json` per
-    saved model, and the manifest -- not the filename -- carries the timestep
-    count and the description. Each snapshot is registrable as its own ladder
-    rung exactly like any other trained checkpoint (see run.md).
+    without re-running training three times. Snapshots land beside `checkpoint`
+    in its own directory as `<run>_s1.zip`, `<run>_s2.zip`, ... each with its
+    `.json` beside it, and the manifest -- not the filename -- carries the
+    timestep count and the description. Each snapshot is registrable as its own
+    ladder rung exactly like any other trained checkpoint (see run.md).
+    `finish_training` below creates `checkpoint.parent` if it does not exist, so
+    a nested `--checkpoint runs/checkpoints/v1/<model>/<model>.zip` (D71's
+    per-model-folder convention, replacing the old flat directory) works with
+    no extra step.
 
     `save_freq` is passed through as-is, not divided by `n_envs` (SB3's own
     docs flag that division as necessary for a multi-env `VecEnv`) -- every

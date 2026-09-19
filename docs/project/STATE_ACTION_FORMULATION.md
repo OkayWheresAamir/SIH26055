@@ -55,6 +55,66 @@
 >
 > **(10)** `measured_dbm` is ratified (D59) and stays in the observation.
 >
+> **AMENDED 2026-09-14 — (11)** The 183-wide observation described in this document is now called
+> **"v1"**, and it is still the default (`ScanEnv(obs_version="v1")`, implicit) — every checkpoint
+> this document describes stays exactly as loadable as it was. A second, opt-in **"v2"** layout
+> also exists now (D30 resolved as D71): 326 wide, adding PulseWidth and AoA (`sin θ, cos θ`, gated
+> on a declared hit) plus an upgrade of `measured_dbm` from one global last-dwell scalar to a
+> per-band block. §4's `109 → 146 → 183` progression does **not** gain a fourth entry in the same
+> line — 326 is a sibling of 183, not its successor. No checkpoint has trained on "v2" long enough
+> to report a result as this is written.
+>
+> **AMENDED 2026-09-14 — (12)** "v2" widened again the same day, on a direct request: **362 wide**,
+> not 326. `pulse_count` (D72) is a sixth "v2"-only block, `Y`-gated the same way PulseWidth/AoA
+> are — the illumination count `C` (`truth.py`) at the loudest slot of the band's last declared hit,
+> `log1p`-normalised against the same reference `reward_balance_improved` already uses for `C` on
+> the reward side, clipped to `[0, 1]`. This reopens D29/D34's own exclusion of pulse count from the
+> observation; the reasoning for reopening it, and the one gap gating narrows but does not close
+> (`C` itself carries no gamma gate, so a hit's count can still include sub-threshold co-located
+> emitters), is recorded in `DECISIONS.md` D72. `known_observation_widths()` now returns
+> `{183, 362}`, not `{183, 326}`. The three "v2" checkpoint snapshots D71's own retrain had already
+> produced at 326 wide are now permanently unloadable — the same cost every past observation change
+> has carried, this time paid by "v2" rather than "v1".
+>
+> **AMENDED 2026-09-18 — (13)** A third, opt-in layout, **"v2p"**, now exists: "v2" (362 wide) plus
+> one more 36-wide block, `band_priority` — **398 wide total**. Unlike every block above, it is not
+> derived from anything the receiver measures: it is a per-episode input, `1.0` = ordinary band,
+> `3.0` = elevated, either sampled fresh each episode (3–6 of the 36 bands elevated) or held at all-
+> `1.0` for a control arm (`priority_uniform=True`). Paired with it, `ScanEnv.step()` adds a reward
+> term directly (`reward += priority_coef * band_priority[dwell.band] * len(newly)`) on top of
+> whichever `REWARDS` candidate is selected — additive, gated on **discovering something new**
+> rather than on occupying the band, which is what keeps it clear of D53's per-slot camping exploit.
+> This is **not** a new `REWARDS` entry and does not touch `reward_gate.py`'s D62 screen. Two
+> RecurrentPPO checkpoints (ladder rungs 22a treatment / 22b control) were trained and compared
+> 2026-09-18 to test whether a policy actually conditions on `band_priority` rather than merely
+> benefiting from the reward-scale increase it adds uniformly. **The result runs the wrong way**:
+> the control (no real signal) beat the treatment on every headline column, 61.4% vs 44.4%
+> beats-recency-both. Camping was ruled out directly (~7% more airtime on elevated bands,
+> inconsistent across episodes); treatment was measurably more diffuse than control across the
+> whole spectrum (entropy 3.255 vs 3.051, 24.95 vs 18.95 of 36 bands touched); and a **permutation
+> ablation settled it 2026-09-19**: the treatment checkpoint's airtime correlates with true
+> priority equally poorly whether fed the real vector or one shuffled across bands (+0.018 vs
+> +0.019), so **the agent never learned to use `band_priority`** — the underperformance is a
+> training-difficulty story (control's input is constant, an easier problem), not a
+> misused-signal one. Single seed, not read as settled beyond this configuration.
+> **`DECISIONS.md` D74, `MEASURED`** — unlike (11)/(12) above, written up as `SETTLED` the day
+> they were built, this write-up was deliberately held until both the comparison and the ablation
+> existed. Not adopted, not promoted, code not removed. Full mechanism: `OBSERVATION_SPACE.md`
+> §2.4; numbers: `MODEL_COMPARISON.md` Width 398.
+>
+> **AMENDED 2026-09-19 — (14)** Same-day follow-up to (13): a new decaying per-slot occupancy term
+> (`priority_reward_bonus`, `env.py`, anchored to `visit_density` rather than a resettable streak to
+> stay clear of D53), `priority_coef` 0.5→2.0, the elevated value now configurable (`priority_high`,
+> was hardcoded) raised 3.0→5.0, LSTM hidden size doubled 256→512, timesteps doubled 400k→800k
+> (rungs 23a/23b). Result: treatment **73.1%** beats-recency-both, the highest figure measured in
+> this project — but a second permutation ablation found the same thing as the first: airtime
+> correlates with true priority identically whether fed real or shuffled values (+0.031 both ways).
+> **Still never learned**, at roughly 4x the incentive and double the capacity/budget; 23a's lead
+> over its control (45.6%) is read as training-run variance, not the mechanism, since the one thing
+> actually measured — whether the signal is read — stayed "no" both times the question was asked.
+> Verdict unchanged: not adopted, not promoted, code not removed. Same `DECISIONS.md` D74 entry,
+> extended, not a new decision number.
+>
 > The PDF beside this file is older still and does not carry any of these amendments.
 
 

@@ -30,13 +30,20 @@ Usage::
     python -m rfenv.rl --check-env                                        # DQN sanity check only, no training
     python -m rfenv.rl --reward reward_balance                           # train DQN, 20,000 steps -- the only candidate D62 currently passes
     python -m rfenv.rl --reward greedy --timesteps 100000 --seed 1       # a different candidate (D29, D57) -- run reward_gate first
-    python -m rfenv.rl --checkpoint runs/checkpoints/dqn_greedy.zip --reward greedy
+    python -m rfenv.rl --checkpoint runs/checkpoints/v1/dqn_greedy/dqn_greedy.zip --reward greedy
 
     python -m rfenv.rl.ppo --check-env                                    # PPO's own CLI, same shape
-    python -m rfenv.rl.ppo --checkpoint runs/checkpoints/ppo_balance.zip --reward reward_balance
+    python -m rfenv.rl.ppo --checkpoint runs/checkpoints/v1/ppo_balance/ppo_balance.zip --reward reward_balance
 
     python -m rfenv.rl.recurrent_ppo --check-env                          # RecurrentPPO's own CLI, same shape
-    python -m rfenv.rl.recurrent_ppo --checkpoint runs/checkpoints/recurrent_ppo_balance.zip --reward reward_balance
+    python -m rfenv.rl.recurrent_ppo --checkpoint runs/checkpoints/v1/recurrent_ppo_balance/recurrent_ppo_balance.zip --reward reward_balance
+
+**Checkpoints live one folder per model** (D71): `runs/checkpoints/<obs_version>/<model_name>/`,
+not flat -- 150 files in one directory was unnavigable. `<obs_version>` is "v1"
+(the 183-wide vector every checkpoint before D30 was trained on) or "v2" (D30/D72's
+362-wide vector); pick the directory that matches whichever `ScanEnv(obs_version=...)`
+the run trains against. `finish_training` (`common.py`) creates the nested
+directory automatically -- there is nothing else to set up.
 
 **Every checkpoint written here gets a `.json` manifest beside it**, from the
 shared helper in `common.py` -- so `dqn.py`, `ppo.py`, `recurrent_ppo.py` and

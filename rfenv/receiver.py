@@ -66,9 +66,14 @@ def phi(x: np.ndarray | float) -> np.ndarray:
 class DwellResult:
     """What one action produced. Per-slot arrays, because everything is per slot.
 
-    `Y` is the only field the agent may see (and even then only through the
-    history-derived observation, D34). The rest is evaluator-side: `Z` and
-    `intercepts` are truth, and `pulses` is counted without reference to gamma.
+    `Y` is the only field the agent may see unconditionally (and even then only
+    through the history-derived observation, D34). The rest is evaluator-side raw
+    truth: `Z`, `C`, `pulse_width_us` and `aoa_deg` are all truth-grid slices with
+    no gamma gate applied here -- `env.py` is where `pulse_width_us`/`aoa_deg`
+    become observable, and only on slots where `Y` is also true (D30): a real
+    receiver only measures a pulse's width and bearing on a pulse it actually
+    detected, so folding these into the agent's memory ungated would be reading
+    truth the receiver never had, the same failure D29 already rules out for `C`.
     """
 
     band: int
@@ -78,6 +83,8 @@ class DwellResult:
     Y: np.ndarray              # (n_slots,) bool    -- declared detections
     Z: np.ndarray              # (n_slots,) bool    -- true occupancy of those cells
     C: np.ndarray              # (n_slots,) int32   -- illuminations inside the window
+    pulse_width_us: np.ndarray  # (n_slots,) float32 -- D30, truth-side; env.py gates by Y
+    aoa_deg: np.ndarray         # (n_slots,) float32 -- D30, truth-side; env.py gates by Y
     intercepts: tuple[tuple[int, int], ...]  # (emitter_index, slot) meeting D28
 
     @property
@@ -156,6 +163,7 @@ class Receiver:
             band=band, slot0=slot0,
             level_dbm=S, measured_dbm=measured, Y=Y,
             Z=grid.Z[band, sl].copy(), C=grid.C[band, sl].copy(),
+            pulse_width_us=grid.PW[band, sl].copy(), aoa_deg=grid.AOA[band, sl].copy(),
             intercepts=self._intercepts(grid, band, slot0, Y),
         )
 

@@ -47,7 +47,7 @@ from rfenv.rl.common import (
     parse_hyperparameters, require_loadable, training_callbacks,
 )
 
-DEFAULT_CHECKPOINT = Path("runs/checkpoints/recurrent_ppo.zip")
+DEFAULT_CHECKPOINT = Path("runs/checkpoints/v1/recurrent_ppo/recurrent_ppo.zip")
 
 
 def train(
@@ -63,6 +63,15 @@ def train(
     run: str | None = None,
     description: str = "",
     hyperparameters: dict | None = None,
+    obs_version: str = "v1",
+    band_priority: bool = False,
+    priority_coef: float = 0.5,
+    priority_n_bands: tuple[int, int] = (3, 6),
+    priority_uniform: bool = False,
+    priority_high: float = 3.0,
+    occupancy_coef: float = 0.0,
+    occupancy_decay_cap: float = 2.0,
+    device: str = "auto",
 ) -> RecurrentPPO:
     """Build sb3-contrib's RecurrentPPO with library defaults and train it.
 
@@ -91,8 +100,12 @@ def train(
     """
     started_at = time.time()
     hyperparameters = dict(hyperparameters or {})
-    env = make_train_env(reward=reward)
-    model = RecurrentPPO(policy, env, seed=seed, verbose=verbose, **hyperparameters)
+    env = make_train_env(reward=reward, obs_version=obs_version,
+                          band_priority=band_priority, priority_coef=priority_coef,
+                          priority_n_bands=priority_n_bands, priority_uniform=priority_uniform,
+                          priority_high=priority_high, occupancy_coef=occupancy_coef,
+                          occupancy_decay_cap=occupancy_decay_cap)
+    model = RecurrentPPO(policy, env, seed=seed, verbose=verbose, device=device, **hyperparameters)
     manifest_kwargs = {"reward": reward, "hyperparameters": hyperparameters,
                        "started_at": started_at, "description": description}
     callbacks = training_callbacks(
@@ -154,7 +167,15 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.check_env:
         from gymnasium.utils.env_checker import check_env
-        check_env(make_train_env(reward=args.reward), skip_render_check=True)
+        check_env(make_train_env(reward=args.reward, obs_version=args.obs_version,
+                                  band_priority=args.band_priority,
+                                  priority_coef=args.priority_coef,
+                                  priority_n_bands=tuple(args.priority_n_bands),
+                                  priority_uniform=args.priority_uniform,
+                                  priority_high=args.priority_high,
+                                  occupancy_coef=args.occupancy_coef,
+                                  occupancy_decay_cap=args.occupancy_decay_cap),
+                  skip_render_check=True)
         print("check_env: OK")
         return 0
 
@@ -163,7 +184,13 @@ def main(argv: list[str] | None = None) -> int:
           print_episode_metrics=args.print_episode_metrics,
           checkpoint_freq=args.checkpoint_freq,
           run=args.run_name, description=args.description,
-          hyperparameters=parse_hyperparameters(args.hyperparam))
+          hyperparameters=parse_hyperparameters(args.hyperparam),
+          obs_version=args.obs_version,
+          band_priority=args.band_priority, priority_coef=args.priority_coef,
+          priority_n_bands=tuple(args.priority_n_bands), priority_uniform=args.priority_uniform,
+          priority_high=args.priority_high, occupancy_coef=args.occupancy_coef,
+          occupancy_decay_cap=args.occupancy_decay_cap,
+          device=args.device)
     print(f"saved checkpoint: {args.checkpoint}")
     print(f"saved manifest:   {Path(args.checkpoint).with_suffix('.json')}")
     return 0
