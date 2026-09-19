@@ -188,8 +188,12 @@ that *"the restriction would only bite if we ever fine-tuned online, which we do
 is judged on the same yardstick as every other rung. **Per-mission updates are not offered, and the
 arithmetic is the reason**: a 30 s episode is 300-600 decisions against `n_steps=8192`, so one mission
 cannot fill a fourteenth of a rollout and its advantages would be dominated by the terminal bootstrap.
-Fine-tuning runs only on a continuous grid, at `n_steps=2048` (~2 simulated minutes, ~30 updates per
-simulated hour), pre-registered rather than tuned afterwards. Ctrl-C saves a manifested checkpoint
+Fine-tuning runs only on a continuous grid, where the training rollout fits several times over. It
+**stays at `n_steps=8192`** rather than shrinking to buy more updates: `RecurrentPPO` carries the
+LSTM state across rollout boundaries but not the gradient, so `n_steps` is the BPTT window, and
+shortening it truncates the long-horizon credit assignment an in-context agent exists to learn.
+Learning rate, clip range and `target_kl` are the only deliberate departures, and all three are
+brakes. Ctrl-C saves a manifested checkpoint
 recording the interruption. What gets measured, when it is run, is **coverage per 30 s segment against
 segment index**, streamed to `segments.jsonl` as it happens. Full accounts: D75, D76, D77;
 mechanism: `OBSERVATION_SPACE.md` §2.5.

@@ -22,10 +22,20 @@ fill even a fourteenth of one rollout, and at `gamma=0.997` the effective horizo
 (~333 steps) is comparable to the whole episode, so the advantages would be
 dominated by the terminal bootstrap. A per-mission update is therefore not a
 small update, it is a noisy one, and this module does not offer it. Fine-tuning
-runs on a continuous grid (`episode_slots`, D76), where a simulated hour is
-40k-72k steps, and updates at `--n-steps` (default 2048, about two simulated
-minutes, ~30 updates per simulated hour). That number is pre-registered here
-rather than tuned later.
+runs on a continuous grid (`episode_slots`, D76) instead, where a simulated hour
+is 40k-72k steps and the rollout the policy trained with fits several times over.
+
+**And why the rollout stays at 8192 rather than shrinking.** A shorter rollout
+would buy more weight updates per simulated hour, which sounds like faster
+adaptation and is not. `RecurrentPPO` carries the LSTM state across rollout
+boundaries but **not** the gradient, so `n_steps` is also the BPTT window --
+shrinking it truncates precisely the long-horizon credit assignment that makes an
+in-context agent work. The adaptation is supposed to happen in the hidden state
+within a mission; the weights' job is to learn the *rule* that does it, and that
+is the long-horizon problem. Keeping `n_steps` and `batch_size` equal to the
+training values also means the advantage horizon does not shift underneath a
+policy that already works, leaving the learning rate, the clip range and
+`target_kl` as the only deliberate differences -- all three of them brakes.
 
 **SB3 owns the loop.** The recurrent rollout buffer, sequence masking and
 GAE-through-LSTM-state are fiddly and already correct in sb3-contrib;
@@ -58,11 +68,28 @@ from rfenv.live import make_live_view
 # documented failure mode (D54) is collapsing onto one band, and fine-tuning on
 # a narrow slice of the world is exactly when that would happen again.
 ONLINE_DEFAULTS = {
-    "n_steps": 2048,
-    "batch_size": 256,
-    "learning_rate": 1.0e-5,
-    "clip_range": 0.1,
-    "target_kl": 0.02,
+    # Matched to what these checkpoints trained at, on purpose. `n_steps` bounds
+    # the BPTT window: `RecurrentPPO` carries the LSTM state across rollout
+    # boundaries but **not** the gradient, so a short rollout truncates exactly
+    # the long-horizon credit assignment a "v3" agent exists to learn. Adaptation
+    # is supposed to live in the hidden state, with the weights learning the
+    # adaptation *rule*; shrinking this to get more weight updates per simulated
+    # hour optimises the wrong one of the two. A continuous grid has the budget
+    # for it -- a simulated hour is 40k-72k steps, so 8192 still gives 5-9
+    # updates per hour -- and keeping it equal to the training value means the
+    # advantage horizon and batch statistics do not shift underneath a policy
+    # that already works.
+    "n_steps": 8192,
+    "batch_size": 128,
+    # These three are the only deliberate departures from the training regime,
+    # and they are all brakes. Fine-tuning starts from a policy that works, so
+    # the risk being managed is destroying it, not failing to move it.
+    "learning_rate": 1.0e-5,     # against 3e-4 for training
+    "clip_range": 0.1,           # against 0.2
+    "target_kl": 0.02,           # a hard stop the training runs did not have
+    # Retained at the training value rather than lowered: this rung's documented
+    # failure mode is collapse onto one band (D54), and a long mission over a
+    # narrow slice of the world is exactly when that would happen again.
     "ent_coef": 0.01,
 }
 
