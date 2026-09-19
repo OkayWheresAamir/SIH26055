@@ -4796,11 +4796,22 @@ rung.
 a fourteenth of one rollout, and at `gamma=0.997` the effective horizon (~333 steps) is comparable
 to the whole episode, so the advantages would be dominated by the terminal bootstrap. A per-mission
 update is not a small update, it is a noisy one, and **this module does not offer one.** Fine-tuning
-runs only on a continuous grid (D76), at `n_steps=2048` — about two simulated minutes, ~30 updates
-per simulated hour. That number is pre-registered here rather than tuned afterwards. Defaults are
-conservative because adaptation starts from a policy that already works and the risk is wrecking it:
-`learning_rate=1e-5` (against 3e-4 for training), `clip_range=0.1`, `target_kl=0.02`, and
-`ent_coef=0.01` retained because this rung's documented failure mode is collapse onto one band (D54).
+runs only on a continuous grid (D76), where a simulated hour is 40k–72k steps and the rollout the
+policy trained with fits several times over.
+
+**The rollout stays at `n_steps=8192` rather than shrinking, and an earlier draft of this entry had
+that backwards.** Shortening it would buy more weight updates per simulated hour, which sounds like
+faster adaptation and is not. `RecurrentPPO` carries the LSTM state across rollout boundaries but
+**not the gradient**, so `n_steps` is also the BPTT window: shrinking it truncates precisely the
+long-horizon credit assignment that makes an in-context agent work. Adaptation is supposed to happen
+in the hidden state *within* a mission; the weights' job is to learn the rule that does it, and that
+is the long-horizon problem. So `n_steps` and `batch_size` stay at the training values (8192, 128),
+which also means the advantage horizon and batch statistics do not shift underneath a policy that
+already works. **The only deliberate departures are brakes**: `learning_rate=1e-5` (against 3e-4),
+`clip_range=0.1` (against 0.2), and `target_kl=0.02`, a hard stop the training runs did not have.
+`ent_coef=0.01` is retained at its training value because this rung's documented failure mode is
+collapse onto one band (D54), and a long mission over a narrow slice of the world is exactly when
+that would recur.
 
 **SB3 owns the loop.** The recurrent rollout buffer, sequence masking and GAE-through-LSTM-state are
 already correct in sb3-contrib and reimplementing `collect_rollouts` is where a silent correctness

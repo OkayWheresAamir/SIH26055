@@ -164,13 +164,31 @@ def test_custom_objects_actually_resizes_the_rollout_buffer(base_checkpoint):
     assert model.rollout_buffer.buffer_size == 100
 
 
-def test_the_online_defaults_are_conservative_relative_to_training():
-    """Adaptation starts from a policy that works; the risk is wrecking it."""
+def test_the_only_departures_from_the_training_regime_are_brakes():
+    """Adaptation starts from a policy that works; the risk is wrecking it.
+
+    The three that move are all brakes. Everything shaping the *estimator* --
+    rollout length, batch size -- stays at the training value, so the advantage
+    horizon does not shift underneath a policy that already works.
+    """
     assert ONLINE_DEFAULTS["learning_rate"] < 3e-4
     assert ONLINE_DEFAULTS["clip_range"] < 0.2
     assert ONLINE_DEFAULTS["target_kl"] is not None
     assert ONLINE_DEFAULTS["ent_coef"] > 0.0        # D54: collapse is the failure mode
-    assert ONLINE_DEFAULTS["n_steps"] < 8192        # a mission cannot fill a full rollout
+
+
+def test_the_rollout_is_not_shortened_to_buy_more_updates():
+    """`n_steps` is the BPTT window, not just a batch size.
+
+    `RecurrentPPO` carries the LSTM state across rollout boundaries but not the
+    gradient, so shortening this truncates the long-horizon credit assignment an
+    in-context ("v3") agent exists to learn. Adaptation belongs in the hidden
+    state; the weights learn the rule that produces it, and that is the long
+    problem. Pinned because "more updates per hour" is a persuasive-sounding
+    reason to shrink it and optimises the wrong one of the two.
+    """
+    assert ONLINE_DEFAULTS["n_steps"] == 8192
+    assert ONLINE_DEFAULTS["batch_size"] == 128
 
 
 def test_per_segment_metrics_are_written_and_never_describe_an_unfinished_segment(
