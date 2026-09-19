@@ -94,7 +94,7 @@ _PW_CLAMP_MAX = 200.0
 # convention visit_density/staleness already use (D55).
 _PRIORITY_HIGH = 3.0
 
-# `pulse_count`'s reference for the log1p normalisation below (D72): reuses
+# `pulse_count`'s reference for the log1p normalisation below (D76): reuses
 # `_DENSITY_REF_PULSES` (defined further down, read here only at call time),
 # the same constant `reward_balance_improved` already prices `C` against, so
 # the observation and the reward that reads the same underlying quantity
@@ -129,7 +129,7 @@ _BLOCK_SPECS: dict[str, tuple[int, float, float]] = {
     "pulse_width":        (N_BANDS, 0.0, 1.0),    # D30
     "aoa_sin":            (N_BANDS, 0.0, 1.0),    # D30, (sin+1)/2
     "aoa_cos":            (N_BANDS, 0.0, 1.0),    # D30, (cos+1)/2
-    "pulse_count":        (N_BANDS, 0.0, 1.0),    # D72, log1p(C)/log1p(ref), Y-gated
+    "pulse_count":        (N_BANDS, 0.0, 1.0),    # D76, log1p(C)/log1p(ref), Y-gated
     "band_priority":      (N_BANDS, 1.0, _PRIORITY_HIGH),   # this task, externally sampled/supplied, not computed
 }
 
@@ -139,7 +139,7 @@ _BLOCK_SPECS: dict[str, tuple[int, float, float]] = {
 # D30's addition: `measured_dbm` (global, forgets every band but the last one
 # visited) is replaced by `measured_dbm_band` (persists per band, same
 # convention `hit_streak` already set), plus `pulse_width` and the two AoA
-# blocks. `pulse_count` (D72) is appended last, after AoA rather than inserted
+# blocks. `pulse_count` (D76) is appended last, after AoA rather than inserted
 # among D30's four, so every "v2" offset from that change keeps its position --
 # same append-only convention D67 set for "v1" and D30 kept. Default stays
 # "v1" (see `ScanEnv.__init__`) so every existing call site -- tests,
@@ -405,7 +405,7 @@ def reward_balance_improved(
     its per-band blocks when this was written; closing that was an observation
     change (D34/D49/D55), separate from this and not done here.
 
-    **Updated 2026-09-14 (D71): that observation change now exists, opt-in
+    **Updated 2026-09-14 (D75): that observation change now exists, opt-in
     (`ScanEnv(obs_version="v2")` adds `measured_dbm_band`, a persistent
     per-band signal correlated with density).** `reward_balance_improved_v2`,
     just below, is the candidate that tests whether that changes anything --
@@ -448,7 +448,7 @@ def reward_balance_improved(
 # this session. Full weighting is not safe *regardless of which observation
 # trains it* -- the screen scores four **fixed heuristic** policies (rungs 2,
 # 4, 5, 6a), none of which read `measured_dbm_band` or anything obs_version
-# could change, so D71's "v2" observation cannot be what saves it here; the
+# could change, so D75's "v2" observation cannot be what saves it here; the
 # failure is in the reward's own incentive shape, full stop. 0.75 is the
 # highest value that still clears both bars with real margin -- a measured
 # choice, not a rounded compromise between 0.5 and the failed 1.0.
@@ -467,7 +467,7 @@ def reward_balance_improved_v2(
     """`reward_balance_improved` with density weighting pushed from 0.5 to 0.75
     (`_DENSITY_SHRINKAGE_V2`) -- **not** the full 1.0 this was originally built
     to test; 1.0 measurably fails D62's screen (see the constant's own comment
-    above for both numbers). Motivated by D71: the "v2" observation (326-wide,
+    above for both numbers). Motivated by D75: the "v2" observation (326-wide,
     `ScanEnv(obs_version="v2")`) gives the policy `measured_dbm_band` -- a
     genuine, persistent, per-band signal correlated with a cell's density,
     where "v1" only ever had one global scalar that forgets the instant the
@@ -747,14 +747,14 @@ def priority_reward_bonus(
     occupancy_coef: float,
     occupancy_decay_cap: float,
 ) -> float:
-    """D74 follow-up: the band-priority reward, now with a second, decaying
+    """D78 follow-up: the band-priority reward, now with a second, decaying
     per-slot term -- a deliberately separate function, not a `REWARDS` entry
     and not a change to `reward_balance`/any existing candidate. Composable
-    the same way D74's single-term version was: `ScanEnv.step()` adds this on
+    the same way D78's single-term version was: `ScanEnv.step()` adds this on
     top of whichever registered reward is selected.
 
     **Two terms, both scaled by `band_priority_value` directly** (not a binary
-    "is this band elevated" gate) -- the same convention D74's own discovery
+    "is this band elevated" gate) -- the same convention D78's own discovery
     term used, and for the same reason: `priority_uniform=True` (the control
     arm) sets every band's priority to a constant `1.0`, so both terms still
     fire, at the same uniform scale, on every band -- there is no elevated/
@@ -763,10 +763,10 @@ def priority_reward_bonus(
     bands. Getting this wrong -- gating the occupancy term on "elevated or
     not" instead -- would have made it fire only for the treatment arm and
     never for the control, breaking the "same reward-scale, only the
-    differential differs" comparison D74's whole methodology depends on.
+    differential differs" comparison D78's whole methodology depends on.
 
     `discovery = priority_coef * band_priority_value * n_newly` -- unchanged
-    from D74, still gated on a **new** discovery (`newly`), never occupancy,
+    from D78, still gated on a **new** discovery (`newly`), never occupancy,
     so it inherits none of D53's camping exploit.
 
     `occupancy = occupancy_coef * band_priority_value * decay * n_slots`,
@@ -784,7 +784,7 @@ def priority_reward_bonus(
     ping-pong between elevated bands still drives both of their
     `visit_density` up over time, still decaying the bonus on both, same as
     genuine sustained camping would. `occupancy_coef=0.0` (`ScanEnv`'s
-    default) makes this term exactly zero always -- D74's own recorded runs,
+    default) makes this term exactly zero always -- D78's own recorded runs,
     and every call site that predates this function, are unaffected.
     """
     discovery = priority_coef * band_priority_value * n_newly
@@ -861,7 +861,7 @@ class ScanEnv(gym.Env):
         self.gamma = float(gamma_dbm)      # receiver's detection threshold, dBm (frozen, D25)
         self.sigma = float(sigma_db)       # receiver's noise stdev, dB (frozen, D25)
         self.render_mode = render_mode     # None (default, render() is a no-op) or "rgb_array"
-        self._obs_version = obs_version    # "v1" (183-wide, D34/D49/D55/D67) or "v2" (362-wide, D30/D72) or "v2p" (398-wide, this task)
+        self._obs_version = obs_version    # "v1" (183-wide, D34/D49/D55/D67) or "v2" (362-wide, D30/D76) or "v2p" (398-wide, this task)
         self._obs_layout = OBS_LAYOUTS[obs_version]
         # This task: band-priority reward, off by default (every existing call
         # site -- tests, compare.py, every trained checkpoint -- is unaffected
@@ -875,12 +875,12 @@ class ScanEnv(gym.Env):
         self._priority_coef = float(priority_coef)
         self._priority_n_bands = priority_n_bands
         self._priority_uniform = bool(priority_uniform)
-        # D74 follow-up: `priority_high` makes the elevated value itself
+        # D78 follow-up: `priority_high` makes the elevated value itself
         # tunable (was the hardcoded module constant `_PRIORITY_HIGH`) --
-        # D74's own recorded runs used the default (3.0) and stay reproducible
+        # D78's own recorded runs used the default (3.0) and stay reproducible
         # unchanged. `occupancy_coef=0.0` (default) exactly reproduces every
         # behaviour that existed before this task: the occupancy bonus below
-        # is strictly additive on top of the discovery bonus D74 measured, off
+        # is strictly additive on top of the discovery bonus D78 measured, off
         # unless explicitly asked for.
         self._priority_high = float(priority_high)
         self._occupancy_coef = float(occupancy_coef)
@@ -889,7 +889,7 @@ class ScanEnv(gym.Env):
         self.action_space = spaces.Discrete(N_BANDS)   # one of the 36 bands, chosen every step()
         # Built from `_BLOCK_SPECS`/`OBS_LAYOUTS` (D30), not a literal shape --
         # "v1" is 36 x 5 + 3 = 183 (D34, extended by D49, rescaled by D55,
-        # extended again by D67); "v2" is 326 (D30) + 36 (`pulse_count`, D72) = 362.
+        # extended again by D67); "v2" is 326 (D30) + 36 (`pulse_count`, D76) = 362.
         #
         # **The box is no longer the unit interval**, and that is the whole point
         # of D55. Two blocks are deliberately scaled past 1.0 so that 1.0 means
@@ -903,7 +903,7 @@ class ScanEnv(gym.Env):
         # has to divide staleness back out by hand to work at all
         # (`baselines/recency.py`). An honest box beats a tidy one; SB3 does not
         # rescale inputs, so the numbers the network sees are these.
-        # D74 follow-up: `band_priority`'s declared ceiling has to track
+        # D78 follow-up: `band_priority`'s declared ceiling has to track
         # `priority_high`, not `_BLOCK_SPECS`'s own static default (3.0) --
         # otherwise a caller passing `priority_high > 3.0` produces episodes
         # whose actual values fall outside the space `observation_space`
@@ -968,7 +968,7 @@ class ScanEnv(gym.Env):
         self._band_pulse_width = np.zeros(N_BANDS, dtype=np.float64)   # us, 0.0 = never a declared hit here -> pulse_width
         self._band_aoa_sin = np.zeros(N_BANDS, dtype=np.float64)       # raw sin(theta); (0,0) together = never measured -> aoa_sin
         self._band_aoa_cos = np.zeros(N_BANDS, dtype=np.float64)       # raw cos(theta); (0,0) together = never measured -> aoa_cos
-        self._band_pulse_count = np.zeros(N_BANDS, dtype=np.float64)   # raw C at the last declared hit, 0.0 = never -> pulse_count (D72)
+        self._band_pulse_count = np.zeros(N_BANDS, dtype=np.float64)   # raw C at the last declared hit, 0.0 = never -> pulse_count (D76)
         self._hit_rate_array = np.zeros(N_BANDS, dtype=np.float32)  # hit_rate per band, 0..1 -> hit_rate_array 
         self._visit_density_array = np.zeros(N_BANDS, dtype=np.float32)  # visit_density per band, 0..1 -> visit_density_array
         self._staleness_array = np.ones(N_BANDS, dtype=np.float32)  # staleness per band, 0..1 -> staleness_array
@@ -1077,7 +1077,7 @@ class ScanEnv(gym.Env):
         # the representative reading -- consistent with how `grid.PW`/`grid.AOA`
         # already resolve multiple *emitters* sharing one cell (`truth.py`).
         #
-        # D72: `dwell.C`, gated the same way. `C` counts illuminations inside
+        # D76: `dwell.C`, gated the same way. `C` counts illuminations inside
         # the cell with no gamma gate at all (`truth.py`) -- it includes
         # contributions that would never individually cross the threshold, so
         # it is not literally "how many PDWs a real receiver logged here."
@@ -1086,7 +1086,7 @@ class ScanEnv(gym.Env):
         # of overlapping detections it resolved, which `C` on a declared hit
         # is the closest quantity this simulator has to that. The remaining
         # gap (sub-threshold contributors folded into a hit's count) is
-        # recorded, not hidden -- see D72.
+        # recorded, not hidden -- see D76.
         hit_idx = np.flatnonzero(dwell.Y)
         if hit_idx.size:
             loudest = hit_idx[np.argmax(dwell.measured_dbm[hit_idx])]
@@ -1177,7 +1177,7 @@ class ScanEnv(gym.Env):
                         )
                     )
 
-        # This task, extended by D74's follow-up (`priority_reward_bonus`):
+        # This task, extended by D78's follow-up (`priority_reward_bonus`):
         # band-priority reward, additive on top of whatever `self._reward_fn`
         # produced -- it does not touch `REWARDS` or `reward_gate.py`'s
         # screen, which still runs against the base reward candidates
@@ -1240,7 +1240,7 @@ class ScanEnv(gym.Env):
     def _observation(self) -> np.ndarray:
         """The flat vector SB3 sees: `_observation_blocks()`, concatenated in
         `self._obs_layout`'s order (`OBS_LAYOUTS[self._obs_version]`, D30) --
-        183-wide for "v1", 362-wide for "v2" (D72 added `pulse_count`, 326 -> 362).
+        183-wide for "v1", 362-wide for "v2" (D76 added `pulse_count`, 326 -> 362).
         `observation_space` (`__init__`) is built from the same layout, so the
         two can never disagree.
         """
@@ -1340,11 +1340,11 @@ class ScanEnv(gym.Env):
         episode (clustering) -- out of scope here; this block is one raw
         reading, "which direction was the last hit on this band", nothing more.
 
-        **A fifth "v2" block, `pulse_count` (D72), reopens D29/D34's own
+        **A fifth "v2" block, `pulse_count` (D76), reopens D29/D34's own
         exclusion of `C`.** Both had explicitly ruled truth-side illumination
         count out of the observation -- D34: "what it deliberately excludes:
         pulse count... within the dwell"; D29's governing line: "the
-        observation... must contain only what a deployed receiver has." D72 is
+        observation... must contain only what a deployed receiver has." D76 is
         the human sign-off reopening that, on the argument that a real
         receiver's own PDW output *does* carry a count of the detections it
         resolved -- unlike literal `C`, which `truth.py` builds with no gamma
@@ -1356,7 +1356,7 @@ class ScanEnv(gym.Env):
         use, closes part of that gap -- only cells the receiver actually
         declared a hit on ever write a value -- but not all of it: `C` on a
         declared-hit cell can still include sub-threshold co-located emitters
-        folded into the count. That residual gap is the one honest limit D72
+        folded into the count. That residual gap is the one honest limit D76
         did not resolve, only narrow. Stored per band, same persistence
         convention as `measured_dbm_band`/`pulse_width` (the last declared
         hit's reading, kept until the next one), and normalised
@@ -1478,7 +1478,7 @@ class ScanEnv(gym.Env):
         aoa_sin = (self._band_aoa_sin + 1.0) / 2.0
         aoa_cos = (self._band_aoa_cos + 1.0) / 2.0
 
-        # D72: same log1p transform `reward_balance_improved` prices `C`
+        # D76: same log1p transform `reward_balance_improved` prices `C`
         # with (`_DENSITY_REF_PULSES = 64`), clipped into [0, 1] -- unlike the
         # reward's use, this has to stay inside the box, and raw `C` can
         # exceed the reference within a single episode.

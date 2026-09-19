@@ -110,7 +110,7 @@ def resolve_priority_kwargs(
 
     Every rung defaults to `band_priority=False`, so this is a no-op for the
     whole ladder except the rungs that actually need the block (22a/22b as of
-    D74, plus whichever D74-follow-up rungs use `priority_high`/
+    D78, plus whichever D78-follow-up rungs use `priority_high`/
     `occupancy_coef`/`occupancy_decay_cap`) -- a registered priority
     checkpoint carries its own true training config with it into every
     comparison, rather than depending on the caller passing matching
@@ -118,7 +118,7 @@ def resolve_priority_kwargs(
     time (a silent-mismatch risk: forgetting the flag would evaluate a
     priority-trained checkpoint under an all-ones vector without raising).
     The CLI flags stay meaningful as the default for any rung that doesn't
-    declare its own -- everything before D74.
+    declare its own -- everything before D78.
     """
     spec = B.BY_KEY[key]
     if spec.band_priority:
@@ -158,11 +158,11 @@ def run_one(
     receiver's noise draw and the policy's own randomness both reproduce. They do
     not collide -- `baselines.make` derives an independent stream per rung name.
 
-    `obs_version` (D30/D71) only changes what the *policy* is fed -- every
+    `obs_version` (D30/D75) only changes what the *policy* is fed -- every
     heuristic rung that reads the observation at all (`recency`, `camper`) only
     ever reads `HIT_RATE`/`STALENESS`, both inside the first `4 * N_BANDS`
     elements, which "v1" and "v2" lay out identically. A trained checkpoint must
-    still match: an "v1" checkpoint fed a "v2" (362-wide, D72) observation raises
+    still match: an "v1" checkpoint fed a "v2" (362-wide, D76) observation raises
     inside `predict()`, not here.
 
     `band_priority`/`priority_coef`/`priority_n_bands`/`priority_uniform` are
@@ -295,7 +295,7 @@ def compare(
     ladder -- and so every rung on a scenario sees exactly the same world, which
     is what makes the comparison paired rather than merely averaged.
 
-    `obs_version` (D30/D71) applies to every rung in this run, heuristic and
+    `obs_version` (D30/D75) applies to every rung in this run, heuristic and
     trained alike -- see `run_one`'s docstring for why a heuristic rung is safe
     under either.
     """
@@ -769,7 +769,7 @@ def main(argv: list[str] | None = None) -> int:
                      help="slots between animation frames, --figures only (default 8)")
     ap.add_argument("--gif-fps", type=int, default=12, help="--figures only")
     ap.add_argument("--obs-version", default="v1", choices=("v1", "v2", "v2p"),
-                    help="observation layout (D30/D71) every rung in this run sees. "
+                    help="observation layout (D30/D75) every rung in this run sees. "
                          "A trained checkpoint must match what it was trained on, or "
                          "predict() raises mid-episode; heuristic rungs work under either.")
     ap.add_argument("--band-priority", action="store_true",
@@ -784,11 +784,11 @@ def main(argv: list[str] | None = None) -> int:
                     help="control arm: band_priority stays all-ones every episode "
                          "(same reward scale, no real signal) -- this task.")
     ap.add_argument("--priority-high", type=float, default=3.0,
-                    help="the elevated band's priority value (default 3.0, D74's own "
+                    help="the elevated band's priority value (default 3.0, D78's own "
                          "value). No effect unless --band-priority is set.")
     ap.add_argument("--occupancy-coef", type=float, default=0.0,
-                    help="D74 follow-up: coefficient on the decaying per-slot priority "
-                         "term (default 0.0, off -- reproduces D74's own runs exactly). "
+                    help="D78 follow-up: coefficient on the decaying per-slot priority "
+                         "term (default 0.0, off -- reproduces D78's own runs exactly). "
                          "No effect unless --band-priority is set.")
     ap.add_argument("--occupancy-decay-cap", type=float, default=2.0,
                     help="fair-share visit_density at which the occupancy term above "

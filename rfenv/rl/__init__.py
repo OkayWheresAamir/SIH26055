@@ -38,9 +38,9 @@ Usage::
     python -m rfenv.rl.recurrent_ppo --check-env                          # RecurrentPPO's own CLI, same shape
     python -m rfenv.rl.recurrent_ppo --checkpoint runs/checkpoints/v1/recurrent_ppo_balance/recurrent_ppo_balance.zip --reward reward_balance
 
-**Checkpoints live one folder per model** (D71): `runs/checkpoints/<obs_version>/<model_name>/`,
+**Checkpoints live one folder per model** (D75): `runs/checkpoints/<obs_version>/<model_name>/`,
 not flat -- 150 files in one directory was unnavigable. `<obs_version>` is "v1"
-(the 183-wide vector every checkpoint before D30 was trained on) or "v2" (D30/D72's
+(the 183-wide vector every checkpoint before D30 was trained on) or "v2" (D30/D76's
 362-wide vector); pick the directory that matches whichever `ScanEnv(obs_version=...)`
 the run trains against. `finish_training` (`common.py`) creates the nested
 directory automatically -- there is nothing else to set up.

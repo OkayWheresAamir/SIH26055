@@ -102,7 +102,7 @@ def test_pulse_width_and_aoa_start_at_the_never_measured_sentinel():
     assert (blocks["pulse_width"] == 0.0).all()
     assert (blocks["aoa_sin"] == 0.5).all()   # (0.5, 0.5) decodes to raw (0, 0)
     assert (blocks["aoa_cos"] == 0.5).all()
-    assert (blocks["pulse_count"] == 0.0).all()   # D72, log1p(0) = 0
+    assert (blocks["pulse_count"] == 0.0).all()   # D76, log1p(0) = 0
 
 
 def test_a_dwell_with_no_declared_hit_does_not_move_pulse_width_or_aoa():
@@ -122,7 +122,7 @@ def test_a_dwell_with_no_declared_hit_does_not_move_pulse_width_or_aoa():
         assert after["pulse_width"][band] == before["pulse_width"][band]
         assert after["aoa_sin"][band] == before["aoa_sin"][band]
         assert after["aoa_cos"][band] == before["aoa_cos"][band]
-        assert after["pulse_count"][band] == before["pulse_count"][band]   # D72
+        assert after["pulse_count"][band] == before["pulse_count"][band]   # D76
         found = True
         break
     assert found, "no miss turned up in 200 steps of this seed -- widen the search"
@@ -149,11 +149,11 @@ def test_a_declared_hit_writes_a_real_unit_circle_bearing():
     assert sin_raw**2 + cos_raw**2 == pytest.approx(1.0, abs=1e-5)
     assert not (sin_raw == 0.0 and cos_raw == 0.0)
     assert blocks["pulse_width"][hit_band] > 0.0
-    assert blocks["pulse_count"][hit_band] > 0.0   # D72: a declared hit implies C >= 1
+    assert blocks["pulse_count"][hit_band] > 0.0   # D76: a declared hit implies C >= 1
 
 
 def test_pulse_count_is_log1p_normalised_and_clipped_to_the_box():
-    """D72: matches `reward_balance_improved`'s own transform of `C`
+    """D76: matches `reward_balance_improved`'s own transform of `C`
     (`log1p(C) / log1p(_DENSITY_REF_PULSES)`), clipped to [0, 1] because the
     observation's box cannot exceed 1.0 the way the reward's weight can."""
     from rfenv.env import _DENSITY_REF_PULSES
