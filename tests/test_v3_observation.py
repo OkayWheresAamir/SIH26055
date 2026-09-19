@@ -374,3 +374,23 @@ def test_corrupt_obs_blocks_refuses_a_block_the_layout_cannot_show(blocks, versi
     with pytest.raises(ValueError):
         ScanEnv(scenario=Scenario.replay("config_2", "stare"),
                 obs_version=version, corrupt_obs_blocks=blocks)
+
+
+# --------------------------------------------------------------------------- #
+# The observability contract
+# --------------------------------------------------------------------------- #
+
+def test_the_info_allowlist_still_refuses_to_carry_a_reward():
+    """Pinned as a literal, freeze-style, because "v3" is the moment it is tempting.
+
+    The `prev_reward` block reaches the policy through the *observation*, where
+    it is the Y-based twin. Nothing needs the reward in `info`, and widening this
+    set would be the quiet way to hand a deployable rung the truth-fed one.
+    Lives in this file, not `test_online.py`, so it is pinned even on a machine
+    with no training stack.
+    """
+    from rfenv.baselines.guard import OBSERVABLE_INFO
+
+    assert OBSERVABLE_INFO == frozenset({"slot", "time_s", "band", "dwell_slots", "Y"})
+    assert "reward" not in OBSERVABLE_INFO
+    assert "Z" not in OBSERVABLE_INFO

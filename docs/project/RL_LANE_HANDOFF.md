@@ -93,6 +93,24 @@ six-rung ladder. **Delete them; this file is the source.**
 > both ways). Still never learned; 23a's lead over its control read as training variance. Verdict
 > unchanged, same D74 entry.
 >
+> **AMENDED 2026-09-19 — (15)** A fourth layout, **"v3"** (436 wide), plus two changes to the
+> episode itself. "v3" is "v2p" + `prev_action` (36, one-hot of the last band, all-zero before the
+> first step) + `prev_reward` (1) + `prev_hit` (1) — the RL² interface, so a recurrent policy can
+> adapt inside the episode with no gradient step (D75). **36 of those 38 columns duplicate existing
+> blocks** — `prev_action` is bit-identical to `current_band` after any step, `prev_hit` is
+> `current_hit_streak > 0` — so `prev_reward` is the only new information, and an ablation
+> corrupting `prev_action` alone reads null by construction. `prev_reward` carries
+> `reward_balance_obs`, which is `reward_balance` with `Y` for `Z`: the training reward would leak
+> `Z` into the observation, since the agent already holds the other three terms and could solve for
+> it. **D29 is unchanged** — the reward still reads truth and still scores every arm.
+>
+> `ScanEnv(episode_slots=...)` lets an episode outrun a recording, stitched from independent 30 s
+> draws (D76). `constants.py` is untouched; every default-length episode is bit-identical, pinned by
+> golden digests taken before the change. `rfenv/live.py` draws the running episode in the terminal.
+> `rfenv/rl/online.py` fine-tunes a checkpoint while it scans, on a continuous grid, with the
+> gradient fed the observable reward (D77). **All three are `BUILT`, none measured** — the matched
+> pair and the ablation are pre-registered in D75 and not yet run.
+>
 > The PDF beside this file is older still and does not carry any of these amendments.
 
 **Audience:** the 2–3 people building rung 7. **Owner of this file:** Aamir.

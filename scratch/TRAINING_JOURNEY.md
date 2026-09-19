@@ -1437,3 +1437,157 @@ again, more carefully. Full account: `DECISIONS.md` D74; numbers: `MODEL_COMPARI
 `tests/test_band_priority.py` grew to 26 tests (the occupancy formula in isolation, the D53 ping-pong
 check, the `observation_space` ceiling regression); full suite re-run clean (470 passed, 1
 pre-existing unrelated failure, 27/27 RL, 26/26 band-priority) before any of this was trusted.
+
+## 19. Making it online: "v3", missions that do not end, and a view (D75/D76/D77, 2026-09-19)
+
+Three requests in one: make the recurrent policy an *online* learner, let episodes run as long as we
+like, and let us actually watch the environment while it runs.
+
+Worth writing down first: the starting premise was half-right in a useful way. A recurrent policy
+**already is** an online learner — its hidden state integrates hits and misses across a mission and
+changes behaviour with no gradient step at all. That is the RL² result, and the most literal answer
+to the PS's "absence of prior reliable intelligence". What this repository had never done is give
+that recurrence the two inputs the construction depends on: what the agent last did, and what came
+back.
+
+### The Y/Z conversation, which changed the design
+
+The request was initially to feed the *training* reward into the observation, on the reasoning that
+a real scheduler does not hypothesise an emitter and then scan — it just scans and either gets data
+or does not, so `Y` and `Z` should be the same thing for a slot it looked at.
+
+That is right about what a scheduler does and wrong about this simulator, and the gap is
+**sensitivity**, not hypothesis. `receiver.py`'s entire detection model is one line,
+`Y[b,t] = 1 iff S[b,t] + n >= gamma`. An emitter can be transmitting into a band the receiver is
+staring straight at and still go undeclared, because its received level sits below gamma — too weak,
+too far, or in an antenna null. Re-read from `runs/d74_followup_treatment_comparison/metrics.json`
+while answering this: **Pd = 0.8421**. Roughly one truly-occupied cell in six that you look directly
+at comes back silent. And Pfa = 1.35e-3 in the other direction.
+
+The decisive argument was the PS's own figures of merit. If `Y == Z` then Pd = 1 and Pfa = 0 by
+construction, and "probability of detection", "probability of false alarm" and "sensitivity" — three
+things the problem statement names explicitly as deliverables — all go degenerate.
+
+So the design split. `reward_balance` (reads `Z`) stays exactly as it was and still trains and scores
+every arm: D29 untouched, its source bytes untouched. A second function, `reward_balance_obs`, is the
+same formula with `Y` substituted, written as
+`reward_balance(dataclasses.replace(dwell, Z=dwell.Y), ...)` so the two cannot drift apart. *That* is
+what the policy sees. Ordinary asymmetric actor-critic — privileged critic, deployable actor — and it
+is what keeps a "v3" rung `deployable=True` rather than a reference line beside `oracle_pulse`.
+
+Why it matters concretely: the agent already holds `hit_rate`, `visit_density`, `staleness` and
+`n_slots` in its vector. Hand it `reward_balance`'s value and it can solve the remaining term for
+`0.5 * dwell.Z.sum()` — and thereby learn about emitters it never detected. Strictly more than any
+real instrument has.
+
+### The awkward finding, found before training rather than after
+
+"v3" is "v2p" + `prev_action` (36) + `prev_reward` (1) + `prev_hit` (1) = 436. While writing it I
+checked what `_prev_action` actually holds at the point `_observation()` runs, and found `step()`
+assigns `self._current_band = action` (line 1026) and `self._prev_action = action` (line 1108) from
+the same value in the same step.
+
+**So `prev_action` is bit-identical to the existing `current_band` block at every step after the
+first.** `prev_hit` is likewise just `current_hit_streak > 0`. 36 of the 38 new columns restate
+blocks that were already there. They differ only in the cold-start sentinel: `current_band` reads
+one-hot at band 0 after `reset()` — claiming a dwell that never happened — while `prev_action` reads
+the zero vector, off the one-hot simplex and unreachable by any real action.
+
+I kept the layout, because the RL² interface is conventional and 38 columns is cheap, but two things
+follow and both are now in D75, `OBSERVATION_SPACE.md` §2.5, `CLAUDE.md` and a test. **`prev_reward`
+is the only genuinely new information in "v3".** And **an ablation corrupting `prev_action` alone
+would read null by construction** — so the pre-registered ablation corrupts it together with
+`current_band`, and carries a `hit_rate` positive-control arm. That control is the direct lesson of
+D74: a null tells you nothing unless you have shown the instrument can detect a positive.
+
+### Long missions, without touching the freeze
+
+`N_SLOTS` and `EPISODE_S` live in `constants.py`, which D42 froze and `tests/test_freeze.py` pins
+with per-value literals plus a digest tripwire; D25 says moving anything there re-validates from gate
+1 and re-runs every baseline. So `episode_slots` is a per-*environment* length defaulting to
+`N_SLOTS`, and the frozen file is untouched.
+
+Before changing anything I took golden sha256 digests of all seven checkpoint-free rungs' per-slot
+logs and of the full v1/v2/v2p observation byte streams, at `d4f4361`, and landed them as
+`tests/test_backward_compat_hashes.py` in the first commit. "Bit-identical" is not checkable by
+reading a diff, and this change touched `env.py`, `truth.py`, `receiver.py`, `artefacts.py`,
+`apfeld.py` and `ladder.py`. The digests held through all of it.
+
+Three things the long path exposed that the short one never could:
+
+- **`clock` and `staleness` would have left their declared Box.** At 72,000 slots a neglected band
+  reads 1,674 sweeps against a declared ceiling of 13.95, and the clock reads 120. The clip has to go
+  at *both* sites that write staleness — the observation's and the reward's — or the reward stops
+  pricing the number the agent sees, which is the promise D52 exists to keep. It provably never binds
+  at 600: the most stale a band can be is 599/43 = 13.930 against 600/43 = 13.953.
+- **`episode_metrics()` had a latent correctness bug**, not just a scaling issue. It censored a
+  missed emitter at the *full episode*, so an hour-long mission would charge a segment-0 miss 3,600 s
+  and the number would stop being comparable with every 30 s figure here. Now censored at the
+  emitter's own segment end, which evaluates to exactly 600 at the default.
+- **`EmitterContribution.cells` is int16.** 32767 // 600 = 54 segments = 27 simulated minutes, past
+  which offsetting slots would wrap silently rather than fail. Upcast to int32 in the stitched copies.
+
+Tiling one recording to fill an hour was rejected outright — it would hand the agent an exactly
+periodic world to memorise — so long worlds are stitched from independent draws and `ScanEnv` refuses
+`episode_slots > N_SLOTS` with a fixed `scenario=`. The cost, stated in `stitch`'s own docstring
+rather than buried: emitter identity is per segment, so there is no temporal continuity across a
+seam; at every 600-slot boundary the world is replaced at once.
+
+Measured before building: ~0.65 MB per segment, so **~78 MB per simulated hour**, and an hour-long
+grid builds in under a second. The per-slot log turned out to be the other memory term (~20 MB/hour
+of dict overhead), hence `log_window_slots` — and a windowed env is *refused* by `write_run` rather
+than writing a header claiming a length its rows do not have.
+
+### The arithmetic that shaped the fine-tuning design
+
+The request included gradient updates at deploy time. The honest constraint is arithmetic: a 30 s
+episode is 300–600 decisions, and these checkpoints trained at `n_steps=8192`. One mission cannot
+fill a fourteenth of a single rollout, and at `gamma=0.997` the effective horizon (~333 steps) is
+comparable to the whole episode, so the advantages would be dominated by the terminal bootstrap. A
+per-mission update is not a small update, it is a noisy one.
+
+So `rfenv/rl/online.py` does not offer one. Fine-tuning exists only on a continuous grid, at
+`n_steps=2048` — about two simulated minutes, ~30 updates per simulated hour — pre-registered in D77
+rather than tuned afterwards, with a conservative `learning_rate=1e-5`, `clip_range=0.1` and
+`target_kl=0.02`, because adaptation starts from a policy that already works and the risk is wrecking
+it. `ent_coef=0.01` is retained specifically because D54's documented failure mode for this rung is
+collapse onto one band.
+
+SB3 owns the loop. The recurrent rollout buffer and GAE-through-LSTM-state are already correct in
+sb3-contrib, and reimplementing `collect_rollouts` is where a silent bug would live. One detail there
+fails silently and took a moment to get right: `n_steps` is baked into the checkpoint and read while
+the rollout buffer is constructed inside `_setup_model()`, so it must go through
+`RecurrentPPO.load(custom_objects=...)`. Assigning `model.n_steps` after loading leaves the old
+buffer and the run quietly collects 8192 transitions per update. There is now a test for exactly that.
+
+This is also the repository's **first resume path**. `train()` has always built a fresh model;
+nothing before this called `learn(reset_num_timesteps=False)`. Rung 21a's description records a human
+doing the equivalent by hand after two laptop crashes.
+
+The two tests I trust most here: a tiny fine-tune moves the weights **and** advances `num_timesteps`
+from the checkpoint's own count (so it is a continuation, not a restart), and **at
+`learning_rate=0.0` the weights come back bit-identical** — the no-op control that rules out the
+harness perturbing the policy by any route other than the optimiser.
+
+### The view
+
+`rfenv/live.py` is numpy and stdlib only, and has to stay that way — `rfenv/render/__init__.py` calls
+`matplotlib.use("Agg")` at package import, so anything under `rfenv/render/` both pulls in matplotlib
+and lands on a non-interactive backend. Hence the split: the ANSI heat strip at the top level, the
+matplotlib panel in `rfenv/render/live.py`, imported lazily.
+
+The first real run of it was more useful than expected — recency's sweep is immediately visible as a
+diagonal drift, and the seven wide bands (0, 1, 6, 7, 17, 18, 19) stand out because their dwells draw
+two columns instead of one. Degradation is ordered and tested: not a tty means **zero escape bytes**
+(that stream is usually a log file, where control codes are corruption), `NO_COLOR` or a console that
+refuses virtual-terminal mode means ASCII glyphs, and no interactive matplotlib backend means a
+warning and the terminal view — a plotting backend must never be able to kill a one-hour run.
+
+### Where this stands
+
+All three are `BUILT`, none is `MEASURED`. 79 new tests; full suite green apart from the known
+pre-existing `test_heldout_split_is_refused_without_an_explicit_flag` (the 45 held-out pairs are not
+on this machine). The matched pair — "v2p" control against "v3" treatment, identical but for
+`--obs-version`, three seeds per arm because D68 escalated over a 1.2 pp gap — and the five-arm
+ablation are specified in D75 and not yet run. **Nothing in this section is a claim about whether any
+of it works.**

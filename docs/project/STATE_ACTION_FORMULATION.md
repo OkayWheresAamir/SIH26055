@@ -115,6 +115,29 @@
 > Verdict unchanged: not adopted, not promoted, code not removed. Same `DECISIONS.md` D74 entry,
 > extended, not a new decision number.
 >
+> **AMENDED 2026-09-19 — (15)** A fourth layout, **"v3"** (436 wide), and with it two changes to the
+> episode itself. `ScanEnv(obs_version="v3")` is "v2p" plus `prev_action` (36, one-hot of the last
+> band, all-zero before the first step), `prev_reward` (1) and `prev_hit` (1) — the RL² interface,
+> so a recurrent policy can adapt inside the episode with no gradient step (D75). **36 of those 38
+> columns duplicate blocks that already existed**: `prev_action` is bit-identical to `current_band`
+> after any step and `prev_hit` is `current_hit_streak > 0`, so `prev_reward` is the only new
+> information and any claim about "v3" should say so. `prev_reward` carries `reward_balance_obs`,
+> which is `reward_balance` with `Y` for `Z` — the training reward would leak `Z` into the
+> observation, since the agent already holds the other three terms and could solve for it. **D29 is
+> unchanged**: the reward still reads truth and still scores every arm.
+>
+> `ScanEnv(episode_slots=...)` lets one episode run longer than a recording, with the world stitched
+> from independent 30 s draws (D76). `constants.py` is untouched — D42's freeze holds and every
+> default-length episode is bit-identical, pinned by golden digests taken before the change. Two
+> blocks are now bounded rather than unbounded (`clock` divides by this episode's length,
+> `staleness` is clipped to its declared ceiling at both the observation and the reward site), and
+> `episode_metrics()` censors a missed emitter at its own segment end rather than at the whole
+> mission — a correctness fix at length that evaluates to exactly 600 slots at the default.
+>
+> `rfenv/rl/online.py` fine-tunes a checkpoint while it scans, on a continuous grid, with the
+> gradient fed `reward_balance_obs` rather than `step()`'s truth-fed return (D77). Per-mission
+> updates are deliberately not offered: 300-600 decisions cannot fill an `n_steps=8192` rollout.
+>
 > The PDF beside this file is older still and does not carry any of these amendments.
 
 
