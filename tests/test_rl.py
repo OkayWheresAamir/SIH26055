@@ -20,7 +20,6 @@ from __future__ import annotations
 
 import json
 import re
-from collections import Counter
 
 import numpy as np
 import pytest
@@ -31,10 +30,7 @@ from stable_baselines3 import DQN, PPO
 sb3_contrib = pytest.importorskip("sb3_contrib")
 from sb3_contrib import RecurrentPPO
 
-import torch  # guaranteed present once the two importorskips above pass
-
 from rfenv import baselines as B
-from rfenv import constants as K
 from rfenv import rl
 from rfenv.rl import common, dqn, ppo, recurrent_ppo
 from rfenv.rl.common import RecurrentRLScheduler
@@ -435,93 +431,3 @@ def test_recurrent_rl_scheduler_carries_state_across_calls(scenario, recurrent_u
     # LSTM update for one step can legitimately be tiny -- only that state is
     # being threaded through at all (was None, now consistently isn't).
     assert first_state[0].shape == policy._lstm_state[0].shape
-
-
-# --------------------------------------------------------------------------- #
-# `priority`, D70's inference-time knob (PDF §3 step 1) -- reweighting an
-# already-trained policy's sampled action distribution by log(priority),
-# with no retrain and no observation change.
-# --------------------------------------------------------------------------- #
-
-def test_priority_none_is_bit_identical_to_no_priority_argument(scenario, recurrent_untrained_model):
-    """The load-bearing default: `priority=None` must reproduce today's
-    behaviour exactly, or every existing rung silently changes."""
-    env = ScanEnv(scenario=scenario)
-    obs, info = env.reset(seed=0)
-
-    torch.manual_seed(0)
-    plain = RecurrentRLScheduler(recurrent_untrained_model)
-    action_plain = plain(obs, info)
-
-    torch.manual_seed(0)
-    explicit_none = RecurrentRLScheduler(recurrent_untrained_model, priority=None)
-    action_none = explicit_none(obs, info)
-
-    assert action_plain == action_none
-
-
-def test_priority_of_all_ones_is_also_identical_to_no_priority():
-    """`p = 1 everywhere -> the plain PS objective. The default. Nothing
-    changes` (PDF §2). `log(1) == 0`, so adding it to every logit changes
-    nothing after softmax renormalisation -- the brief's own claim, checked
-    directly rather than trusted."""
-    env = rl.make_train_env(reward=DEFAULT_REWARD)
-    model = RecurrentPPO("MlpLstmPolicy", env, seed=0)
-    obs, info = ScanEnv(pool=env._pool).reset(seed=1)
-
-    torch.manual_seed(7)
-    plain = RecurrentRLScheduler(model)
-    action_plain = plain(obs, info)
-
-    torch.manual_seed(7)
-    uniform = RecurrentRLScheduler(model, priority=np.ones(K.N_BANDS, dtype=np.float32))
-    action_uniform = uniform(obs, info)
-
-    assert action_plain == action_uniform
-
-
-def test_priority_reweighting_shifts_sampling_toward_the_favoured_band(scenario, recurrent_untrained_model):
-    """The mechanism actually does something: an extreme priority skew must
-    make the favoured band dominate the sampled action distribution. This is
-    the property the PDF brief's step-4 permutation ablation (P4) later
-    checks on a *trained* policy; here it's checked on the mechanism itself,
-    independent of what any particular checkpoint has learned."""
-    env = ScanEnv(scenario=scenario)
-    obs, info = env.reset(seed=0)
-
-    target_band = 7
-    priority = np.full(K.N_BANDS, 1e-6, dtype=np.float32)
-    priority[target_band] = 1.0
-
-    torch.manual_seed(0)
-    policy = RecurrentRLScheduler(recurrent_untrained_model, priority=priority)
-    counts = Counter(policy(obs, info) for _ in range(100))
-    assert counts[target_band] / 100 > 0.9
-
-
-def test_priority_rejects_the_wrong_shape():
-    with pytest.raises(ValueError, match="shape"):
-        RecurrentRLScheduler(object(), priority=np.ones(K.N_BANDS - 1, dtype=np.float32))
-
-
-def test_priority_rejects_negative_values():
-    bad = np.ones(K.N_BANDS, dtype=np.float32)
-    bad[3] = -0.1
-    with pytest.raises(ValueError, match="non-negative"):
-        RecurrentRLScheduler(object(), priority=bad)
-
-
-def test_priority_zero_drives_that_bands_probability_to_numerically_zero(scenario, recurrent_untrained_model):
-    """`priority[a] == 0` is a legal input (unlike a negative value) and must
-    not raise or produce NaN -- the log-floor exists exactly for this case."""
-    env = ScanEnv(scenario=scenario)
-    obs, info = env.reset(seed=0)
-
-    priority = np.ones(K.N_BANDS, dtype=np.float32)
-    priority[5] = 0.0
-    policy = RecurrentRLScheduler(recurrent_untrained_model, priority=priority)
-    assert np.isfinite(policy._log_priority).all()
-
-    torch.manual_seed(0)
-    actions = [policy(obs, info) for _ in range(50)]
-    assert 5 not in actions

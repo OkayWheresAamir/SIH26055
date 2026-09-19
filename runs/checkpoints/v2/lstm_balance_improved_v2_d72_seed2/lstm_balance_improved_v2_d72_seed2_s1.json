@@ -1,0 +1,76 @@
+{
+  "run": "lstm_balance_improved_v2_d72_seed2",
+  "description": "reward_balance_improved_v2, D60 split, D72 observation (362-wide v2). Paired against lstm_balance_v2_d72_seed2 -- same split/hyperparameters/seed, only the reward differs, mirroring D65's methodology.",
+  "checkpoint": "lstm_balance_improved_v2_d72_seed2_s1.zip",
+  "sha256": "4abed1fab10f1b8dd829498eef5c3fb376fbfb43371e1a75d406b09b74bd7f0d",
+  "algorithm": "RecurrentPPO",
+  "policy": "RecurrentActorCriticPolicy",
+  "reward": "reward_balance_improved_v2",
+  "observation_width": 362,
+  "action_space": "Discrete(36)",
+  "seed": 2,
+  "total_timesteps": 50000,
+  "hyperparameters": {
+    "ent_coef": 0.01,
+    "gamma": 0.997,
+    "n_steps": 8192
+  },
+  "resolved": {
+    "learning_rate": 0.0003,
+    "gamma": 0.997,
+    "n_steps": 8192,
+    "batch_size": 128,
+    "n_epochs": 10,
+    "ent_coef": 0.01,
+    "gae_lambda": 0.95,
+    "vf_coef": 0.5,
+    "max_grad_norm": 0.5
+  },
+  "argv": [
+    "C:\\Code\\sih\\SIH26055\\rfenv\\rl\\recurrent_ppo.py",
+    "--reward",
+    "reward_balance_improved_v2",
+    "--obs-version",
+    "v2",
+    "--timesteps",
+    "400000",
+    "--seed",
+    "2",
+    "--checkpoint-freq",
+    "50000",
+    "--checkpoint",
+    "runs/checkpoints/v2/lstm_balance_improved_v2_d72_seed2/lstm_balance_improved_v2_d72_seed2.zip",
+    "--run-name",
+    "lstm_balance_improved_v2_d72_seed2",
+    "--description",
+    "reward_balance_improved_v2, D60 split, D72 observation (362-wide v2). Paired against lstm_balance_v2_d72_seed2 -- same split/hyperparameters/seed, only the reward differs, mirroring D65's methodology.",
+    "--hyperparam",
+    "ent_coef=0.01",
+    "--hyperparam",
+    "gamma=0.997",
+    "--hyperparam",
+    "n_steps=8192"
+  ],
+  "command": "C:\\Code\\sih\\SIH26055\\venv\\Scripts\\python.exe -m rfenv.rl.recurrent_ppo --reward reward_balance_improved_v2 --obs-version v2 --timesteps 400000 --seed 2 --checkpoint-freq 50000 --checkpoint runs/checkpoints/v2/lstm_balance_improved_v2_d72_seed2/lstm_balance_improved_v2_d72_seed2.zip --run-name lstm_balance_improved_v2_d72_seed2 --description \"reward_balance_improved_v2, D60 split, D72 observation (362-wide v2). Paired against lstm_balance_v2_d72_seed2 -- same split/hyperparameters/seed, only the reward differs, mirroring D65's methodology.\" --hyperparam ent_coef=0.01 --hyperparam gamma=0.997 --hyperparam n_steps=8192",
+  "git": {
+    "commit": "64840f8dc80adec7ef8a9864052fdf2f6d7b8488",
+    "dirty": true
+  },
+  "started_at": "2026-09-14T20:36:44Z",
+  "wall_clock_s": 500.0,
+  "versions": {
+    "python": "3.12.10",
+    "stable_baselines3": "2.9.0",
+    "torch": "2.14.0+cpu",
+    "gymnasium": "1.3.0",
+    "numpy": "2.5.3",
+    "sb3_contrib": "2.9.0"
+  },
+  "hardware": {
+    "os": "Windows-11-10.0.26200-SP0",
+    "machine": "AMD64",
+    "processor": "Intel64 Family 6 Model 165 Stepping 2, GenuineIntel",
+    "cpu_count": 12,
+    "cuda": null
+  }
+}

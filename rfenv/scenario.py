@@ -167,22 +167,44 @@ def _read_emitter_metadata(group: h5py.Group) -> dict:
 class EmitterContribution:
     """One emitter, in one recording, as sparse grid cells.
 
-    `cells` is (n, 2) int16 of (band, slot); `peak_dbm` and `n_pulses` are aligned
-    with it. A cell appears once per band the pulse's frequency falls in, so an
-    emitter generally occupies two adjacent bands per slot -- the overlap is real
-    (D3) and carrying it is what makes counterfactual band queries answerable.
+    `cells` is (n, 2) int16 of (band, slot); `peak_dbm`, `n_pulses`, `pulse_width_us`
+    and `aoa_deg` are all aligned with it. A cell appears once per band the pulse's
+    frequency falls in, so an emitter generally occupies two adjacent bands per
+    slot -- the overlap is real (D3) and carrying it is what makes counterfactual
+    band queries answerable.
+
+    `pulse_width_us` and `aoa_deg` (D30) are the raw PDW columns 2 and 3, at
+    **whichever single pulse set `peak_dbm` in that cell** -- the same pulse, not
+    an average over every pulse the cell absorbs, so a cell's three per-pulse
+    readings (`peak_dbm`, `pulse_width_us`, `aoa_deg`) always describe one real
+    physical pulse together, never a blend of several.
     """
 
     config_id: str
     source: str
     label: int
-    cells: np.ndarray       # (n, 2) int16  -> band, slot
-    peak_dbm: np.ndarray    # (n,) float32  -> max pulse amplitude in that cell
-    n_pulses: np.ndarray    # (n,) int32    -> pulses in that cell
+    cells: np.ndarray             # (n, 2) int16  -> band, slot
+    peak_dbm: np.ndarray          # (n,) float32  -> max pulse amplitude in that cell
+    n_pulses: np.ndarray          # (n,) int32    -> pulses in that cell
+    pulse_width_us: np.ndarray = None    # (n,) float32 -> PW of the peak_dbm pulse (D30)
+    aoa_deg: np.ndarray = None           # (n,) float32 -> AoA of the peak_dbm pulse, degrees (D30)
     total_pulses: int = 0   # pulses actually emitted; NOT n_pulses.sum(), which
                             # counts a pulse once per band its window falls in.
                             # This is the denominator of interception ratio.
     meta: dict = field(default_factory=dict, repr=False)
+
+    def __post_init__(self):
+        # Defaulted rather than required so every existing call site that builds
+        # an `EmitterContribution` by hand (tests, `dataclasses.replace` in
+        # `tests/test_threat.py`) keeps working without knowing about D30 -- but
+        # never silently: an empty cell set legitimately has no pulses to report,
+        # everything else must carry real (n,)-shaped arrays or D30's per-cell
+        # invariant ("these three readings are one real pulse together") breaks
+        # without anyone noticing.
+        if self.pulse_width_us is None:
+            object.__setattr__(self, "pulse_width_us", np.zeros(len(self.cells), dtype=np.float32))
+        if self.aoa_deg is None:
+            object.__setattr__(self, "aoa_deg", np.zeros(len(self.cells), dtype=np.float32))
 
     @property
     def uid(self) -> str:
@@ -200,32 +222,46 @@ class EmitterContribution:
         return len(self.cells)
 
 
-def _bucket(toa_s, freq_mhz, amp_dbm) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """Pulses -> (band, slot) cells with peak level and count.
+def _bucket(toa_s, freq_mhz, amp_dbm, pw_us, aoa_deg):
+    """Pulses -> (band, slot) cells with peak level, count, and (D30) the
+    PulseWidth/AoA of whichever single pulse in that cell set the peak level.
 
     Slot is floor(t / 50 ms), clipped to the last slot so a pulse landing exactly at
     30.000 s does not fall off the end.
+
+    Grouped by `np.lexsort((-amp_dbm, slot))` rather than a plain stable sort on
+    slot alone: primary key `slot` (ascending), secondary key `amp_dbm`
+    (descending) -- so within one (band, slot) group, the *first* row after
+    sorting is always the loudest pulse, and taking each group's first row
+    (`start`, from `np.unique`'s own index) for `peak`/`pw`/`aoa` together reads
+    off one real pulse's amplitude, width and bearing as a matched triple, fully
+    vectorised (no per-group Python loop).
     """
     slot = np.minimum((toa_s / SLOT_S).astype(np.int64), N_SLOTS - 1)
-    keys, peaks, counts = [], [], []
+    keys, peaks, counts, pws, aoas = [], [], [], [], []
     for band, mask in enumerate(bands_covering(freq_mhz)):
         if not mask.any():
             continue
-        s = slot[mask]
-        a = amp_dbm[mask]
-        # group by slot: peak level and pulse count
-        order = np.argsort(s, kind="stable")
-        s, a = s[order], a[order]
+        s, a, pw, ao = slot[mask], amp_dbm[mask], pw_us[mask], aoa_deg[mask]
+        # group by slot; within a slot, loudest pulse first
+        order = np.lexsort((-a, s))
+        s, a, pw, ao = s[order], a[order], pw[order], ao[order]
         uniq, start = np.unique(s, return_index=True)
-        peak = np.maximum.reduceat(a, start)
+        peak = a[start]          # the loudest pulse's own amplitude in each group
+        pw_sel = pw[start]       # -- and that same pulse's width...
+        aoa_sel = ao[start]      # -- and bearing.
         count = np.diff(np.append(start, len(s)))
         keys.append(np.stack([np.full(len(uniq), band, dtype=np.int16),
                               uniq.astype(np.int16)], axis=1))
         peaks.append(peak.astype(np.float32))
         counts.append(count.astype(np.int32))
+        pws.append(pw_sel.astype(np.float32))
+        aoas.append(aoa_sel.astype(np.float32))
     if not keys:
-        return (np.zeros((0, 2), np.int16), np.zeros(0, np.float32), np.zeros(0, np.int32))
-    return np.concatenate(keys), np.concatenate(peaks), np.concatenate(counts)
+        empty_f = np.zeros(0, np.float32)
+        return (np.zeros((0, 2), np.int16), empty_f, np.zeros(0, np.int32), empty_f, empty_f)
+    return (np.concatenate(keys), np.concatenate(peaks), np.concatenate(counts),
+            np.concatenate(pws), np.concatenate(aoas))
 
 
 def build_contributions(
@@ -256,22 +292,28 @@ def build_contributions(
 
     toa_s = data[:, 0].astype(np.float64) / 1e6  # ToA column is microseconds
     freq_mhz = data[:, 1].astype(np.float64)
+    pw_us = data[:, 2].astype(np.float64)     # D30: previously read and discarded
+    aoa_deg = data[:, 3].astype(np.float64)   # D30: previously read and discarded
     amp_dbm = data[:, 4].astype(np.float64)
 
     inside = (toa_s >= 0.0) & (toa_s < EPISODE_S)
-    toa_s, freq_mhz, amp_dbm, labels = (
-        toa_s[inside], freq_mhz[inside], amp_dbm[inside], labels[inside]
+    toa_s, freq_mhz, pw_us, aoa_deg, amp_dbm, labels = (
+        toa_s[inside], freq_mhz[inside], pw_us[inside], aoa_deg[inside],
+        amp_dbm[inside], labels[inside]
     )
 
     out = []
     for label in np.unique(labels):
         m = labels == label
-        cells, peaks, counts = _bucket(toa_s[m], freq_mhz[m], amp_dbm[m])
+        cells, peaks, counts, pws, aoas = _bucket(
+            toa_s[m], freq_mhz[m], amp_dbm[m], pw_us[m], aoa_deg[m]
+        )
         if not len(cells):
             continue
         out.append(EmitterContribution(
             config_id=config_id, source=source, label=int(label),
             cells=cells, peak_dbm=peaks, n_pulses=counts,
+            pulse_width_us=pws, aoa_deg=aoas,
             total_pulses=int(m.sum()), meta=meta.get(int(label), {}),
         ))
     return out
@@ -282,7 +324,12 @@ def build_contributions(
 # --------------------------------------------------------------------------- #
 
 def _cache_path(config_id: str, source: str, split: str) -> Path:
-    return Path(CACHE_ROOT) / f"{split}_{source}_{config_id}.npz"
+    # `_v2` (D30): the payload gained `pulse_width_us`/`aoa_deg` arrays that a
+    # pre-D30 cache file does not have. A different filename means an old cache
+    # is simply never found (silently rebuilt), instead of `load_contributions`
+    # raising `KeyError: 'pw_<label>'` on every cold machine that already has a
+    # `runs/cache/` from before this change.
+    return Path(CACHE_ROOT) / f"{split}_{source}_{config_id}_v2.npz"
 
 
 def load_contributions(
@@ -307,7 +354,9 @@ def load_contributions(
                 EmitterContribution(
                     config_id=config_id, source=source, label=int(lab),
                     cells=z[f"cells_{lab}"], peak_dbm=z[f"peak_{lab}"],
-                    n_pulses=z[f"count_{lab}"], total_pulses=int(tot),
+                    n_pulses=z[f"count_{lab}"],
+                    pulse_width_us=z[f"pw_{lab}"], aoa_deg=z[f"aoa_{lab}"],
+                    total_pulses=int(tot),
                     meta=metas.get(int(lab), {}),
                 )
                 for lab, tot in zip(z["labels"], totals)
@@ -324,6 +373,8 @@ def load_contributions(
         payload[f"cells_{c.label}"] = c.cells
         payload[f"peak_{c.label}"] = c.peak_dbm
         payload[f"count_{c.label}"] = c.n_pulses
+        payload[f"pw_{c.label}"] = c.pulse_width_us
+        payload[f"aoa_{c.label}"] = c.aoa_deg
     np.savez_compressed(cache, **payload)
     return contribs
 

@@ -914,9 +914,20 @@ is a mixture over the per-cell curve". The argument does not depend on the value
 
 ## D30 — AoA is a measured PDW field we discard; proposal to reconsider it for the observation
 
-**Status:** `OPEN` (2026-09-04) — **owned by the RL lane, and off the pre-RL critical path.**
+**Status:** `RESOLVED by D71` (2026-09-14) — **"they enter the observation, at this cost,"
+graded.** AoA and PulseWidth both now enter, as an opt-in "v2" observation layout alongside the
+original ("v1"), not a replacement for it. The trigger this entry set for itself was never
+formally hit (no agent was measured failing to explore for want of these features) — D71 was
+approved directly, on the strength of the case already made below, rather than waiting on that
+trigger. **The cost this entry warned about was paid in a cheaper form than it predicted**: no
+per-cell bearing list, no clustering, no deinterleaving problem (D19's concern) — see D71 for why,
+and for what is deliberately still missing (the seen-vs-unseen discrimination this entry's own
+measurement showed is AoA's actual value, which needs comparing bearings against each other, not
+just reading one).
+
+~~**Status:** `OPEN` (2026-09-04) — **owned by the RL lane, and off the pre-RL critical path.**
 Re-scoped 2026-09-04 from "awaiting a human decision": the question is real and the measurements
-below stand, but it cannot be answered well yet and it does not block anything before the freeze.
+below stand, but it cannot be answered well yet and it does not block anything before the freeze.~~
 
 **Why it is not a pre-freeze decision.** The observation vector is **not on the freeze list**
 (`ENVIRONMENT_SPEC.md` §Freeze list), the four validation gates do not read it, and D19 already
@@ -4062,3 +4073,515 @@ confirm the one docstring mention of `step % N_BANDS` in `reward_gate.py` does n
 check) — no live instance of the bug found; the fix is prophylactic, not a correction to a wrong
 number in any table. `venv/Scripts/python.exe -m pytest tests/test_reward_gate.py tests/test_split.py
 tests/test_selection.py -q` → 21 passed.
+
+---
+
+## D71 — PulseWidth, AoA and per-band amplitude enter the observation, as an opt-in "v2" layout (D30 resolved)
+
+**Status:** `SETTLED` (2026-09-14) — approved directly on the case D30 had already built; the
+formal trigger D30 set for itself (a trained agent measurably failing to explore for want of these
+features) was never separately measured before this was approved. Two of D30's three "honest
+limits" were sidestepped rather than solved — see "What this does not give" below — so this closes
+D30's question without fully claiming its hardest part.
+
+**What changed, in one line.** `rfenv/scenario.py` now reads the two PDW columns it always silently
+dropped (PulseWidth, AoA); `ScanEnv` can build either the original 183-wide observation ("v1",
+still the default — every checkpoint on disk before today stays exactly as loadable as it was) or a
+326-wide one ("v2") that adds them, selected per-instance via `ScanEnv(obs_version=...)`. Nothing
+about "v1" changed by "v2" existing — verified byte-for-byte, see Evidence.
+
+**Why now, not deferred further.** The user asked directly for it, having already read D30's own
+brief (the "PDW completeness" planning pass, same session) and the mechanical/policy reasons literal
+truth-side `C` cannot enter the observation (D29/D34, unaffected by this). PulseWidth and AoA are a
+different case from `C`: both are receiver-measurable quantities on a pulse the receiver actually
+detected — a real ES receiver's PDW output includes exactly these fields on every detection — so
+gating them on `Y` (declared hit) keeps them inside D29's boundary the same way `measured_dbm`
+already is, rather than reopening it.
+
+**The layout is modular, not a replacement (the user's own request).** `ScanEnv._observation_blocks()`
+returns every block by name in a dict; `OBS_LAYOUTS["v1"|"v2"]` (`rfenv/env.py`) selects and orders
+a subset into the flat vector SB3 actually sees, and `observation_space` is built from the same
+table so the two can never disagree. This is why "v1" staying exactly 183-wide, in exactly its old
+order, was checkable rather than asserted — see the regression test below.
+
+**Per layer:**
+
+- **L0 (`scenario.py`).** `_bucket()` now groups pulses by `np.lexsort((-amplitude, slot))` instead
+  of a plain stable sort — primary key slot, secondary key amplitude descending — so the first row
+  of each (band, slot) group is always the loudest pulse, and `peak_dbm`, the new `pulse_width_us`
+  and the new `aoa_deg` are read off that one row together: one real pulse's three readings, never
+  a blend of several. Fully vectorised, no per-group Python loop. Cache bumped to `_v2.npz` so a
+  pre-D30 cache is simply rebuilt, not read into a `KeyError`.
+- **L1 (`truth.py`).** New `TruthGrid.PW`/`.AOA` grids, resolved the same way `S` already is: within
+  `from_scenario`'s per-contribution loop, PW/AOA at a cell are overwritten only when this
+  contribution's own peak beats the *running* max there — so whichever contribution ends up winning
+  `S` (loudest overall) is provably the one PW/AOA end up reading, regardless of contribution order
+  (tested both orderings).
+- **L2 (`receiver.py`).** `DwellResult` carries `pulse_width_us`/`aoa_deg` unconditionally, truth-side,
+  same as `Z`/`C` already do — `env.py`, not `receiver.py`, is where the `Y`-gate is applied.
+- **L3 (`env.py`).** Four new blocks, all "v2"-only: `measured_dbm_band` (amplitude upgraded from one
+  global last-dwell scalar to a per-band block that persists across the episode, same rule
+  `hit_streak` set in D67 — the global scalar's real weakness, that it forgets every band but the
+  one just left, is why this exists); `pulse_width` (clamped to [0, 200] µs — measured this session
+  against 6 real train recordings: min 0.007, max 220.0, p99 102.3 — and rescaled to [0, 1]); `aoa_sin`/
+  `aoa_cos` (AoA is circular, so it is stored as `(sin θ, cos θ)`, each rescaled `(x+1)/2` into the
+  box's [0, 1] convention rather than as a raw angle that would teach the network 359° and 1° are
+  opposites). All three of the new per-band blocks are gated on `Y`: within a multi-slot dwell with
+  more than one declared hit, the loudest slot is the representative reading, mirroring how L1
+  already resolves multiple *emitters* sharing one cell.
+
+**A property that fell out of the encoding, not a separate mechanism.** `(0.5, 0.5)` in the stored
+`aoa_sin`/`aoa_cos` decodes back to raw `(0, 0)`, which sits at the centre of the unit circle — a
+point no real bearing measurement (always on the circle's edge, `sin²+cos²=1`) can ever produce.
+That makes it a clean, provably-unreachable "never measured" flag, for free, rather than a magic
+number chosen and hoped never to collide with a real reading. Tested directly (see Evidence).
+
+**What this does not give the agent.** D30's own measurement found AoA's real value is
+distinguishing an already-seen emitter from a new one in a crowded band — and that needs comparing
+a bearing against a *set* of bearings already seen in that band this episode (clustering), which is
+still not built. What ships here is one raw reading per band: "which direction did the last hit on
+this band come from." D30's second honest limit (the ceiling-vs-achievable gap: whole-episode
+medians against true labels, falling from 96.7% to 86.1% between sparse and crowded scenarios) is
+therefore untested by this change, because nothing here does per-emitter attribution yet. Its third
+limit (moving emitters, up to σ 122.6° of bearing drift) is structurally sidestepped rather than
+solved: a single last-reading-per-band feature has no notion of drift to get wrong, because it never
+compares two readings against each other in the first place. Whether the raw reading alone is useful
+is untested — nothing has trained on "v2" long enough to say.
+
+**Checkpoint housekeeping that came with it, same session.** `runs/checkpoints/` held 150 tracked
+files flat in one directory — unnavigable, and every one of them implicitly "v1" now that the
+concept exists. Reorganised (`git mv`, history-preserving) into `runs/checkpoints/v1/<model_name>/`,
+grouped by stripping trailing `_sN`/`_NNN_steps`/`_NNNk`/`_NNNM` snapshot suffixes (150 files → 23
+folders); future "v2" training lands in the sibling `runs/checkpoints/v2/<model_name>/`. Every
+reference updated: `ladder.py`'s 56 checkpoint-path literals, the three `DEFAULT_CHECKPOINT`
+constants, `doctor.py`'s checkpoint counter (`glob("*.zip")` → `glob("**/*.zip")`, or it would have
+silently reported zero checkpoints after the move). `--obs-version {v1,v2}` is now a shared CLI flag
+(`add_manifest_arguments`, `rfenv/rl/common.py`) on all three trainers.
+
+**A second, unrelated gap this surfaced and fixed.** `require_loadable()` (`common.py`) — the check
+every `load_checkpoint()` runs before trusting a checkpoint's shape — compared a checkpoint's
+recorded width against a single hardcoded "current" value, always "v1"'s 183. A "v2" checkpoint,
+correctly self-describing itself as 326-wide in its own manifest, would have failed this check the
+moment anyone tried to load it back — "cannot be used," even though it is perfectly loadable under
+`obs_version="v2"`. Fixed: `known_observation_widths()` returns every width `OBS_LAYOUTS` currently
+defines, and the check now accepts a recorded width matching *any* of them, not only one.
+
+**Evidence.** PulseWidth/AoA ranges measured this session against 6 real files under
+`data/turing/stare/train_stare/` (`h5py`, direct column read, confirmed against
+`metadata/feature_names`). New test file `tests/test_observation_d30.py`, 15 tests: layout widths
+(183/v1, 326/v2), unknown-version rejection, v1/v2 block-for-block agreement on every shared block
+run on an identical seeded episode, `Y`-gating (a confirmed real miss leaves PW/AoA untouched, a
+confirmed real hit writes a genuine unit-circle bearing), per-band amplitude persistence against the
+global scalar's forgetting, `TruthGrid.PW`/`.AOA` following the louder contribution under both
+orderings, and `EmitterContribution`'s backward-compatible zero-default for every pre-D30 hand-built
+contribution in the existing test suite. Full suite after: 405 non-RL tests + 27 RL tests +
+these 15, all passing; `scripts/doctor.py` clean (checkpoints on disk: 84, unchanged by the reorg).
+`venv/Scripts/python.exe -m pytest tests/ -q --ignore=tests/test_rl.py` and
+`tests/test_rl.py`/`tests/test_observation_d30.py` separately, this session.
+
+**Not yet done, deliberately out of scope here.** No checkpoint has trained on "v2" long enough to
+report a result — a run (`lstm_balance_v2_control_seed2`, `reward_balance`, seed 2, 400k timesteps,
+otherwise an exact mirror of rung 17c's own training config) started this session and is not yet
+finished as this entry is written. The per-emitter bearing-clustering feature D30 actually measured
+the value of is not designed, let alone built. Neither is scoped by this entry; both are separate,
+future decisions if the raw "v2" reading turns out to be worth building on.
+
+## D72 — `pulse_count` enters the "v2" observation, gated by `Y`: 326 → 362
+
+**Status:** `SETTLED` (2026-09-14) — approved directly on the user's own request, made twice in
+the same session. The first ask was literal `C` in the observation; that request had already been
+measured and declined the same session, in writing, by
+`docs/project/PDW_COMPLETENESS_AND_BAND_DENSITY_BRIEF.md` §1 — "mechanically, the current receiver
+has no process that could produce `C`," because `Receiver.dwell()` collapses every pulse landing in
+a cell into one combined draw before any threshold test runs, and `C` itself is built with **no
+gamma gate at all**, counting contributions that would never individually cross the threshold. The
+user's second ask — gate it by `Y`, the same rule D30 already applies to PulseWidth/AoA, on the
+argument that a real receiver's own PDW stream does carry a count of the detections it resolved —
+is a materially different request from the first and is what this entry approves. It does not
+overturn the brief's mechanical finding; it narrows the gap the brief itself left open (a real
+receiver counts detections it actually made, and `Y`-gating restricts the feature to cells the
+receiver actually declared) without closing it (see "What this does not fix," below).
+
+**What changed, in one line.** `rfenv/env.py`'s "v2" layout gains a sixth per-band block,
+`pulse_count`: on a declared hit, the loudest slot's `dwell.C` (already computed, already flowing
+through `DwellResult` — no L0/L1/L2 change needed) is stored per band, persisting until the next
+declared hit on that band, normalised `log1p(C) / log1p(64)` then clipped to `[0, 1]`. "v2" moves
+from 326 to 362 wide; "v1" is untouched — same append-only discipline D67 set and D30 kept, block
+appended after `aoa_cos` rather than inserted among D30's four, so no existing "v2" offset moves
+either. **Every checkpoint trained on the pre-D72 326-wide "v2" is invalidated by this, the same way
+D49/D55/D67 invalidated their predecessors — and unlike those, this one has a real casualty.**
+`runs/checkpoints/v2/lstm_balance_v2_control_seed2/` holds three snapshots (`_s1`/`_s2`/`_s3.zip`,
+manifests recording `observation_width: 326`) from D71's own retrain, at 385,024 of its planned
+400,000 timesteps per `train.log` — not finished, no training process currently running, and now
+permanently unloadable regardless. Nothing else on disk trained on "v2" yet, so this is the full
+extent of the cost.
+
+**Why gating narrows the gap but does not close it.** `truth.py` builds `C[b,t]` from every
+contributing emitter's raw pulse count landing in that cell, summed with `np.add.at`, independent of
+whether any one contribution's amplitude would itself cross `gamma`. A declared hit (`Y=1`) means
+the *combined* signal `S` crossed the threshold — it does not mean every pulse `C` counts did. So
+`pulse_count` on a hit can still include sub-threshold co-located emitters folded into the number a
+real receiver, resolving individual detections, would not have logged. This is the same "honest
+limit" pattern D30/D71 already carries for AoA (a raw last-reading, not the clustering feature that
+would make it truly useful) — the feature ships narrower than its ideal form, with the gap recorded
+rather than hidden. The only way to close it fully is the sub-slot pulse-simulation receiver named
+in D28 and re-named in the brief as "v2, after the gates" — a materially larger, separately-scoped
+receiver-model change, not proposed here.
+
+**Reuses an existing constant on purpose.** `_DENSITY_REF_PULSES = 64.0` already normalises `C` on
+the reward side (`reward_balance_improved`'s `log1p(C)/log1p(64)` weighting, D57). `pulse_count`
+reuses the identical transform so the observation and the one reward that already reads `C` agree on
+what "busy" means, rather than inventing a second reference for the same underlying quantity. The
+reward's use is unclipped (its weight can legitimately exceed 1); the observation's is clipped to
+`[0, 1]` because the box cannot be violated and raw `C` is recorded (D34) as spanning up to 4,543
+within a single episode.
+
+**Evidence.** `tests/test_observation_d30.py` extended: `test_v2_is_362_wide` (was
+`test_v2_is_326_wide`), `pulse_count` added to the never-measured-sentinel check (reads 0.0, since
+`log1p(0) = 0`), the Y-gating miss/hit tests (a confirmed miss leaves `pulse_count` untouched, a
+confirmed hit writes `pulse_count > 0`, since a declared hit implies `C >= 1`), and a dedicated
+`test_pulse_count_is_log1p_normalised_and_clipped_to_the_box` pinning the transform at the reference
+value, far past it (clipped to 1.0, not left free), and at zero. `tests/test_observation_d30.py`
+and `tests/test_env.py` together: 51 passed. Full non-RL suite
+(`venv/Scripts/python.exe -m pytest tests/ -q --ignore=tests/test_rl.py`): 421 passed, 162 skipped,
+1 failed — the one failure (`test_heldout_split_is_refused_without_an_explicit_flag`) is a
+pre-existing, unrelated data-availability gap (`list_configs("scan", "test")` returns 0, not 45 —
+the held-out test split's files are not present on this machine), not touched by this change.
+
+**Not done here, deliberately.** No checkpoint has trained on the 362-wide layout. `BAND_POWER`,
+the brief's own proposed deployable density proxy, remains unbuilt and is not superseded by this —
+they answer different parts of the same underlying goal and are not mutually exclusive. The
+sub-slot receiver redesign that would close the remaining gap stays named, not scoped.
+
+## D73 — the first result on the widened "v2" observation (D72), paired `reward_balance` vs `reward_balance_improved_v2`
+
+**Status:** `MEASURED` (2026-09-18) — a single-seed measurement, reported as such; not a selection
+decision (D47/D61 are not re-run here, since each reward has exactly one trained candidate at this
+width, not several snapshots to choose between).
+
+**What ran.** Two RecurrentPPO checkpoints, both `ScanEnv(obs_version="v2")` (362-wide, D72), both
+the D60 training split, `ent_coef=0.01 gamma=0.997 n_steps=8192`, seed 2 — the same pairing
+discipline D65 used, mirroring rung 17c/D71's own config:
+
+- `lstm_balance_v2_d72_seed2` (rung 20d) — `reward_balance`, 401,408 steps, one uninterrupted run.
+- `lstm_balance_improved_v2_d72_seed2` (rung 21a) — `reward_balance_improved_v2`, 404,800 steps.
+  **Interrupted by two separate laptop crashes**, both times with zero progress lost beyond the
+  last `--checkpoint-freq 50000` snapshot: `RecurrentPPO.load(...)` on the last `_sN.zip` plus
+  `model.learn(reset_num_timesteps=False)` picked up exactly where the process died, rather than
+  restarting from step 0. Recorded in the checkpoint's own manifest description, not only here.
+
+Both registered in `rfenv/baselines/ladder.py` (rungs 20d, 21a) beside the now-permanently-dead
+326-wide seed-2 pair D71 started and D72's width bump killed mid-training (rungs 20a–20c, three
+snapshots, 385,024/400,000 steps, never finished).
+
+**The comparison.** `python -m rfenv.compare --rungs round_robin,recency,lstm_balance_v2_d72_seed2_400k,lstm_balance_improved_v2_d72_seed2_400k --seeds 3 --sampled 10 --figures --obs-version v2 --out runs/d72_paired_comparison`
+— 4 rungs × 57 scenarios (47 stare + 10 sampled, D60's whole-development-set rule) × 3 seeds =
+**684 episodes**, same scale as D65's own headline run:
+
+| # | scheduler | interception ratio | censored intercept time (s) | emitter coverage | beats recency on **both** |
+|---|---|---|---|---|---|
+| 2 | round_robin | 0.060 | 4.18 | 0.865 | 3.5% |
+| 5 | recency | 0.111 | 3.34 | 0.887 | — |
+| 20d | Recurrent PPO, D72 v2 (`reward_balance`, 400k) | 0.111 | 3.30 | 0.902 | 36.3% |
+| 21a | Recurrent PPO, D72 v2 (`reward_balance_improved_v2`, 400k) | 0.136 | 2.82 | 0.912 | **45.6%** |
+
+Paired against round_robin: recency 93.0%/70.2%/67.3%, rung 20d 89.5%/77.2%/72.5%, rung 21a
+89.5%/83.6%/78.4% (ratio/cTTI/both). Full artefacts, both paired tables and figures:
+`runs/d72_paired_comparison/`.
+
+**Both checkpoints clear the bar.** Both beat recency on the joint metric far more often than
+round_robin's 3.5% floor. **The treatment (`reward_balance_improved_v2`) is ahead of the control
+(`reward_balance`) on every column** — ratio 0.136 vs 0.111, cTTI 2.82 s vs 3.30 s, coverage 0.912
+vs 0.902, both 45.6% vs 36.3% — the same direction D65 found on "v1" between `reward_balance` and
+`reward_balance_improved` (31.0% vs 22.8%).
+
+**Not directly comparable to D64/D65's "v1" numbers, and not claimed to be.** Three things differ
+at once: observation width (362 vs 183), reward formula (`reward_balance_improved_v2`'s
+`_DENSITY_SHRINKAGE_V2 = 0.75` against `reward_balance_improved`'s 0.5), and the sampled-scenario
+draws (this run's own `--sampled 10` draw, not verified identical to D65's). This entry measures
+"v2, this session" against its own floor and bar, not "v2 beats v1."
+
+**Not read as "the treatment wins," for the same reason D65 gave and did not resolve.** One
+training seed per arm, and D64 already measured the control's own four checkpoints swinging by more
+than the gap reported here (+25.0 to +36.1 net dominance across four snapshots of one run). This
+result adds a second observation-width's worth of the same single-seed pattern; it does not settle
+it. **Neither row is promoted as the number to carry forward.**
+
+**Evidence.** Command and output above are this session's own; manifests for both checkpoints
+(`runs/checkpoints/v2/lstm_balance_v2_d72_seed2/lstm_balance_v2_d72_seed2.json`,
+`.../lstm_balance_improved_v2_d72_seed2/lstm_balance_improved_v2_d72_seed2.json`) record
+`observation_width: 362`, `reward`, `seed: 2`, and `total_timesteps`. `runs/` is gitignored;
+artefacts are reproducible from the command above, not committed.
+
+## D74 — a band-priority reward, "v2p" (398-wide): built, validated, measured null at this scale
+
+**Status:** `MEASURED` (2026-09-19, extended same day by a follow-up below) — a negative/null
+result, recorded because a result that says "the agent isn't using this" is exactly as much a fact
+as one that says it is. Write-up was deliberately held until both pieces of validation existed (the
+control-arm comparison and a permutation ablation), on a direct instruction, rather than following
+D71/D72's precedent of writing the design up as `SETTLED` the day it was built. **The follow-up
+below re-ran the same test at a materially stronger setting (bigger coefficients, a new reward
+term, double the network capacity, double the training budget) and found the same null result** —
+this is not a single measurement at one arbitrary scale, it is the same answer twice.
+
+### Why this was built
+
+A fully-specified, library-free request, made directly this session: give the scheduler a
+per-episode "pay more attention to these bands" signal and see whether a trained policy uses it. It
+echoes the gap D70 named — *"Open loop strategies … may lose time to nonthreatening emitters by not
+giving time to new or threatening ones"* — but is a **deliberately separate, synthetic successor to
+D70, not a continuation of it**. D70 sourced its priority vector from an external threat
+classification and had its own partial implementation (`rfenv/threat.py`, priority-reweighting in
+`rl/common.py`) deleted uncommitted, unexplained, discovered and left unresolved earlier this
+session when a related request was raised and then cancelled. This entry's `band_priority` has no
+library behind it at all: values are synthetic, sampled fresh each episode from `ScanEnv`'s own
+RNG, not read from any emitter-type table.
+
+### What was built
+
+- **A fourth observation layout, `OBS_LAYOUTS["v2p"]`** — "v2" (362-wide, D72) plus one more
+  36-wide block, `band_priority`, appended last (398 total). `1.0` = ordinary (every band's
+  default), `3.0` = elevated (3-6 of 36 bands, resampled every `reset()`). Not gated on `Y`, unlike
+  every other "v2"-only block — nothing to gate, since it isn't something the receiver measures.
+- **An additive reward term in `ScanEnv.step()`**, not a new `REWARDS` candidate and not touched by
+  `reward_gate.py`'s D62 screen: `reward += priority_coef * band_priority[dwell.band] * len(newly)`
+  (`priority_coef = 0.5`), applied after whichever registered reward already ran. **Gated on
+  discovering something new, not on occupying the band** — a per-slot multiplier would reopen D53's
+  camping exploit; this was a design constraint from the start, not something added after measuring
+  a problem.
+- **A control-arm setting, `priority_uniform`**, load-bearing for the whole validation: with it set,
+  `band_priority` stays all-ones every episode, so the reward term still fires at the same scale but
+  carries no differential information. Necessary because the term is not neutral at `p=1` vs
+  switched off — it adds `priority_coef * len(newly)` to *every* discovery regardless of band — so a
+  plain before/after comparison would have confounded "the signal helped" with "the reward got
+  uniformly bigger."
+- `compare.py` gained matching flags, later made per-rung (`Rung.band_priority`/`priority_uniform`/
+  `priority_coef`/`priority_n_bands`, `resolve_priority_kwargs`) so a registered checkpoint's own
+  training config is used automatically rather than depending on the caller passing matching CLI
+  flags — closing a real, previously-silent risk (forgetting the flag would have scored a
+  priority-trained checkpoint under an all-ones vector without raising). `--figures` also gained an
+  automatic `priority_animation_config_*.gif`, highlighting the episode's elevated band(s) directly
+  on the animated schedule, generated whenever a compared rung resolves to real (non-uniform)
+  priority.
+
+### What was measured
+
+**Two RecurrentPPO checkpoints, matched pair**, `reward_balance`, D60 split, `ent_coef=0.01
+gamma=0.997 n_steps=8192`, seed 2, `obs_version="v2p"` — same discipline as the D72 pair, only
+`priority_uniform` differs:
+
+- `lstm_balance_v2p_priority_seed2` (treatment, rung 22a) — 401,408 steps.
+- `lstm_balance_v2p_uniform_seed2` (control, rung 22b) — 400,000 steps.
+
+**The comparison** (`round_robin`/`recency` + each rung, 513 episodes apiece: 3 rungs × 57
+scenarios × 3 seeds; reproduced afterward as one combined run via the per-rung fix above, identical
+numbers both ways):
+
+| rung | scheduler | ratio | cTTI (s) | coverage | beats recency on **both** |
+|---|---|---|---|---|---|
+| 2 | round_robin | 0.060 | 4.18–4.20 | 0.864–0.865 | — |
+| 5 | recency | 0.109–0.111 | 3.34–3.36 | 0.887–0.891 | — |
+| 22a — treatment | 0.120 | 3.28 | 0.891 | 44.4% |
+| 22b — control | **0.128** | **2.70** | **0.908** | **61.4%** |
+
+**The control beat the treatment on every column** — the opposite of what the feature is meant to
+show, if it worked.
+
+**Camping ruled out directly.** The obvious hypothesis — the treatment agent overcommits to its
+priority bands — was checked, not assumed: 20 episodes, treatment checkpoint, mean fair-share
+airtime on elevated bands **1.076** against **1.007** on ordinary ones (`1.0` = an equal cut) —
+about 7% more, not camping, and inconsistent in direction episode to episode. Camping was already
+structurally unlikely by construction (`reward_balance`'s own `-3.0 × visit_density × n_slots` term
+prices concentrated airtime; the priority bonus only pays on a new discovery, never on occupancy),
+and this measurement confirms it didn't happen anyway.
+
+**Treatment is measurably more diffuse than control, across the whole spectrum, not just the
+priority bands.** Same 20 episodes, entropy of the final `visit_density` distribution over all 36
+bands: treatment **3.255** against control **3.051** (max possible `ln 36 = 3.584`); bands touched
+meaningfully (`visit_density > 0.5`): treatment **24.95** against control **18.95**, out of 36.
+Control converged onto a tighter, more concentrated sweep; treatment's is broader and less
+committed — a real difference, plausibly because control's `band_priority` input is a *constant*
+every episode (nothing to condition on, so nothing to make the training distribution harder), while
+treatment's genuinely varies episode to episode, a harder problem to converge cleanly on on in the
+same 400k-step budget. A constant input cannot itself be "read" for information — this is a
+training-difficulty account, not "control learned to use the signal."
+
+**Permutation ablation: the treatment agent does not read `band_priority` at all.** 30 episodes on
+the trained treatment checkpoint, each run twice on the identical scenario/seed/receiver-noise draw
+(a separate RNG shuffles `band_priority`, never `env.np_random`, so nothing else about the episode
+differs) and the identical torch sampling seed for both runs of a pair — real `band_priority` in one,
+the same values permuted across bands in the other:
+
+| | corr(airtime, true priority) | ratio | cTTI (s) | coverage |
+|---|---|---|---|---|
+| real priority fed | +0.018 | 0.111 | 2.83 | 0.892 |
+| shuffled priority fed | +0.019 | 0.114 | 2.58 | 0.903 |
+
+Correlation between actual airtime and true priority is statistically indistinguishable whether the
+signal is real or garbage; real beat shuffled in 13 of 30 episodes (43% — a coin flip); performance
+does not degrade when the signal is corrupted, if anything the reverse by a margin small enough to
+be noise. **The agent learned to ignore this block of the observation.**
+
+### The finding
+
+**Read together, not one measurement alone:** treatment's underperformance is not the agent
+misusing a real signal (ruled out — it isn't reading the signal at all, ablation) and not the agent
+overcommitting to a narrow set of bands (ruled out — camping check). The more diffuse, less-focused
+policy it settled on (spread-check) is better explained by the harder, non-stationary training
+distribution it faced than by anything about the priority mechanism itself. **At this scale
+(`priority_coef = 0.5`, 3-6 of 36 bands, sb3-contrib's default LSTM capacity, 400k steps, one
+seed), the band-priority reward has no measurable effect, positive or negative, through the
+mechanism it was built to test** — it is simply not learned.
+
+**This is not adopted as a working feature and is not promoted for further use as configured.**
+Nothing in this repository defaults to it (`band_priority=False` everywhere it is a constructor
+kwarg), so nothing else is affected by leaving it registered. The code is not removed — unlike
+D66's phase-switch gate, which was a specific mechanism shown to be actively worse than the
+baseline it was meant to improve on, this is a null result with plausible, named paths that were not
+tried: a larger `priority_coef` or elevation multiplier (`_PRIORITY_HIGH`, currently `3.0`), more
+training steps, or more network capacity (the LSTM hidden state, sb3-contrib's default 256,
+untouched by this entry). None of those is scoped or recommended here — a genuinely new experiment,
+not a revision of this one's numbers, matching the discipline D66's own "neither threshold was
+retuned after seeing this" held to.
+
+### What this does and does not close
+
+Answers the narrow question it was built to answer: a synthetic, discovery-gated, additive priority
+reward at this specific scale does not get learned in 400k steps against `reward_balance`. It does
+not touch `REWARDS` or `reward_gate.py`'s D62 screen (nothing there changed). It does not resolve
+D70's own open items (threat-split `EVALUATION.md` §4 reporting remains unadopted; the `p` sampling
+distribution question D70 raised for its own, library-sourced retrain is untouched by this entry,
+which used a materially different, uniform-random sampling scheme by construction) — this entry
+answers a related but distinct question with a different mechanism, not D70's own retrain. Whether
+a *stronger* version of this same mechanism (bigger coefficient, more capacity, more steps) would be
+learned and would help is open, not closed by a null result at one configuration.
+
+**Evidence.** `rfenv/env.py` (`OBS_LAYOUTS["v2p"]`, the reward term, `_PRIORITY_HIGH`),
+`rfenv/rl/common.py`/`ppo.py`/`recurrent_ppo.py`/`_cli.py` (CLI wiring, `device` support added the
+same session), `rfenv/compare.py` (`resolve_priority_kwargs`, priority-animation), `rfenv/baselines/
+ladder.py` (rungs 22a/22b), `tests/test_band_priority.py` (17 tests). Comparison commands and
+manifests: `runs/d74_treatment_comparison/`, `runs/d74_control_comparison/`
+(`lstm_balance_v2p_priority_seed2.json`/`lstm_balance_v2p_uniform_seed2.json` record
+`observation_width: 398`, `band_priority`/`priority_uniform`, seed, `total_timesteps`). Camping,
+spread and permutation-ablation diagnostics were scratch scripts, not committed tests (not
+committed-repeatable artefacts the way the compare.py run is) — run this session, reported here in
+full with method and numbers rather than only a conclusion, per this repository's own provenance
+rules. `runs/` is gitignored; the compare.py artefacts are reproducible from the commands in the
+docs and `scratch/TRAINING_JOURNEY.md` §18; the diagnostic scripts themselves were not saved to the
+repository.
+
+### Follow-up (2026-09-19, same day): stronger incentive, more capacity, same null result
+
+Requested directly, in response to the null result above: turn up the discovery bonus, add a genuine
+per-slot "camp a little on the priority band" incentive, and give the retrain more capacity and more
+steps — testing whether the null result was a signal-strength or a capacity/budget limitation rather
+than the mechanism itself.
+
+**What changed in the code.** A new function, `priority_reward_bonus` (`rfenv/env.py`) — deliberately
+a separate function, not a change to `reward_balance` or any `REWARDS` entry, same discipline the
+original term held to. Two terms now, both added to whichever reward is selected:
+
+- `discovery = priority_coef * band_priority_value * n_newly` — unchanged formula, `priority_coef`
+  raised `0.5 → 2.0` and the elevated value itself now configurable (`priority_high`, a new `ScanEnv`
+  kwarg; was the hardcoded module constant `_PRIORITY_HIGH`), raised `3.0 → 5.0` for this run.
+- `occupancy = occupancy_coef * band_priority_value * decay * n_slots`, new — a genuine per-slot
+  occupancy bonus, requested directly despite the D53 risk this reopens in spirit. `decay = max(0, 1
+  - visit_density_value / occupancy_decay_cap)`, anchored to **`visit_density`** (D55's own
+  anti-camping fix for `reward_balance`'s camping cost), not a resettable consecutive-dwell streak —
+  the mechanism D53's exploit actually depended on. A two-band ping-pong drives both bands'
+  `visit_density` up over the whole episode regardless of what ran in between, decaying the bonus on
+  both exactly as sustained camping would; checked directly, not assumed
+  (`tests/test_band_priority.py::test_ping_pong_between_two_elevated_bands_does_not_out_earn_a_full_sweep`).
+  **Both terms scale by `band_priority_value` directly, not a binary elevated/ordinary gate** — required
+  so the control arm's constant `1.0` still fires both terms at the same uniform scale, preserving the
+  "same reward-scale, only the differential differs" comparison this whole methodology depends on; a
+  binary gate would have made the occupancy term fire only for treatment, never control, confounding
+  the comparison from the start. `occupancy_coef = 0.0` (`ScanEnv`'s default) reproduces this entry's
+  own original recorded runs exactly — verified with a dedicated regression test, not assumed.
+
+A latent bug surfaced and fixed while wiring `priority_high` through: `observation_space`'s declared
+`band_priority` ceiling was hardcoded to `_BLOCK_SPECS`'s static `3.0`, so `priority_high > 3.0`
+produced real episodes whose values fell outside the space the env itself declared —
+`gymnasium.utils.env_checker.check_env` catches this as a contract violation, and would have done so
+silently for any SB3 training run that never called `check_env` first. Fixed: the declared ceiling for
+this one block now tracks `self._priority_high`. Regression test added.
+
+`Rung` (`ladder.py`) gained `priority_high`/`occupancy_coef`/`occupancy_decay_cap` fields alongside
+the existing priority fields, resolved by `compare.py`'s `resolve_priority_kwargs` the same automatic,
+per-rung way as before.
+
+**Training config.** LSTM hidden size doubled (256 → 512, `policy_kwargs={"lstm_hidden_size": 512}`,
+confirmed on the loaded checkpoint, not just the training flag); timesteps doubled (400k → 800k).
+Same matched-pair discipline: `lstm_balance_v2p_priority_strong_seed2` (treatment, rung 23a,
+802,816 steps) and `lstm_balance_v2p_uniform_strong_seed2` (control, rung 23b, 800,000 steps), same
+split/seed/base hyperparameters as every other pair in this lineage.
+
+**The comparison** (round_robin/recency + each rung, 513 episodes apiece, same design as before):
+
+| rung | scheduler | ratio | cTTI (s) | coverage | beats recency on **both** |
+|---|---|---|---|---|---|
+| 23a — treatment (strengthened) | **0.154** | **2.43** | 0.907 | **73.1%** |
+| 23b — control (strengthened) | 0.121 | 2.74 | **0.911** | 45.6% |
+
+**Treatment beat control by a wide margin — the opposite direction from this entry's original pair**
+(where control led, 61.4% vs 44.4%). Taken alone, this would look like the mechanism finally working.
+23a's 73.1% is also the highest "beats recency on both" figure measured anywhere in this project to
+date, ahead of D68's settled best (17c, 54.4%) — though, as below, not for the reason that comparison
+would suggest.
+
+**A second permutation ablation, on the strengthened treatment checkpoint, says otherwise.** Same
+method as the original (30 episodes, each run twice on the identical scenario/seed/receiver-noise
+draw and the identical torch sampling seed, real `band_priority` in one run of each pair and the same
+values shuffled across bands in the other):
+
+| | corr(airtime, true priority) | ratio | cTTI (s) | coverage |
+|---|---|---|---|---|
+| real priority fed | +0.031 | 0.145 | 1.80 | 0.960 |
+| shuffled priority fed | +0.031 | 0.148 | 1.82 | 0.929 |
+
+Correlation is identical to three decimal places whether the signal is real or garbage, real beat
+shuffled in 12 of 30 episodes (40% — a coin flip, if anything below even odds), and performance does
+not degrade when the signal is corrupted. Airtime on elevated bands is a little more tilted than the
+original run's (1.129 vs 0.970 fair-share, ~16% more, against 1.076 vs 1.007 the first time) but the
+ablation shows directly that this tilt does not track the true signal either — noise, not tracking.
+**The agent still does not read `band_priority`**, at roughly 4x the discovery incentive, a new
+occupancy term on top, double the network, and double the training budget.
+
+**Conclusion: 23a's lead over 23b is not the priority mechanism working.** A checkpoint that has been
+shown, directly, not to condition its behaviour on a signal cannot be beating another checkpoint
+*because* of that signal. The far more likely explanation is plain single-seed training-run variance
+— the same caveat every comparison in this lineage carries (D65, D73, this entry's own original
+pair) — and the direction flipping completely between the two pairs (control ahead the first time,
+treatment ahead the second) while the one thing actually measured both times, whether the agent reads
+the signal, came back an unambiguous "no" on both occasions, is exactly the pattern that points at
+noise rather than a real, reproducible effect. **What this follow-up does establish, and it is worth
+keeping separate from the priority question:** a 512-wide LSTM trained for 800k steps outperforms
+every 256-wide/300-400k-step checkpoint measured in this project so far, on both arms. Whether that
+holds with `band_priority` removed entirely — the one comparison this follow-up does not contain,
+since both 23a and 23b still carry the mechanism, just with real vs. uniform values — is untested and
+open if capacity/budget is pursued as its own question, separate from priority.
+
+**Not adopted, not promoted, code not removed — unchanged from this entry's original verdict.**
+Nothing defaults to `occupancy_coef` above `0.0` or `priority_high` above `3.0`; every existing call
+site is unaffected. The specific untried paths named in this entry's original verdict (bigger
+coefficient, more capacity, more training) have now been tried, together, at a substantial multiple
+of the original scale, and the mechanism still measures null. A materially different scale again, a
+different architecture, or accepting that a synthetic per-episode priority signal may not be
+learnable by this policy class in this environment at all are the remaining open directions — none
+scoped or recommended here.
+
+**Evidence.** `rfenv/env.py` (`priority_reward_bonus`, `priority_high`/`occupancy_coef`/
+`occupancy_decay_cap` on `ScanEnv.__init__`, the `observation_space` ceiling fix),
+`rfenv/rl/common.py`/`ppo.py`/`recurrent_ppo.py`/`dqn.py`/`_cli.py` (CLI wiring for the three new
+flags), `rfenv/compare.py` (`resolve_priority_kwargs` extended to seven fields), `rfenv/baselines/
+ladder.py` (rungs 23a/23b), `tests/test_band_priority.py` (extended to 26 tests: the occupancy
+formula in isolation, backward compatibility at `occupancy_coef=0.0`, the D53 ping-pong check, and
+the `observation_space` ceiling regression). Comparison commands and manifests:
+`runs/d74_followup_treatment_comparison/`, `runs/d74_followup_control_comparison/`
+(`lstm_balance_v2p_priority_strong_seed2.json`/`lstm_balance_v2p_uniform_strong_seed2.json` record
+`observation_width: 398`, seed, `total_timesteps`, and the full `argv` including every new flag).
+Both permutation-ablation runs (original and this follow-up) were scratch scripts, not committed
+tests, reported here in full with method and numbers rather than only a conclusion, per this
+repository's own provenance rules. `runs/` is gitignored; the compare.py artefacts are reproducible
+from the commands in `scratch/TRAINING_JOURNEY.md` §18; the diagnostic scripts themselves were not
+saved to the repository.

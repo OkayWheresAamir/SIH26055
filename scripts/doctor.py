@@ -167,7 +167,9 @@ def check_rungs_declare_their_checkpoints() -> None:
                 missing.append((spec.rung, m.group()))
     print(f"    ladder: {len(LADDER)} rungs registered")
     ckpt_dir = ROOT / "runs" / "checkpoints"
-    n = len(list(ckpt_dir.glob("*.zip"))) if ckpt_dir.is_dir() else 0
+    # Recursive (**): checkpoints live in per-model subfolders, not flat, since
+    # the runs/checkpoints/v1|v2/<model_name>/ reorganisation (D71).
+    n = len(list(ckpt_dir.glob("**/*.zip"))) if ckpt_dir.is_dir() else 0
     print(f"    checkpoints on disk: {n}")
     if n == 0:
         WARN.append("no checkpoints in runs/checkpoints/ -- every RL rung will skip. "
