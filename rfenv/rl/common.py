@@ -71,13 +71,13 @@ def make_train_env(*, reward: str = DEFAULT_REWARD,
     "reward as a hyperparameter" requirement -- ScanEnv already validates it
     against `REWARDS`. `obs_version` (D30) is the same story for the
     observation layout -- "v1" (default, 183-wide, every pre-D30 checkpoint),
-    "v2" (362-wide, adds PulseWidth/AoA/per-band amplitude/pulse count, D72),
+    "v2" (362-wide, adds PulseWidth/AoA/per-band amplitude/pulse count, D76),
     or "v2p" (398-wide, adds `band_priority`, this task).
 
     `band_priority`/`priority_coef`/`priority_n_bands`/`priority_uniform`/
     `priority_high`/`occupancy_coef`/`occupancy_decay_cap` pass straight
     through to `ScanEnv(...)` -- see its docstring, `step()`'s own comment,
-    and `priority_reward_bonus`'s docstring (D74 follow-up: the decaying
+    and `priority_reward_bonus`'s docstring (D78 follow-up: the decaying
     per-slot occupancy term, off by default at `occupancy_coef=0.0`) for what
     each does. `priority_uniform=True` is the control arm (D70's open item 2,
     resolved for the no-library case): same reward terms, same scale, `p`
@@ -344,7 +344,7 @@ def add_manifest_arguments(ap) -> None:
     ap.add_argument("--obs-version", default="v1", choices=("v1", "v2", "v2p"),
                     help="observation layout (D30): v1 (default, 183-wide, every "
                          "pre-D30 checkpoint), v2 (362-wide, adds PulseWidth/AoA/"
-                         "per-band amplitude/pulse count, D72), or v2p (398-wide, "
+                         "per-band amplitude/pulse count, D76), or v2p (398-wide, "
                          "adds band_priority, this task). Passed to "
                          "ScanEnv(obs_version=...); the checkpoint this produces is "
                          "only loadable against whichever one it trained on.")
@@ -368,14 +368,14 @@ def add_manifest_arguments(ap) -> None:
                          "identical without giving the policy anything to condition on. "
                          "No effect unless --band-priority is set.")
     ap.add_argument("--priority-high", type=float, default=3.0,
-                    help="the elevated band's priority value (default 3.0, D74's own "
+                    help="the elevated band's priority value (default 3.0, D78's own "
                          "value). No effect unless --band-priority is set.")
     ap.add_argument("--occupancy-coef", type=float, default=0.0,
-                    help="D74 follow-up: coefficient on a second, decaying per-slot "
+                    help="D78 follow-up: coefficient on a second, decaying per-slot "
                          "priority term -- `occupancy_coef * p[band] * decay * n_slots`, "
                          "added alongside the discovery term (--priority-coef), not "
                          "instead of it. Default 0.0 disables it exactly, reproducing "
-                         "D74's own recorded runs. See priority_reward_bonus's own "
+                         "D78's own recorded runs. See priority_reward_bonus's own "
                          "docstring (env.py) for why this stays clear of D53's camping "
                          "exploit despite being a genuine per-slot bonus. No effect "
                          "unless --band-priority is set.")
@@ -674,7 +674,7 @@ def training_callbacks(
     timestep count and the description. Each snapshot is registrable as its own
     ladder rung exactly like any other trained checkpoint (see run.md).
     `finish_training` below creates `checkpoint.parent` if it does not exist, so
-    a nested `--checkpoint runs/checkpoints/v1/<model>/<model>.zip` (D71's
+    a nested `--checkpoint runs/checkpoints/v1/<model>/<model>.zip` (D75's
     per-model-folder convention, replacing the old flat directory) works with
     no extra step.
 

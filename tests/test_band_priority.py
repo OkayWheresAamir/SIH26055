@@ -1,4 +1,4 @@
-"""Band-priority reward/observation term (D70, no-library form) and its D74
+"""Band-priority reward/observation term (D70, no-library form) and its D78
 follow-up (`priority_reward_bonus`'s decaying occupancy term).
 
 Pinned here: (1) the new "v2p" layout is 398-wide and leaves "v1"/"v2" untouched;
@@ -7,8 +7,8 @@ own seeded RNG, not derived from scan history; (3) disabled (the default) or
 `priority_coef=0.0` reproduces the base reward exactly; (4) the discovery term is
 gated on `newly`, not on any per-slot signal, so it cannot pay for camping;
 (5) priority for band i lands at index i and nowhere else; (6) `band_priority=True`
-is refused unless the layout actually carries the block. D74 follow-up, added
-this task: (7) `occupancy_coef=0.0` (default) reproduces D74's own recorded
+is refused unless the layout actually carries the block. D78 follow-up, added
+this task: (7) `occupancy_coef=0.0` (default) reproduces D78's own recorded
 behaviour exactly, byte for byte; (8) the occupancy term scales by
 `band_priority`'s *value*, not a binary elevated/not gate, so it fires
 identically for the uniform control arm too; (9) it decays with cumulative
@@ -49,7 +49,7 @@ def test_band_priority_only_in_v2p():
     assert "band_priority" not in OBS_LAYOUTS["v1"]
     assert "band_priority" not in OBS_LAYOUTS["v2"]
     assert "band_priority" in OBS_LAYOUTS["v2p"]
-    assert OBS_LAYOUTS["v2p"][-1] == "band_priority"   # appended last, D67/D30/D72's convention
+    assert OBS_LAYOUTS["v2p"][-1] == "band_priority"   # appended last, D67/D30/D76's convention
 
 
 def test_unknown_obs_version_is_still_refused():
@@ -214,7 +214,7 @@ def test_every_layout_only_names_real_blocks():
 
 
 # --------------------------------------------------------------------------- #
-# D74 follow-up: priority_reward_bonus -- the decaying occupancy term
+# D78 follow-up: priority_reward_bonus -- the decaying occupancy term
 # --------------------------------------------------------------------------- #
 
 def test_priority_reward_bonus_matches_d74s_formula_when_occupancy_is_off():
@@ -224,7 +224,7 @@ def test_priority_reward_bonus_matches_d74s_formula_when_occupancy_is_off():
 
 
 def test_occupancy_term_fires_even_with_no_discovery():
-    """Unlike the discovery term (D74), this one is a genuine per-slot
+    """Unlike the discovery term (D78), this one is a genuine per-slot
     occupancy bonus -- deliberately, on direct request."""
     got = priority_reward_bonus(3.0, 0, 0.0, 1, priority_coef=0.5,
                                  occupancy_coef=0.1, occupancy_decay_cap=2.0)
@@ -234,7 +234,7 @@ def test_occupancy_term_fires_even_with_no_discovery():
 def test_occupancy_term_scales_by_priority_value_not_a_binary_elevated_gate():
     """A uniform-control band (priority == 1.0, never "elevated") still earns
     a nonzero occupancy bonus at the baseline rate -- required so control and
-    treatment share the same reward-scale shift (D74's own methodology); a
+    treatment share the same reward-scale shift (D78's own methodology); a
     binary "elevated or not" gate would fire only for treatment and never for
     control, breaking that comparison."""
     control_band = priority_reward_bonus(1.0, 0, 0.0, 1, priority_coef=0.5,
@@ -267,7 +267,7 @@ def test_occupancy_term_scales_by_n_slots_like_every_other_per_slot_term():
 
 
 # --------------------------------------------------------------------------- #
-# D74 follow-up, through the env: backward compatibility and the D53 check
+# D78 follow-up, through the env: backward compatibility and the D53 check
 # --------------------------------------------------------------------------- #
 
 def test_occupancy_coef_zero_is_bit_identical_to_d74s_recorded_behaviour():
