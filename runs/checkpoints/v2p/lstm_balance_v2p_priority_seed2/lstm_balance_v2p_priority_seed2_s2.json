@@ -1,0 +1,83 @@
+{
+  "run": "lstm_balance_v2p_priority_seed2",
+  "description": "Treatment: reward_balance, D60 split, v2p observation (398-wide: v2 + band_priority). band_priority=True, priority_uniform=False, priority_coef=0.5, priority_n_bands=(3,6) -- 3-6 bands elevated to 3.0 each episode, resampled from ScanEnv's own seeded RNG. Mirrors lstm_balance_v2_d72_seed2's hyperparameters/seed exactly (ent_coef=0.01, gamma=0.997, n_steps=8192, seed 2, 400k steps) except obs_version and band_priority. Paired against lstm_balance_v2p_uniform_seed2 (control) -- same everything except priority_uniform. Restarted from scratch on device=auto (CUDA, GTX 1650) after a CPU-only partial run (50k steps) was stopped to install a CUDA-enabled torch build.",
+  "checkpoint": "lstm_balance_v2p_priority_seed2_s2.zip",
+  "sha256": "01fb2381349f2992ac6076328a693e8ccdc952ff878ff403889ba963efa3b041",
+  "algorithm": "RecurrentPPO",
+  "policy": "RecurrentActorCriticPolicy",
+  "reward": "reward_balance",
+  "observation_width": 398,
+  "action_space": "Discrete(36)",
+  "seed": 2,
+  "total_timesteps": 100000,
+  "hyperparameters": {
+    "ent_coef": 0.01,
+    "gamma": 0.997,
+    "n_steps": 8192
+  },
+  "resolved": {
+    "learning_rate": 0.0003,
+    "gamma": 0.997,
+    "n_steps": 8192,
+    "batch_size": 128,
+    "n_epochs": 10,
+    "ent_coef": 0.01,
+    "gae_lambda": 0.95,
+    "vf_coef": 0.5,
+    "max_grad_norm": 0.5,
+    "device": "device(type='cuda')"
+  },
+  "argv": [
+    "C:\\Code\\sih\\SIH26055\\rfenv\\rl\\recurrent_ppo.py",
+    "--reward",
+    "reward_balance",
+    "--obs-version",
+    "v2p",
+    "--band-priority",
+    "--priority-coef",
+    "0.5",
+    "--priority-n-bands",
+    "3",
+    "6",
+    "--timesteps",
+    "400000",
+    "--seed",
+    "2",
+    "--checkpoint-freq",
+    "50000",
+    "--checkpoint",
+    "runs/checkpoints/v2p/lstm_balance_v2p_priority_seed2/lstm_balance_v2p_priority_seed2.zip",
+    "--run-name",
+    "lstm_balance_v2p_priority_seed2",
+    "--description",
+    "Treatment: reward_balance, D60 split, v2p observation (398-wide: v2 + band_priority). band_priority=True, priority_uniform=False, priority_coef=0.5, priority_n_bands=(3,6) -- 3-6 bands elevated to 3.0 each episode, resampled from ScanEnv's own seeded RNG. Mirrors lstm_balance_v2_d72_seed2's hyperparameters/seed exactly (ent_coef=0.01, gamma=0.997, n_steps=8192, seed 2, 400k steps) except obs_version and band_priority. Paired against lstm_balance_v2p_uniform_seed2 (control) -- same everything except priority_uniform. Restarted from scratch on device=auto (CUDA, GTX 1650) after a CPU-only partial run (50k steps) was stopped to install a CUDA-enabled torch build.",
+    "--hyperparam",
+    "ent_coef=0.01",
+    "--hyperparam",
+    "gamma=0.997",
+    "--hyperparam",
+    "n_steps=8192"
+  ],
+  "command": "C:\\Code\\sih\\SIH26055\\venv\\Scripts\\python.exe -m rfenv.rl.recurrent_ppo --reward reward_balance --obs-version v2p --band-priority --priority-coef 0.5 --priority-n-bands 3 6 --timesteps 400000 --seed 2 --checkpoint-freq 50000 --checkpoint runs/checkpoints/v2p/lstm_balance_v2p_priority_seed2/lstm_balance_v2p_priority_seed2.zip --run-name lstm_balance_v2p_priority_seed2 --description \"Treatment: reward_balance, D60 split, v2p observation (398-wide: v2 + band_priority). band_priority=True, priority_uniform=False, priority_coef=0.5, priority_n_bands=(3,6) -- 3-6 bands elevated to 3.0 each episode, resampled from ScanEnv's own seeded RNG. Mirrors lstm_balance_v2_d72_seed2's hyperparameters/seed exactly (ent_coef=0.01, gamma=0.997, n_steps=8192, seed 2, 400k steps) except obs_version and band_priority. Paired against lstm_balance_v2p_uniform_seed2 (control) -- same everything except priority_uniform. Restarted from scratch on device=auto (CUDA, GTX 1650) after a CPU-only partial run (50k steps) was stopped to install a CUDA-enabled torch build.\" --hyperparam ent_coef=0.01 --hyperparam gamma=0.997 --hyperparam n_steps=8192",
+  "git": {
+    "commit": "64840f8dc80adec7ef8a9864052fdf2f6d7b8488",
+    "dirty": true
+  },
+  "started_at": "2026-09-18T18:46:29Z",
+  "wall_clock_s": 1158.1,
+  "versions": {
+    "python": "3.12.10",
+    "stable_baselines3": "2.9.0",
+    "torch": "2.14.0+cu126",
+    "gymnasium": "1.3.0",
+    "numpy": "2.5.3",
+    "sb3_contrib": "2.9.0"
+  },
+  "hardware": {
+    "os": "Windows-11-10.0.26200-SP0",
+    "machine": "AMD64",
+    "processor": "Intel64 Family 6 Model 165 Stepping 2, GenuineIntel",
+    "cpu_count": 12,
+    "cuda": "NVIDIA GeForce GTX 1650"
+  }
+}

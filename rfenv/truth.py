@@ -14,6 +14,12 @@ Three arrays, and the distinction between them is the whole detection model (D26
                        interception ratio, which is counted per illumination and
                        not per dwell (EVALUATION.md §4).
 
+Two more (D30), same shape, describing **whichever single pulse set `S`** in that
+cell -- not an average over every contributor, a matched reading of one real pulse:
+
+    PW[b, t]   float32  that pulse's width, microseconds. 0.0 where Z is false.
+    AOA[b, t]  float32  that pulse's angle of arrival, degrees. 0.0 where Z is false.
+
 What is *not* here: noise, thresholds applied to make a decision, and anything
 stochastic. Truth is the world; the receiver is the instrument. `receiver.py`
 draws the noise and declares the hit. This module has no RNG and no I/O, so a
@@ -43,6 +49,8 @@ class TruthGrid:
     S: np.ndarray            # (36, 600) float32, dB
     C: np.ndarray            # (36, 600) int32
     Z: np.ndarray            # (36, 600) bool
+    PW: np.ndarray           # (36, 600) float32, us -- D30, the S-setting pulse's width
+    AOA: np.ndarray          # (36, 600) float32, deg -- D30, the S-setting pulse's bearing
     _cell_id: np.ndarray     # (n,) int64, sorted: band * N_SLOTS + slot
     _owner: np.ndarray       # (n,) int32, index into `contributions`
     _owner_peak: np.ndarray  # (n,) float32, that emitter's own level in that cell
@@ -54,15 +62,29 @@ class TruthGrid:
         S = np.full((N_BANDS, N_SLOTS), NOISE_FLOOR_DBM, dtype=np.float32)
         C = np.zeros((N_BANDS, N_SLOTS), dtype=np.int32)
         Z = np.zeros((N_BANDS, N_SLOTS), dtype=bool)
+        PW = np.zeros((N_BANDS, N_SLOTS), dtype=np.float32)
+        AOA = np.zeros((N_BANDS, N_SLOTS), dtype=np.float32)
 
         ids, owners, peaks = [], [], []
         for i, c in enumerate(scenario.contributions):
             if not len(c):
                 continue
             b, t = c.cells[:, 0].astype(np.int64), c.cells[:, 1].astype(np.int64)
+            # D30: PW/AOA must follow whichever contribution's peak_dbm actually
+            # wins the max at each cell -- so read the *pre-update* running max
+            # here, before `np.maximum.at` folds this contribution in, and only
+            # overwrite PW/AOA where this contribution's own peak beats it. Two
+            # contributions landing in the same cell across different loop
+            # iterations are handled correctly because `S` is monotonically
+            # non-decreasing across the loop: whichever one is truly loudest is
+            # always the last to satisfy `better` for that cell.
+            beats_current_max = c.peak_dbm > S[b, t]
             np.maximum.at(S, (b, t), c.peak_dbm)
             np.add.at(C, (b, t), c.n_pulses)
             Z[b, t] = True
+            wb, wt = b[beats_current_max], t[beats_current_max]
+            PW[wb, wt] = c.pulse_width_us[beats_current_max]
+            AOA[wb, wt] = c.aoa_deg[beats_current_max]
             ids.append(b * N_SLOTS + t)
             owners.append(np.full(len(c), i, dtype=np.int32))
             peaks.append(c.peak_dbm)
@@ -80,7 +102,7 @@ class TruthGrid:
 
         # An empty cell sits at the floor exactly; nothing may have pushed it below.
         S[~Z] = NOISE_FLOOR_DBM
-        return cls(scenario=scenario, S=S, C=C, Z=Z,
+        return cls(scenario=scenario, S=S, C=C, Z=Z, PW=PW, AOA=AOA,
                    _cell_id=cell_id, _owner=owner, _owner_peak=owner_peak)
 
     # ------------------------------------------------------------- properties --

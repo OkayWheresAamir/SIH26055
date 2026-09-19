@@ -95,6 +95,39 @@ def _check_comparison_scenario(scenario: Scenario) -> None:
 # One episode, one rung
 # --------------------------------------------------------------------------- #
 
+def resolve_priority_kwargs(
+    key: str,
+    band_priority: bool,
+    priority_coef: float,
+    priority_n_bands: tuple[int, int],
+    priority_uniform: bool,
+    priority_high: float = 3.0,
+    occupancy_coef: float = 0.0,
+    occupancy_decay_cap: float = 2.0,
+) -> tuple[bool, float, tuple[int, int], bool, float, float, float]:
+    """This task: a rung's own `band_priority` metadata (`ladder.py`'s `Rung`)
+    overrides the caller-supplied defaults when it declares one.
+
+    Every rung defaults to `band_priority=False`, so this is a no-op for the
+    whole ladder except the rungs that actually need the block (22a/22b as of
+    D74, plus whichever D74-follow-up rungs use `priority_high`/
+    `occupancy_coef`/`occupancy_decay_cap`) -- a registered priority
+    checkpoint carries its own true training config with it into every
+    comparison, rather than depending on the caller passing matching
+    `--band-priority`/`--priority-uniform`/... flags correctly by hand every
+    time (a silent-mismatch risk: forgetting the flag would evaluate a
+    priority-trained checkpoint under an all-ones vector without raising).
+    The CLI flags stay meaningful as the default for any rung that doesn't
+    declare its own -- everything before D74.
+    """
+    spec = B.BY_KEY[key]
+    if spec.band_priority:
+        return (True, spec.priority_coef, spec.priority_n_bands, spec.priority_uniform,
+                spec.priority_high, spec.occupancy_coef, spec.occupancy_decay_cap)
+    return (band_priority, priority_coef, priority_n_bands, priority_uniform,
+            priority_high, occupancy_coef, occupancy_decay_cap)
+
+
 def run_one(
     key: str,
     scenario: Scenario,
@@ -105,6 +138,14 @@ def run_one(
     reward: str = DEFAULT_REWARD,
     gamma_dbm: float = GAMMA_DBM,
     sigma_db: float = NOISE_SIGMA_DB,
+    obs_version: str = "v1",
+    band_priority: bool = False,
+    priority_coef: float = 0.5,
+    priority_n_bands: tuple[int, int] = (3, 6),
+    priority_uniform: bool = False,
+    priority_high: float = 3.0,
+    occupancy_coef: float = 0.0,
+    occupancy_decay_cap: float = 2.0,
 ):
     """Run one rung on one scenario at one seed; return its artefacts.
 
@@ -116,12 +157,35 @@ def run_one(
     what `EVALUATION.md` §7's "identical scenarios and seeds" has to mean: the
     receiver's noise draw and the policy's own randomness both reproduce. They do
     not collide -- `baselines.make` derives an independent stream per rung name.
+
+    `obs_version` (D30/D71) only changes what the *policy* is fed -- every
+    heuristic rung that reads the observation at all (`recency`, `camper`) only
+    ever reads `HIT_RATE`/`STALENESS`, both inside the first `4 * N_BANDS`
+    elements, which "v1" and "v2" lay out identically. A trained checkpoint must
+    still match: an "v1" checkpoint fed a "v2" (362-wide, D72) observation raises
+    inside `predict()`, not here.
+
+    `band_priority`/`priority_coef`/`priority_n_bands`/`priority_uniform` are
+    this call's *defaults* -- `key`'s own `Rung` entry overrides them when it
+    declares `band_priority=True` (this task): a rung that was itself trained
+    with real per-episode priority carries that fact with it, so its env is
+    built correctly whether or not the caller remembered to pass matching CLI
+    flags. See `resolve_priority_kwargs`.
     """
     _check_comparison_scenario(scenario)
     if grid is None:
         grid = TruthGrid.from_scenario(scenario)
 
-    env = ScanEnv(scenario=scenario, reward=reward, gamma_dbm=gamma_dbm, sigma_db=sigma_db)
+    (band_priority, priority_coef, priority_n_bands, priority_uniform,
+     priority_high, occupancy_coef, occupancy_decay_cap) = resolve_priority_kwargs(
+        key, band_priority, priority_coef, priority_n_bands, priority_uniform,
+        priority_high, occupancy_coef, occupancy_decay_cap,
+    )
+    env = ScanEnv(scenario=scenario, reward=reward, gamma_dbm=gamma_dbm, sigma_db=sigma_db,
+                  obs_version=obs_version, band_priority=band_priority,
+                  priority_coef=priority_coef, priority_n_bands=priority_n_bands,
+                  priority_uniform=priority_uniform, priority_high=priority_high,
+                  occupancy_coef=occupancy_coef, occupancy_decay_cap=occupancy_decay_cap)
     policy = B.make(key, seed=seed, grid=grid)
     run_episode(env, policy, seed=seed)
 
@@ -216,12 +280,24 @@ def compare(
     *,
     reward: str = DEFAULT_REWARD,
     progress: bool = True,
+    obs_version: str = "v1",
+    band_priority: bool = False,
+    priority_coef: float = 0.5,
+    priority_n_bands: tuple[int, int] = (3, 6),
+    priority_uniform: bool = False,
+    priority_high: float = 3.0,
+    occupancy_coef: float = 0.0,
+    occupancy_decay_cap: float = 2.0,
 ) -> dict[str, list[dict]]:
     """Every rung on every scenario at every seed. Returns `{key: [row, ...]}`.
 
     Scenario-major so each truth grid is built once and shared across the whole
     ladder -- and so every rung on a scenario sees exactly the same world, which
     is what makes the comparison paired rather than merely averaged.
+
+    `obs_version` (D30/D71) applies to every rung in this run, heuristic and
+    trained alike -- see `run_one`'s docstring for why a heuristic rung is safe
+    under either.
     """
     rows: dict[str, list[dict]] = {k: [] for k in keys}
     t0 = time.time()
@@ -230,7 +306,12 @@ def compare(
         grid = TruthGrid.from_scenario(scenario)
         for key in keys:
             for seed in seeds:
-                run = run_one(key, scenario, seed, out_root, grid=grid, reward=reward)
+                run = run_one(key, scenario, seed, out_root, grid=grid, reward=reward,
+                              obs_version=obs_version, band_priority=band_priority,
+                              priority_coef=priority_coef, priority_n_bands=priority_n_bands,
+                              priority_uniform=priority_uniform, priority_high=priority_high,
+                              occupancy_coef=occupancy_coef,
+                              occupancy_decay_cap=occupancy_decay_cap)
                 rows[key].append(scheduler_metrics(run))
         if progress:
             print(f"  [{i:3d}/{len(scenarios)}] {scenario.name:<34} "
@@ -259,14 +340,15 @@ def summarise(rows: dict[str, list[dict]]) -> dict[str, dict]:
     return out
 
 
-def _centres(summary: dict[str, dict]) -> dict[str, dict]:
-    """`{key: {metric: median, metric_p25, metric_p75}}` for the Pareto plot.
+def _centres(summary: dict[str, dict], *, statistic: str = "median") -> dict[str, dict]:
+    """`{key: {metric: <statistic>, metric_p25, metric_p75}}` for the Pareto plot.
 
-    **Medians, not means, and the interquartile range travels with them.** The
-    figure draws one point per scheduler, and a point cannot show a
-    distribution -- so the statistic it collapses to has to be one that is not
-    moved by a minority of episodes. For every scheduler on the ladder except
-    one that barely matters; for rung 4 it decides what the figure says.
+    **`statistic="median"` is the default, and the interquartile range travels
+    with it regardless of which statistic is chosen.** The figure draws one
+    point per scheduler, and a point cannot show a distribution -- so the
+    statistic it collapses to has to be one that is not moved by a minority of
+    episodes. For every scheduler on the ladder except one that barely matters;
+    for rung 4 it decides what the figure says.
 
     Measured over 47 stare replays, the camper's interception ratio has mean
     **0.2065** against median **0.1257** -- the mean sits 64% above the median,
@@ -278,14 +360,24 @@ def _centres(summary: dict[str, dict]) -> dict[str, dict]:
     plot whose top is set by one policy's luckiest scenarios. Drawn as medians,
     the camper sits level with the RL rungs -- which is what the paired
     per-episode counts already say, and what `EVALUATION.md` §4 means by never
-    reading one number alone.
+    reading one number alone. **This is why `figures()` writes the median
+    version as `pareto.png` (the one every other figure/table cross-references)
+    and the mean version separately, as `pareto_mean.png` -- clearly labelled,
+    not silently swapped in.**
+
+    `statistic="mean"` exists for exactly that second file: seeing camper-style
+    skew for yourself, side by side with the median's more honest picture,
+    rather than only being told about it in this docstring.
 
     This is deliberately **not** how the printed table reports the same metrics:
     `_report_md` prints `mean` over the IQR, and `EVALUATION.md` §5's ratified
     rows are means. The table has room for an interval beside every number and
     the figure does not, so they collapse differently on purpose. Whiskers carry
-    p25/p75 into the figure so the spread the median hides is still visible.
+    p25/p75 into the figure so the spread the chosen statistic hides is still
+    visible either way.
     """
+    if statistic not in ("mean", "median"):
+        raise ValueError(f"statistic must be 'mean' or 'median', got {statistic!r}")
     out = {}
     for key, block in summary.items():
         agg = block["aggregate"]
@@ -294,7 +386,7 @@ def _centres(summary: dict[str, dict]) -> dict[str, dict]:
             stats = agg.get(m, {})
             if not stats.get("n"):
                 continue
-            row[m] = stats["median"]
+            row[m] = stats[statistic]
             if "p25" in stats and "p75" in stats:
                 row[f"{m}_p25"] = stats["p25"]
                 row[f"{m}_p75"] = stats["p75"]
@@ -537,7 +629,11 @@ FIGURE_SCENARIOS = ("config_81", "config_2", "config_921")
 
 
 def figures(out_root: Path, summary: dict[str, dict], keys: tuple[str, ...],
-            seed: int, reward: str, *, gif_stride: int = 8, gif_fps: int = 12) -> list[Path]:
+            seed: int, reward: str, *, gif_stride: int = 8, gif_fps: int = 12,
+            obs_version: str = "v1", band_priority: bool = False,
+            priority_coef: float = 0.5, priority_n_bands: tuple[int, int] = (3, 6),
+            priority_uniform: bool = False, priority_high: float = 3.0,
+            occupancy_coef: float = 0.0, occupancy_decay_cap: float = 2.0) -> list[Path]:
     """The three comparison pictures, a per-scenario timeline, and an animated
     GIF of the same rows, for each of the fixed scenarios.
 
@@ -561,23 +657,37 @@ def figures(out_root: Path, summary: dict[str, dict], keys: tuple[str, ...],
     from rfenv import render
 
     written = []
+    # Keyed by rung key (unique) with the display label carried inside the row,
+    # not used as the key itself -- two rungs sharing a label (e.g. two PPO
+    # variants) must still draw as two points (see render.pareto's docstring
+    # for the bug this avoids). Two files, median and mean (`_centres`'s own
+    # docstring has the camper-skew reason both exist rather than one only).
     render.pareto(
-        # Keyed by rung key (unique) with the display label carried inside the
-        # row, not used as the key itself -- two rungs sharing a label (e.g.
-        # two PPO variants) must still draw as two points (see render.pareto's
-        # docstring for the bug this avoids).
-        {k: {**row, "label": B.BY_KEY[k].label} for k, row in _centres(summary).items()},
+        {k: {**row, "label": B.BY_KEY[k].label}
+         for k, row in _centres(summary, statistic="median").items()},
         out_root / "pareto.png",
-        title="The baseline ladder on the two PS objectives",
+        title="The baseline ladder on the two PS objectives (median, D58)",
     )
     written.append(out_root / "pareto.png")
+    render.pareto(
+        {k: {**row, "label": B.BY_KEY[k].label}
+         for k, row in _centres(summary, statistic="mean").items()},
+        out_root / "pareto_mean.png",
+        title="The baseline ladder on the two PS objectives (mean)",
+    )
+    written.append(out_root / "pareto_mean.png")
 
     for config_id in FIGURE_SCENARIOS:
         scenario = Scenario.replay(config_id, COMPARISON_SOURCE)
         grid = TruthGrid.from_scenario(scenario)
         runs = {}
         for key in keys:
-            runs[key] = run_one(key, scenario, seed, out_root, grid=grid, reward=reward)
+            runs[key] = run_one(key, scenario, seed, out_root, grid=grid, reward=reward,
+                                obs_version=obs_version, band_priority=band_priority,
+                                priority_coef=priority_coef, priority_n_bands=priority_n_bands,
+                                priority_uniform=priority_uniform, priority_high=priority_high,
+                                occupancy_coef=occupancy_coef,
+                                occupancy_decay_cap=occupancy_decay_cap)
         render.schedule_timeline(
             runs, grid, out_root / f"timeline_{config_id}.png",
             title=f"Receiver tuning over 30 s — {scenario.name}, seed {seed}, "
@@ -594,6 +704,43 @@ def figures(out_root: Path, summary: dict[str, dict], keys: tuple[str, ...],
         written += [out_root / f"timeline_{config_id}.png",
                     out_root / f"discovery_{config_id}.png",
                     out_root / f"animation_{config_id}.gif"]
+
+        # This task: a second animation, marking the episode's elevated
+        # band(s), whenever this run actually compares an RL agent trained
+        # with real (non-uniform) priority -- automatic, driven by *which
+        # rung is being compared* (`resolve_priority_kwargs`), not by the
+        # caller remembering to pass `--band-priority` correctly. Finds the
+        # first key whose resolved config is real priority, if any; a
+        # `--priority-uniform` control rung never elevates any band, so it
+        # never triggers this on its own. Priority is sampled once per episode
+        # (`ScanEnv.reset()`), so a throwaway env built and reset the same way
+        # (same scenario/seed/kwargs `run_one` used for that key) draws the
+        # identical array without needing `run_one`'s own artefacts to carry
+        # it.
+        resolved = {
+            k: resolve_priority_kwargs(k, band_priority, priority_coef, priority_n_bands,
+                                        priority_uniform, priority_high, occupancy_coef,
+                                        occupancy_decay_cap)
+            for k in keys
+        }
+        priority_config = next(
+            (row for row in resolved.values() if row[0] and not row[3]),
+            None,
+        )
+        if priority_config is not None:
+            eff_bp, eff_coef, eff_nbands, eff_uniform, eff_high, eff_occ, eff_cap = priority_config
+            priority_env = ScanEnv(scenario=scenario, obs_version=obs_version,
+                                    band_priority=eff_bp, priority_coef=eff_coef,
+                                    priority_n_bands=eff_nbands, priority_uniform=eff_uniform,
+                                    priority_high=eff_high, occupancy_coef=eff_occ,
+                                    occupancy_decay_cap=eff_cap)
+            priority_env.reset(seed=seed)
+            render.compare_animation(
+                runs, grid, out_root / f"priority_animation_{config_id}.gif",
+                stride=gif_stride, fps=gif_fps,
+                band_priority=priority_env._band_priority,
+            )
+            written.append(out_root / f"priority_animation_{config_id}.gif")
     return written
 
 
@@ -621,6 +768,32 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--gif-stride", type=int, default=8,
                      help="slots between animation frames, --figures only (default 8)")
     ap.add_argument("--gif-fps", type=int, default=12, help="--figures only")
+    ap.add_argument("--obs-version", default="v1", choices=("v1", "v2", "v2p"),
+                    help="observation layout (D30/D71) every rung in this run sees. "
+                         "A trained checkpoint must match what it was trained on, or "
+                         "predict() raises mid-episode; heuristic rungs work under either.")
+    ap.add_argument("--band-priority", action="store_true",
+                    help="sample a per-episode band_priority vector (needs --obs-version v2p) "
+                         "and add the discovery-gated priority reward term. Must match what "
+                         "a v2p checkpoint was trained with, or the comparison isn't measuring "
+                         "the thing it claims to (this task).")
+    ap.add_argument("--priority-coef", type=float, default=0.5)
+    ap.add_argument("--priority-n-bands", type=int, nargs=2, default=(3, 6),
+                    metavar=("LO", "HI"))
+    ap.add_argument("--priority-uniform", action="store_true",
+                    help="control arm: band_priority stays all-ones every episode "
+                         "(same reward scale, no real signal) -- this task.")
+    ap.add_argument("--priority-high", type=float, default=3.0,
+                    help="the elevated band's priority value (default 3.0, D74's own "
+                         "value). No effect unless --band-priority is set.")
+    ap.add_argument("--occupancy-coef", type=float, default=0.0,
+                    help="D74 follow-up: coefficient on the decaying per-slot priority "
+                         "term (default 0.0, off -- reproduces D74's own runs exactly). "
+                         "No effect unless --band-priority is set.")
+    ap.add_argument("--occupancy-decay-cap", type=float, default=2.0,
+                    help="fair-share visit_density at which the occupancy term above "
+                         "has decayed to zero (default 2.0). No effect unless "
+                         "--occupancy-coef is nonzero.")
     args = ap.parse_args(argv)
 
     keys = tuple(r.key for r in B.LADDER)
@@ -645,7 +818,13 @@ def main(argv: list[str] | None = None) -> int:
     print(f"{len(keys)} rungs x {len(scenarios)} scenarios x {len(seeds)} seeds "
           f"= {len(keys) * len(scenarios) * len(seeds)} episodes -> {out_root}")
 
-    rows = compare(scenarios, keys, seeds, out_root, reward=args.reward)
+    rows = compare(scenarios, keys, seeds, out_root, reward=args.reward,
+                   obs_version=args.obs_version, band_priority=args.band_priority,
+                   priority_coef=args.priority_coef,
+                   priority_n_bands=tuple(args.priority_n_bands),
+                   priority_uniform=args.priority_uniform,
+                   priority_high=args.priority_high, occupancy_coef=args.occupancy_coef,
+                   occupancy_decay_cap=args.occupancy_decay_cap)
     summary = summarise(rows)
     wins = {ref: paired_wins(rows, against=ref) for ref in PAIRED_REFERENCES}
 
@@ -654,6 +833,14 @@ def main(argv: list[str] | None = None) -> int:
         "written_utc": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "seeds": seeds,
         "reward": args.reward,
+        "obs_version": args.obs_version,
+        "band_priority": args.band_priority,
+        "priority_coef": args.priority_coef,
+        "priority_n_bands": list(args.priority_n_bands),
+        "priority_uniform": args.priority_uniform,
+        "priority_high": args.priority_high,
+        "occupancy_coef": args.occupancy_coef,
+        "occupancy_decay_cap": args.occupancy_decay_cap,
         "split": "train",
         "source": COMPARISON_SOURCE,
         "n_scenarios": len(scenarios),
@@ -686,7 +873,14 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.figures:
         for path in figures(out_root, summary, keys, seeds[0], args.reward,
-                            gif_stride=args.gif_stride, gif_fps=args.gif_fps):
+                            gif_stride=args.gif_stride, gif_fps=args.gif_fps,
+                            obs_version=args.obs_version, band_priority=args.band_priority,
+                            priority_coef=args.priority_coef,
+                            priority_n_bands=tuple(args.priority_n_bands),
+                            priority_uniform=args.priority_uniform,
+                            priority_high=args.priority_high,
+                            occupancy_coef=args.occupancy_coef,
+                            occupancy_decay_cap=args.occupancy_decay_cap):
             print(f"  figure: {path}")
 
     print()
