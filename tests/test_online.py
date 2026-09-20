@@ -245,7 +245,7 @@ def test_the_manifest_records_the_adapted_checkpoint(base_checkpoint, tmp_path):
         env_kwargs={"band_priority": True}, description="a test adaptation",
     )
     manifest = json.loads(out.with_suffix(".json").read_text())
-    assert manifest["observation_width"] == 436
+    assert manifest["observation_width"] == 400
     assert manifest["algorithm"] == "RecurrentPPO"
     assert "a test adaptation" in manifest["description"]
     assert manifest["total_timesteps"] > 128

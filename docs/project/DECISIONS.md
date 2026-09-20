@@ -4681,9 +4681,14 @@ paired. Verified: the measured-level sequence is bit-identical between a clean a
 |---|---|---|
 | clean | — | baseline |
 | A | `prev_reward` | **the primary test** — the only genuinely new signal |
-| B | `prev_action` + `current_band` | "does it read its last action" — both, they are the same 36 numbers |
-| C | all three new blocks | the headline, with the duplication caveat attached |
+| B | `prev_hit` | the weaker of the two new blocks — pre-existing info (`current_hit_streak > 0`), no direct duplicate to fold it into |
+| C | `prev_reward` + `prev_hit` | the headline, both new blocks together |
 | D | `hit_rate` | **positive control** |
+
+**Table updated 2026-09-20**, after `prev_action` was removed from the layout: the original arm B
+(`prev_action` + `current_band`, testing the now-confirmed duplication) is retired along with the
+block it tested — corrupting `prev_action` is no longer even possible, `ScanEnv` refuses it for any
+registered layout. Four arms remain, not five.
 
 Arm D is not optional. If corrupting a block the policy has leaned on since D34 does not degrade it
 either, the ablation is measuring nothing and every null in A–C is uninterpretable — which is the
@@ -4697,14 +4702,65 @@ headline metric **and** arm D degrades at least as much. A null is a reportable 
 was in D73 and D74, not something to tune away.
 
 **Evidence.** `rfenv/env.py` (`reward_balance_obs`, `_normalise_prev_reward`, `_REWARD_OBS_CLAMP`,
-the three `_BLOCK_SPECS` entries, `OBS_LAYOUTS["v3"]`, `corrupt_obs_blocks`/`_corrupt`,
-`last_reward_obs`); `tests/test_v3_observation.py` (30 tests: the layout, the cold-start sentinels
-asserted *together* with `current_band` so the deliberate disagreement is documented, the
-`prev_action == current_band` redundancy pinned so a later change to either is noticed, the formula
-in isolation including *two dwells with the same `Y` and different `Z` being indistinguishable* —
-the deployability claim in mechanical form — and the `OBSERVABLE_INFO` allowlist pinned as a literal
-so nobody widens it to smuggle the reward through); `tests/test_backward_compat_hashes.py` (the
-golden digests, taken before any of this landed).
+the `_BLOCK_SPECS` entries, `OBS_LAYOUTS["v3"]`, `corrupt_obs_blocks`/`_corrupt`, `last_reward_obs`);
+`tests/test_v3_observation.py` (the layout, the cold-start sentinels, the formula in isolation
+including *two dwells with the same `Y` and different `Z` being indistinguishable* — the
+deployability claim in mechanical form — and the `OBSERVABLE_INFO` allowlist pinned as a literal so
+nobody widens it to smuggle the reward through); `tests/test_backward_compat_hashes.py` (the golden
+digests, taken before any of this landed).
+
+**Amendment, next day: `prev_action` removed, "v3" narrows to 400 wide (2026-09-20).** Asked
+directly — an LSTM's hidden state already carries information forward across steps, so why does the
+observation also carry `prev_action` explicitly? The honest answer split the layout's two new-block
+claims apart, and one of them didn't survive it.
+
+An LSTM's recurrence is `h_t = f(h_{t-1}, x_t)` — the hidden state can only carry forward what
+appeared *in its input* at some point; it cannot remember a quantity that was never handed to it,
+only proxies reconstructible from what it was shown. `current_band` (every layout since "v1") has
+always been in `x_t`, so the policy has always had direct, unmediated access to its own last action
+— `prev_action` was never adding a channel the network didn't already have, only a duplicate of one
+it did, which the layout's own comment already said in these words when it shipped:
+*"`prev_reward` is the only genuinely new information in this layout."* Asked to justify keeping it
+anyway rather than merely documenting the redundancy, there wasn't one, so it was removed —
+`OBS_LAYOUTS["v3"]` narrows from `v2p` + 3 blocks (436 wide) to `v2p` + 2 (400 wide), a plain deletion
+from the tuple's tail with no reindexing of anything else.
+
+**`prev_reward` stays, on the same reasoning stated more precisely.** No layout before "v3" ever put
+the raw per-step reward into `x_t` — `hit_rate`/`hit_streak`/`staleness`/`visit_density` are all
+running *aggregate statistics*, not the scalar the policy is actually optimised against at each step.
+The LSTM could in principle learn to infer something reward-like from how those aggregates move, but
+that is a harder representation-learning problem than being handed the number directly, which is the
+standard argument from the RL² line of work (Duan et al. 2016) for appending `(prev_action,
+prev_reward)` to a recurrent policy's input even though the recurrence could theoretically reconstruct
+them — a shorter gradient path, not new information the architecture lacks another route to. `prev_hit`
+stays too, on a weaker version of the same argument: it *is* `current_hit_streak > 0`, also
+pre-existing information, but there is no companion block making it directly, provably redundant the
+way `current_band` made `prev_action` redundant, and it costs one column.
+
+**None of this is settled by the argument alone, and D74 is the reason not to trust it uncritically.**
+The RL² case for `prev_reward` is a claim about what *should* help an optimiser reach a representation
+faster — it is not a claim that this training run, on this architecture, at this scale, actually
+learns to use the channel. D74 already measured, twice, that this exact setup does not reliably learn
+to use even a much stronger, unambiguous, high-magnitude signal (`band_priority`) that was also never
+available anywhere else in the observation. That precedent is the whole reason D75's ablation exists
+rather than the layout being asserted as an improvement on the strength of the architecture argument
+alone.
+
+**Cost, paid on purpose.** Same class of change as D49/D55/D67/D72: `lstm_v3_seed0` and
+`lstm_v3_seed1`, both complete 800k-step checkpoints trained on the 436-wide shape, are now
+permanently unloadable — `require_loadable` refuses them by name, with the recorded width in the
+error message. Rung 24a stays registered against the dead checkpoint, matching how every other width
+casualty in this repo stays registered as a record of what was measured rather than pruned; rung 24b
+(the "v2p" control) is unaffected. The D75 seed-0 comparison already run and committed stays valid as
+a record of what was measured on the old, 436-wide shape — it is not extended, and nothing in it is
+retracted, only superseded by whatever trains on the narrower layout next.
+
+**Evidence.** `rfenv/env.py` (`OBS_LAYOUTS["v3"]` edited in place); `rfenv/baselines/ladder.py`
+(rung 24a's docstring records the width it was trained on and that it is now dead);
+`tests/test_v3_observation.py` (the width assertion updated to 400, `prev_action` pinned as
+registered-but-unused by every layout, the marginal-preservation ablation test moved to
+`current_band`, a new refusal case confirming `corrupt_obs_blocks=("prev_action",)` is correctly
+rejected for `obs_version="v3"`); `tests/test_online.py` (the manifest-width assertion updated).
 
 ---
 

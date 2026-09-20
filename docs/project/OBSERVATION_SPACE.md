@@ -28,16 +28,19 @@ in-context blocks in §2.5 (D75, `BUILT` — no training run yet, so there is no
 | **"v1"** | 183 | `float32` | D34, extended D49, rescaled D55, extended D67 | — (this is the baseline) |
 | **"v2"** | 362 | `float32` | D30, resolved as D71 (2026-09-14), extended by D72 (2026-09-14) | trains on "v1"; "v2" is opt-in, additive |
 | **"v2p"** | 398 | `float32` | "v2" + `band_priority` (D74, `MEASURED` — see §2.4) | trains on "v1" or "v2"; "v2p" is opt-in, additive |
-| **"v3"** | 436 | `float32` | "v2p" + `prev_action`/`prev_reward`/`prev_hit` (D75, `BUILT` — see §2.5) | trains on any earlier layout; "v3" is opt-in, additive |
+| **"v3"** | 400 | `float32` | "v2p" + `prev_reward`/`prev_hit` (D75, `BUILT` — see §2.5) | trains on any earlier layout; "v3" is opt-in, additive |
 
 **"v1" never changes when "v2" or "v2p" exist.** Unlike every previous observation change in this
 project (D49, D55, D67), which widened the vector in place and made every prior checkpoint
 permanently unloadable, "v2" and "v2p" are separate, parallel layouts. A checkpoint trained on
 "v1" stays exactly as loadable as it always was; nothing about it is affected by "v2"/"v2p"
-existing. **A checkpoint trained on D71's own 326-wide "v2" is invalidated by D72 the same way** —
-"v2" itself is not immune to widening in place, only "v1" is guaranteed stable; none exist yet, so
-nothing on disk is affected. `rfenv.rl.common.known_observation_widths()` returns
-`{183, 362, 398, 436}` — all four are live, current, and correct, simultaneously.
+existing. **A checkpoint trained on D71's own 326-wide "v2" is invalidated by D72 the same way**,
+**and "v3" carries the same cost once already: it shipped 436-wide with a third block,
+`prev_action`, then narrowed in place to 400 the next day (D75's amendment) once `prev_action` was
+confirmed redundant with `current_band`** — `lstm_v3_seed0`/`lstm_v3_seed1`, both complete
+checkpoints, are now permanently unloadable. Only "v1" is guaranteed stable.
+`rfenv.rl.common.known_observation_widths()` returns `{183, 362, 398, 400}` — all four are live,
+current, and correct, simultaneously.
 
 **Both layouts are built from a single per-band bookkeeping system.** `ScanEnv` always tracks
 every quantity below internally (`self._hit_rate_array`, `self._band_pulse_width`, etc.)
@@ -208,29 +211,42 @@ promoted, code not removed — nothing defaults to it. Full account: `DECISIONS.
 
 ---
 
-### 2.5 "v3"-only blocks (D75, `BUILT` 2026-09-19 — no training run yet)
+### 2.5 "v3"-only blocks (D75, `BUILT` — no training run yet; amended 2026-09-20)
 
-Three blocks, appended after `band_priority`, that hand the recurrent policy its own last decision
-and what that decision returned. This is the RL² construction: a recurrent policy shown its previous
-action and previous outcome can run an adaptation rule *inside* the episode, in its hidden state,
-with no gradient step — which is what "online" means in the PS's sense of working *"in the absence of
-prior reliable intelligence"*.
+Two blocks, appended after `band_priority`, that hand the recurrent policy what its last decision
+returned. This is the RL² construction: a recurrent policy shown its previous outcome can run an
+adaptation rule *inside* the episode, in its hidden state, with no gradient step — which is what
+"online" means in the PS's sense of working *"in the absence of prior reliable intelligence"*.
 
 | block | width | range | what it is |
 |---|---|---|---|
-| `prev_action` | 36 | `[0, 1]` | one-hot of the last band chosen. **All-zero before the first step** |
 | `prev_reward` | 1 | `[0, 1]` | `reward_balance_obs`, clipped to ±6.0 and affinely rescaled |
 | `prev_hit` | 1 | `[0, 1]` | `1.0` if the last dwell declared anything (`dwell.Y.any()`), else `0.0` |
 
-**36 of these 38 columns already existed, and the documentation says so up front.** `step()` assigns
-`self._current_band = action` and `self._prev_action = action` from the same value, so `prev_action`
-is **bit-identical to the `current_band` block at every step after the first**, and `prev_hit` is
-`current_hit_streak > 0`. They differ only at the cold start: `current_band` reads one-hot at band 0
-after `reset()` — claiming a dwell that never happened — while `prev_action` reads the zero vector,
-which is off the one-hot simplex and therefore unreachable by any real action. So **`prev_reward` is
-the only genuinely new information in this layout**, and an ablation corrupting `prev_action` alone
-would read null by construction. A test pins the equality, so a later change to either block is
-noticed rather than discovered.
+**A third block, `prev_action` (36-wide, one-hot of the last band chosen), shipped originally and
+was removed the next day.** Asked directly why the observation needed it when an LSTM's hidden state
+already carries information forward: the recurrence is `h_t = f(h_{t-1}, x_t)`, so it can only carry
+forward what appeared *in its input* at some point — and `current_band` (every layout since "v1") has
+always been in that input, since `step()` assigns `self._current_band = action` and
+`self._prev_action = action` from the same value. `prev_action` was therefore never adding a channel
+the network lacked, only a duplicate of one it already had, and there was no argument for keeping it
+once that was put plainly — it is removed from `OBS_LAYOUTS["v3"]` (**436 → 400 wide, in place** —
+the same class of width change D49/D55/D67/D72 made, invalidating `lstm_v3_seed0`/`lstm_v3_seed1`,
+both complete 800k-step checkpoints). `_BLOCK_SPECS["prev_action"]` still exists and is still built
+by `_observation_blocks()` (every block is built unconditionally, D30's own convention); it is simply
+in no registered layout any more.
+
+`prev_hit` stays: it is `current_hit_streak > 0`, also pre-existing information, but there is no
+companion block that makes it provably redundant the same direct way `current_band` made
+`prev_action` redundant, and it costs one column. **`prev_reward` is, and remains, the only genuinely
+new information in this layout** — no layout before "v3" ever exposed the raw per-step reward, only
+running aggregate statistics (`hit_rate`, `hit_streak`, `staleness`, `visit_density`). The argument
+for keeping it despite being theoretically reconstructible from those aggregates is the standard RL²
+one: a shorter gradient path, not new information the architecture otherwise lacks a route to — and
+D74 is the reason not to trust that argument uncritically, having already shown twice that this exact
+training setup does not reliably learn to use even a much stronger signal that was equally
+unavailable elsewhere. That is exactly what D75's ablation, corrupting `prev_reward` specifically, is
+built to test directly rather than assume.
 
 **`prev_reward` is not the training reward.** It is `reward_balance_obs` — `reward_balance` with
 `dwell.Y` substituted for `dwell.Z`, i.e. what the receiver *declared* rather than what was truly
@@ -332,17 +348,19 @@ heuristic rung currently needs to address past index 144 under it (see §5).
 `measured_dbm` (1-wide) is replaced by `measured_dbm_band` (36-wide) at that point and every later
 block shifts. "v2" and "v2p" agree on every index up to 362; "v2p" simply appends one more block.
 
-### "v3" (436 wide, appends the three in-context blocks after `band_priority`; D75)
+### "v3" (400 wide, appends the two in-context blocks after `band_priority`; D75, amended 2026-09-20)
 
 | Index range | Block |
 |---|---|
 | `0 : 398` | exactly "v2p", unchanged |
-| `398 : 434` | `prev_action` |
-| `434` | `prev_reward` |
-| `435` | `prev_hit` |
+| `398` | `prev_reward` |
+| `399` | `prev_hit` |
 
 Append-only, so every "v2p" offset holds — a test asserts `obs_v3[:398]` is byte-identical to the
-"v2p" vector for identically seeded, identically acted environments.
+"v2p" vector for identically seeded, identically acted environments. Was 436 wide with a third block,
+`prev_action`, at `398:434` (pushing `prev_reward`/`prev_hit` to `434`/`435`) until D75's amendment
+removed it as confirmed-redundant with `current_band`; checkpoints trained on that shape no longer
+load.
 
 ---
 

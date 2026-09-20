@@ -608,28 +608,37 @@ LADDER: tuple[Rung, ...] = (
             priority_coef=2.0, priority_n_bands=(3, 6), priority_high=5.0,
             occupancy_coef=0.3, occupancy_decay_cap=6.0),
 
-    # D75 matched pair: "v3" (treatment -- prev_action/prev_reward/prev_hit) vs
-    # "v2p" (control, everything the same except the three new blocks are
-    # absent). Neither arm's --band-priority flag was set during training, so
-    # `_band_priority` stays at its reset() default (all ones) in both -- no
-    # confound with D74's own mechanism, which is off here. Same base
-    # hyperparameters as 23a/23b (512-wide LSTM, n_steps=8192, 800k steps),
-    # trained strictly sequentially so the two arms of a seed never compete for
-    # the GPU with each other. Seed 0 only for now; seed 1's "v3" checkpoint
-    # exists but its "v2p" control has not finished training, so it is not
-    # registered yet -- a rung is added only once its matched partner exists,
-    # same convention 22a/22b and 23a/23b set.
+    # D75 matched pair: "v3" (treatment -- prev_reward/prev_hit) vs "v2p"
+    # (control, the two new blocks absent). Neither arm's --band-priority flag
+    # was set during training, so `_band_priority` stays at its reset()
+    # default (all ones) in both -- no confound with D74's own mechanism,
+    # which is off here. Same base hyperparameters as 23a/23b (512-wide LSTM,
+    # n_steps=8192, 800k steps), trained strictly sequentially so the two arms
+    # of a seed never compete for the GPU with each other.
+    #
+    # **Rung 24a's own checkpoint is dead.** "v3" was 436-wide (a third block,
+    # `prev_action`) when this checkpoint trained; `prev_action` was removed
+    # from "v3" the next day once confirmed bit-identical to `current_band`
+    # (D75's amendment), narrowing "v3" to 400-wide in place -- the same class
+    # of width change D49/D55/D67/D72 made before it. `require_loadable` now
+    # refuses this file by name, correctly and loudly. Left registered rather
+    # than deleted, matching how every other width casualty in this file stays
+    # registered as a record of what was measured, not pruned. Retraining on
+    # the current 400-wide "v3" would need a fresh checkpoint at this path.
     Rung("lstm_v3_seed0", "24a", "Recurrent PPO (reward_balance, D75 v3 obs, seed 0, 800k)",
-            "Ours. Treatment arm, D75: obs_version='v3' -- prev_action/prev_reward/"
-            "prev_hit appended to v2p. Paired against lstm_v2p_ctrl_seed0 (rung 24b), "
-            "identical except obs_version. Needs ScanEnv(obs_version='v3').",
+            "Ours. Treatment arm, D75: obs_version='v3' -- prev_reward/prev_hit "
+            "appended to v2p. Paired against lstm_v2p_ctrl_seed0 (rung 24b), "
+            "identical except obs_version. Needs ScanEnv(obs_version='v3'). "
+            "DEAD as of D75's amendment (2026-09-20): trained on the 436-wide "
+            "'v3' that existed before prev_action was removed; unloadable now.",
             _recurrent_ppo_rung_factory(Path("runs/checkpoints/v3/lstm_v3_seed0/lstm_v3_seed0.zip")),
             obs_version="v3"),
 
     Rung("lstm_v2p_ctrl_seed0", "24b", "Recurrent PPO (reward_balance, v2p obs, D75 control, seed 0, 800k)",
             "Ours. Control arm, paired against rung 24a: identical except "
-            "obs_version='v2p' (no prev_action/prev_reward/prev_hit blocks). "
-            "Needs ScanEnv(obs_version='v2p').",
+            "obs_version='v2p' (no prev_reward/prev_hit blocks). Needs "
+            "ScanEnv(obs_version='v2p'). Unaffected by the 'v3' width change "
+            "-- this checkpoint is on 'v2p', still loadable.",
             _recurrent_ppo_rung_factory(Path("runs/checkpoints/v2p/lstm_v2p_ctrl_seed0/lstm_v2p_ctrl_seed0.zip")),
             obs_version="v2p"),
 

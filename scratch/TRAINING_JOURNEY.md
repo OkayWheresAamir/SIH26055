@@ -1588,6 +1588,52 @@ warning and the terminal view — a plotting backend must never be able to kill 
 All three are `BUILT`, none is `MEASURED`. 79 new tests; full suite green apart from the known
 pre-existing `test_heldout_split_is_refused_without_an_explicit_flag` (the 45 held-out pairs are not
 on this machine). The matched pair — "v2p" control against "v3" treatment, identical but for
-`--obs-version`, three seeds per arm because D68 escalated over a 1.2 pp gap — and the five-arm
+`--obs-version`, three seeds per arm because D68 escalated over a 1.2 pp gap — and the four-arm
 ablation are specified in D75 and not yet run. **Nothing in this section is a claim about whether any
 of it works.**
+
+### 19.1 `prev_action` removed the next day, and two live views got a real redesign (2026-09-20)
+
+Two follow-ups landed the day after §19, both from direct questions rather than anything I set out
+to build.
+
+**The question that actually mattered: doesn't the LSTM already store the previous action?** Yes —
+and the code already half-admits it. `current_band` (every layout since "v1") is set from `action`
+in the same line `_prev_action` is, so the recurrent state has always had direct, unmediated access
+to the last band tuned. `prev_action` was never a new channel, only a second copy of one that already
+existed, and §19 already said so in these words when "v3" first shipped: *"`prev_reward` is the only
+genuinely new information in this layout."* Asked to justify keeping the redundant block anyway,
+there wasn't a good one, so it came out — `OBS_LAYOUTS["v3"]` narrows from 436 to 400 wide, in place,
+the same class of change D49/D55/D67/D72 made before it. `lstm_v3_seed0` and `lstm_v3_seed1`, both
+complete 800k-step runs, are now permanently unloadable. The seed-0 comparison already run against
+them stays on record as what was measured on the old shape; nothing about it is retracted, it just
+cannot be extended.
+
+`prev_reward` survives the same scrutiny for a different reason, worth stating precisely rather than
+by analogy: an LSTM's hidden state can only carry forward what appeared in its *input* at some point,
+and no layout before "v3" ever put the raw per-step reward there — `hit_rate`/`hit_streak`/`staleness`
+are running aggregate statistics, not the scalar the policy is actually optimised against. The RL²
+argument for handing it over explicitly anyway (Duan et al. 2016) is about gradient path length, not
+about information the architecture otherwise lacks a route to — and D74 is the standing reason not to
+trust that argument on faith: it already showed, twice, that this exact setup does not reliably learn
+to use even a stronger, equally-unavailable-elsewhere signal. The ablation this was always going to
+need is unchanged in what it tests, only in the header row: four arms now, not five, since the arm
+that tested `prev_action`'s redundancy no longer has a block to corrupt.
+
+**Separately, and unrelated: the live views only ever showed the receiver's own log.** Asked directly
+to colour and label where the emitters are, and colour hits and misses — genuinely different requests
+that exposed the same gap. Three states (unseen/looked/hit) could never show an emitter that hadn't
+been scanned yet, and collapsed "looked, heard nothing" and "never looked" into one colour, so a
+missed detection and a gap in coverage looked identical. Six states now, truth crossed with
+declaration, both views. Picking colours for them the `dataviz` skill's way (its validated status
+palette, not eyeballed) caught something worth having caught before shipping it: true hit and missed
+detection — the two states that matter most in the whole picture — measured 4.1 OKLab Delta E under a
+simulated deuteranopia, under even the 6.0 floor, the classic red/green collision landing on exactly
+the pair carrying the most meaning. `node` wasn't on this machine to run the skill's own validator, so
+its math got ported to Python and run directly rather than skipped. Every state has its own glyph now,
+in both the coloured and the ASCII stream, so nothing depends on hue alone. One more thing turned up
+while wiring the terminal counts into the fine-tuning path: `_callbacks()`'s check for "was a real
+view asked for" used `isinstance(view, NullView)`, which is true for every real view too, since both
+backends subclass it to share its no-op `open`/`close`. Online fine-tuning with `--view light` had
+been running and silently drawing nothing this whole time. Fixed with an exact type comparison,
+caught only because a smoke test finally looked for actual output instead of a clean exit.

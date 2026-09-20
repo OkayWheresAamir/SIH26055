@@ -128,7 +128,7 @@ def current_observation_width() -> int:
 
 def known_observation_widths() -> set[int]:
     """Every width `ScanEnv` can currently build, one per `OBS_LAYOUTS` entry
-    (`{183, 362, 398, 436}` for "v1"/"v2"/"v2p"/"v3" as of D75's in-context blocks).
+    (`{183, 362, 398, 400}` for "v1"/"v2"/"v2p"/"v3" as of D75's in-context blocks).
     `require_loadable()` accepts a checkpoint recorded against any of these --
     not only "v1"'s -- because all three are live, supported layouts now, not
     one current width and two stale ones.
