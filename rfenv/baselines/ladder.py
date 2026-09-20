@@ -658,6 +658,22 @@ LADDER: tuple[Rung, ...] = (
          _recurrent_ppo_rung_factory(Path("runs/checkpoints/v2p/lstm_v2p_mlpfeature_seed0/lstm_v2p_mlpfeature_seed0.zip")),
          obs_version="v2p"),
 
+    # D78 convergence check: the 600k-step checkpoint-freq snapshot of rung 25a,
+    # not the final 800k one. A quick 12-scenario probe across the run's own
+    # snapshots (s4/s8/s12/s16 = 200k/400k/600k/800k) found no clean upward
+    # trend late in training -- s12 scored marginally best of the four on that
+    # small sample. Registered so it can be scored properly (full development
+    # set, matched seeds) rather than trusted off 12 scenarios.
+    Rung("lstm_v2p_mlpfeature_seed0_s12", "25b", "Recurrent PPO (reward_balance, v2p obs, MlpFeatureLstmPolicy, seed 0, 600k snapshot)",
+         "Ours. Same run as rung 25a, checkpoint-freq snapshot at 600k steps "
+         "instead of the final 800k -- see D78's convergence-check note: training "
+         "reward flattened by ~80k steps and stayed flat, and evaluation metrics "
+         "across snapshots do not climb steadily toward 800k, so this is a check "
+         "on whether an earlier snapshot happens to score better, not a claim "
+         "that it should.",
+         _recurrent_ppo_rung_factory(Path("runs/checkpoints/v2p/lstm_v2p_mlpfeature_seed0/lstm_v2p_mlpfeature_seed0_s12.zip")),
+         obs_version="v2p"),
+
     Rung("camper_oracle", "—", "Greedy static, truth-fed (D14's camper)",
          "Reference line: D14's camper, which knew where the pulses were.",
          lambda rng, grid: OracleCamper(grid, rng),

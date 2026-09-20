@@ -5052,6 +5052,59 @@ and available; nothing defaults to it. A second and third seed (mirroring D68's 
 the natural next step before treating this direction as settled either way, not run without being
 asked.
 
+**A convergence check (2026-09-20), asked directly: is the gap a training-budget problem, or has 25a
+already converged at a genuinely lower level?** Two pieces of evidence, both from data already on
+disk — no retraining. First, `scratch/mlpfeature_v2p_seed0.log`'s own rollout stats: mean episode
+reward rose 191 → 235 over the first ~82k of 800k steps, then sat flat in the 233–240 band for the
+remaining ~720k — the training signal itself stopped moving well before the run ended. Second, the
+run's own `--checkpoint-freq 50000` snapshots (16 of them, free) let the question be asked directly
+rather than inferred: evaluated the 200k/400k/600k/800k snapshots (`s4`/`s8`/`s12`/`s16`) on the same
+12 stare replays, seed 0:
+
+| snapshot | ratio | cTTI (s) | coverage |
+|---|---|---|---|
+| 200k | 0.126 | 2.73 | 0.855 |
+| 400k | 0.130 | 2.87 | 0.925 |
+| 600k | 0.151 | 2.88 | 0.911 |
+| 800k (final, = rung 25a) | 0.129 | 2.34 | 0.941 |
+
+No clean climb toward 800k — the numbers move up and down across snapshots rather than trending, which
+is the signature of noise around an already-reached plateau, not of a run still finding its footing.
+Combined with the flat training-reward curve, **this reads as converged, not under-trained**: more
+steps at this same recipe would plausibly not close the gap to 24b. This does not by itself rule out a
+different fix (warmup, a smaller learning rate for the extractor, better initialisation) — only that
+"just let it train longer" is not obviously the answer. 600k scored marginally best of the four on
+this 12-scenario probe; registered as rung 25b (`lstm_v2p_mlpfeature_seed0_s12`) rather than trusted
+off a 12-scenario sample, and scored properly below.
+
+**Rung 25b vs. rung 23a (2026-09-20), the project's best-scoring checkpoint to date.** Curiosity check,
+not a matched pair — 23a (D74 follow-up's `lstm_balance_v2p_priority_strong_seed2_800k`, 73.1%
+beats-recency-both on its own 513-episode run) and 25b differ in observation, reward-term
+configuration and training length, not just architecture, so this is a "how far off the project's
+best is the new architecture" reading, not an isolated attribution. Scored on the 47-config
+development set, 3 seeds (141 episodes each — a narrower set than 23a's original 513, which also drew
+sampled scenarios; 23a's own number is re-measured here rather than quoted, for a fair same-run
+comparison):
+
+| rung | scheduler | ratio | cTTI (s) | coverage |
+|---|---|---|---|---|
+| 23a | `lstm_balance_v2p_priority_strong_seed2_800k` | 0.153 | 1.90 | 0.925 |
+| 25b | `lstm_v2p_mlpfeature_seed0_s12` (600k) | 0.119 | 2.68 | 0.920 |
+
+Paired against recency: 23a wins both-metrics on **73.8%** of episodes (consistent with its original
+73.1%, on this narrower set) against 25b's **36.9%**. **23a remains the strongest checkpoint measured
+in this project by a wide margin — well ahead of every `MlpFeatureLstmPolicy` checkpoint, and also
+ahead of rung 24b's 62.4%.**
+
+**This also corrects the convergence check's own reading.** The 12-scenario probe above found the
+600k snapshot (s12) marginally ahead of the final 800k one (25a) — 0.151 ratio there against 0.129.
+On the full, properly-seeded comparison the opposite holds: **s12 (36.9% beats-recency-both) scores
+clearly worse than the final 800k checkpoint (25a, 46.8%)**, not better. The 12-scenario, single-seed
+probe was too small to trust for picking a checkpoint — exactly the failure mode the ladder's own
+47-config/3-seed convention exists to avoid, and a useful lesson on its own: a quick snapshot
+comparison can tell you *whether* training is still moving, but not *which* snapshot to ship without
+the same seeded, full-set treatment every other number in this repository gets.
+
 **Evidence.** `rfenv/rl/policies.py` (`MlpFeaturesExtractor`, `MlpFeatureLstmPolicy`,
 `POLICY_ALIASES`); `rfenv/rl/recurrent_ppo.py` (`_resolve_policy`, `--policy` gains the fourth
 choice); `tests/test_policies.py` (9 tests, module-skipped without the training stack, mirroring
@@ -5063,4 +5116,8 @@ extractor transforms each row of a batch independently of every other row (permu
 permutes the output the same way, and a single row reproduces its row from a batched pass exactly);
 a checkpoint trained under the new policy reloads through `load_checkpoint()` and predicts. Rung 25a
 (`rfenv/baselines/ladder.py`), paired against rung 24b; artefacts in
-`runs/baselines/d78_mlpfeature_vs_ctrl/`.
+`runs/baselines/d78_mlpfeature_vs_ctrl/`. Rung 25b (the 600k snapshot), scored against rung 23a plus
+round_robin/recency; artefacts in `runs/baselines/d78_s12_vs_23a/`. The convergence check (training
+curve read + snapshot trend) was a scratch script, not committed, reported here in full with method
+and numbers rather than only a conclusion, per this repository's own provenance rules — same
+discipline D74's permutation ablations followed.
