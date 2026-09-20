@@ -61,12 +61,31 @@ comparing to the actual recordings. These validate the simulator, not any schedu
 
 | Metric | Definition |
 |---|---|
-| **% correct predictions** | Fraction of (band, slot) cells where the environment's predicted detection matches the recorded scan data, under Turing's own schedule. |
-| **Average intercept-time error** | Mean absolute difference between per-emitter first-intercept time predicted by the environment and the value measured from the actual scan recording. |
+| **% correct predictions** | Fraction of **dwells** where the environment's declared detection matches the recorded scan data, under Turing's own schedule. Reported with MCC and the base rate beside it, never alone (§7). |
+| **Average intercept-time error** | Per emitter, `\|predicted first-intercept − recorded first-intercept\|`, over emitters **detected on both sides**, reported with the outcome-agreement rate and the signed mean beside it. |
 
 > **PS reading.** *"The model should enable prediction of intercept time and interception ratio
 > of a scanning receiver…"* assigns prediction to the **system model**. That is why these two
 > live here and not in the scheduler family.
+
+**Both definitions were corrected 2026-09-20 to match what the code computes.** Neither number
+moved; the text did.
+
+- **% correct predictions is scored per dwell, not per cell.** D37 fixed that convention before
+  `validate.py` was written and this table was never updated. A dwell is the unit a receiver
+  produces a declaration for, and scoring all 36 × 600 cells would put ~97% of the denominator on
+  cells Turing's sweep never visits — the sweep sees 2.78% of them (D36) — making most of the
+  score unfalsifiable by construction.
+- **Average intercept-time error excludes misses from its mean.** Censoring an emitter the sweep
+  never caught to the 30 s horizon and averaging that in conflates *"predicted the wrong time"*
+  with *"predicted the wrong outcome"*, and the two cannot be separated afterwards. Measured over
+  the 47 train pairs: the censored form reads **8.42 s**, the separated form **6.60 s of timing
+  error plus 87.3% outcome agreement** — 1.8 s of that 8.42 s is missed detections, not mistimed
+  ones. Both sides must also apply the same detection rule, or an ungated recorded side fires on
+  sub-threshold pulses while the predicted side waits for a declaration.
+
+Formulas, populations and the traps behind each: **`FIGURES_OF_MERIT.md`**, which specifies all
+seven of the PS's figures of merit. Produced by `python -m rfenv.compare --figures-of-merit`.
 
 ---
 
