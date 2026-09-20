@@ -89,6 +89,7 @@ def train(
     occupancy_coef: float = 0.0,
     occupancy_decay_cap: float = 2.0,
     device: str = "auto",
+    pool=None,
 ) -> RecurrentPPO:
     """Build sb3-contrib's RecurrentPPO with library defaults and train it.
 
@@ -114,10 +115,21 @@ def train(
     lets a policy sharpen onto a single band and stay there -- pass
     `--hyperparam ent_coef=0.01` to try otherwise, and the manifest will say
     which of the two any given checkpoint was.
+
+    `pool` defaults to `None`, which is `make_train_env`'s own default --
+    `split.training_pool()`, the real train-split emitters (D60). Passing an
+    `EmitterPool` here trains entirely on it instead, real data or a
+    hand-built synthetic one (`online.py`'s `fine_tune` already supports this
+    for adapting an *existing* checkpoint via `env_kwargs={"pool": ...}`;
+    this is the same idea for training a policy *from scratch* on a custom
+    distribution rather than fine-tuning a pretrained one onto it). A
+    checkpoint trained this way is otherwise ordinary -- same manifest, same
+    `load_checkpoint()`, same deployable contract -- only the distribution of
+    scenarios it ever saw during training differs from every other rung's.
     """
     started_at = time.time()
     hyperparameters = dict(hyperparameters or {})
-    env = make_train_env(reward=reward, obs_version=obs_version,
+    env = make_train_env(reward=reward, obs_version=obs_version, pool=pool,
                           band_priority=band_priority, priority_coef=priority_coef,
                           priority_n_bands=priority_n_bands, priority_uniform=priority_uniform,
                           priority_high=priority_high, occupancy_coef=occupancy_coef,
