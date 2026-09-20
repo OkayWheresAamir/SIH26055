@@ -679,6 +679,31 @@ LADDER: tuple[Rung, ...] = (
          _recurrent_ppo_rung_factory(Path("runs/checkpoints/v2p/lstm_v2p_mlpfeature_seed0/lstm_v2p_mlpfeature_seed0_s12.zip")),
          obs_version="v2p"),
 
+    # D79 x D75's second amendment: BandEncoderLstmPolicy on the narrowed "v3"
+    # (399-wide, prev_reward only), band_priority off (reset default, all-ones,
+    # no real signal -- not a matched pair with rung 23a, which has real
+    # priority active; this isolates architecture+prev_reward from priority
+    # entirely). Otherwise mirrors 23a's own scale exactly: 512-wide LSTM,
+    # n_steps=8192, 800k steps, reward_balance, seed 2.
+    Rung("lstm_v3_bandenc_noprior_seed2", "26a", "Recurrent PPO (reward_balance, D75-narrowed v3 obs, BandEncoderLstmPolicy, no priority, seed 2, 800k)",
+         "Ours. D79's BandEncoderLstmPolicy (obs -> shared per-band encoder -> mean "
+         "pool -> concat global -> LSTM -> actor/critic) trained on 'v3' after its "
+         "second narrowing (prev_reward only, no prev_hit -- D75's amendment), "
+         "band_priority left at its uninformative reset default. First pass: does "
+         "prev_reward, read through a per-band-structured encoder, train well "
+         "before real priority is added back in. Needs ScanEnv(obs_version='v3').",
+         _recurrent_ppo_rung_factory(Path("runs/checkpoints/v3/lstm_v3_bandenc_noprior_seed2/lstm_v3_bandenc_noprior_seed2.zip")),
+         obs_version="v3"),
+
+    # Second seed of 26a -- identical config, seed 0 instead of 2. Confirming
+    # whether 26a's result (66.7% beats-recency-both) holds across seeds
+    # before building real band_priority on top of it.
+    Rung("lstm_v3_bandenc_noprior_seed0", "26b", "Recurrent PPO (reward_balance, D75-narrowed v3 obs, BandEncoderLstmPolicy, no priority, seed 0, 800k)",
+         "Ours. Same as rung 26a in every respect except seed (0, not 2). "
+         "Needs ScanEnv(obs_version='v3').",
+         _recurrent_ppo_rung_factory(Path("runs/checkpoints/v3/lstm_v3_bandenc_noprior_seed0/lstm_v3_bandenc_noprior_seed0.zip")),
+         obs_version="v3"),
+
     Rung("camper_oracle", "—", "Greedy static, truth-fed (D14's camper)",
          "Reference line: D14's camper, which knew where the pulses were.",
          lambda rng, grid: OracleCamper(grid, rng),

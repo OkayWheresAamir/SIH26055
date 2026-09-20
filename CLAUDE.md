@@ -267,6 +267,30 @@ same convention D78 set. 21 tests (`test_band_layout.py`, no training stack need
 command (reward_balance, "v2p", its own strengthened band-priority settings, seed 2, 512-wide LSTM,
 800k steps), differing only in `--policy`, not started without being asked. Full account: D79.
 
+**D79 was trained and gave a third trap on interception ratio (D80, 2026-09-20).** Twelve of the 36
+bands (0, 13, 14, 25–30, 33–35) carry **zero** occupied cells in every one of the 47 comparison
+scenarios — a fixed population regularity, not scenario noise (also 11 of the same 12 in the scan
+replays of the same configs; D36's caution on scan-grid completeness applies to that half of the
+check). Every checkpoint measured tracks its overall score against how much airtime it wastes on
+exactly those twelve bands, closely: 23a wastes 1.73% (73.8% beats-recency-both), rung 26a (D79,
+BandEncoder on the narrowed "v3", no priority, seed 2) wastes 4.73% (66.7%), rung 24b wastes 9.94%
+(62.4%), rung 25a wastes 12.53% (46.8%) — and within 26a's own 16 checkpoint-freq snapshots the
+correlation between score and dead-band airtime is r = −0.48, with the single worst snapshot on
+both measures being the same one. **Not a perfect predictor**: a second seed of 26a's exact config
+(rung 26b, seed 0) wastes only slightly more airtime on dead bands (5.64%) but scores far worse
+overall (51.8%, below even rung 24b) — driven by worse censored intercept time on the *live* bands,
+an unexplained source of variance dead-band airtime doesn't account for.
+
+**The methodological point, not just the number: this is not the D14 camping exploit, it's a
+distribution-shift risk.** Nothing about avoiding these bands violates deployability (D19/D20/D29)
+— it's learned from scan history the same as anything else, and resets cleanly every episode. But
+`reward_balance`'s own airtime terms and interception ratio both reward this identically whether the
+twelve dead bands reflect a real, general fact about the operating environment or an artifact of
+this one finite 47-config synthetic emitter library — and this project cannot tell those apart from
+training/comparison data alone, since both draw from the same population. The only way to check is
+the 45-config held-out split (D8), never touched. **Rule added to `EVALUATION.md` §4** (a third
+trap alongside D14's two): report dead-band airtime alongside a ratio gain before trusting it.
+
 **The four validation gates ran for the first time on 2026-09-04** (`python -m rfenv.validate`,
 47 train configs, seed 0, artefacts in `runs/validation/`): **gates 2, 3 and 4 PASS; gate 1 is
 MEASURED** — D37 fixed its convention and deliberately left its threshold undecided. Every

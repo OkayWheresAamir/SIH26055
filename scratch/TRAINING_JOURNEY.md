@@ -1692,3 +1692,60 @@ together, picked deliberately over the safer one-variable-at-a-time choice. Trai
 23a's own scale (512-wide LSTM, `n_steps=8192`, 800k steps, `reward_balance`) so a result, if it
 comes, is comparable to the project's best-known number. Full accounts: D78, D79, D75's second
 amendment.
+
+### 19.3 The run finished, mid-training checks kept getting overturned by the next one, and a real dataset property fell out of asking why (2026-09-20)
+
+The seed-2 BandEncoder run (§19.2) finished at 66.7% beats-recency-both — second only to 23a's
+73.8%, and ahead of every other no-priority checkpoint measured tonight. Checked at 300k (mid-run,
+a quick 12-scenario probe) it already read 66.7%; checked properly at 800k (the full 47-config/3-seed
+set) it read exactly the same 66.7%. Training reward had stopped climbing by ~250k steps and spent
+the rest of the run oscillating in a band (203 → 250 → dip to 220 at 491,520 steps → back up to
+234–262) rather than settling flat the way D78's run did — noisier, but the same underlying story:
+whatever this run was going to learn, it had mostly learned it well before 800k.
+
+**Asked to compare every checkpoint-freq snapshot against 23a, not just the final one** — a fair
+question, since the small 12-scenario probe had already been shown (D78's own §19.2 story) to pick
+the wrong snapshot once. All 16 snapshots, properly scored: none beat 23a. The best of the whole run
+was 70.2%, reached twice (100k, then again at 400k/450k) — 3.6 points short of 23a, and the final
+checkpoint (66.7%) wasn't even this run's own best. A real dip shows up at 500k (57.4%, the worst
+point in the whole series).
+
+**Asked why 23a keeps winning, given its own priority mechanism was already shown twice not to be
+read at all (D74) — so what's actually different about it?** Checked directly rather than guessed:
+built the truth grid for all 47 comparison scenarios and summed occupancy per band. **Twelve of the
+36 bands have never once had a pulse in any of the 47 scenarios** — bands 0, 13, 14, 25–30, 33–35,
+zero exceptions. Checked the scan replays of the same 47 configs too: eleven of the same twelve
+match exactly; band 0 is the one difference, dead in every stare recording but carrying real traffic
+in scan (427,078 pulses across the 47 files) — unexplained, not chased further.
+
+Then the natural next question: does airtime on those twelve bands track the actual score gap?
+Pulled `episode_log.csv` from the comparison runs already sitting on disk (no retraining, no new
+eval) and summed dwell time on the dead twelve, per checkpoint: **23a spends 1.73% of its airtime
+there; the seed-2 BandEncoder run, 4.73%; the plain "v2p" baseline, 9.94%; D78's MLP-feature run,
+12.53%.** The same order as the scores, every time. Inside the seed-2 run's own 16 snapshots,
+dead-band airtime and score correlate at r = −0.48, and the single worst snapshot on each measure
+(500k steps) is the same one. **This, not priority, not architecture, looks like most of what
+separates these checkpoints**: how reliably each one has learned that a third of the spectrum is
+simply never worth checking.
+
+**Requested: a second seed, before building real priority on top of an unconfirmed result.** Ran
+seed 0 of the identical config. It finished at **51.8%** — 15 points below seed 2's 66.7%, and
+below even the plain baseline's 62.4%. Checked its dead-band airtime expecting the same explanation:
+it wasn't. Seed 0 wastes only 5.64% on the dead bands, barely more than seed 2's 4.73% — nowhere
+near enough to explain a 15-point gap. The real difference is censored intercept time on the *live*
+bands (2.70 s vs 1.97 s) — a second, still-unexplained source of run-to-run variance this session
+didn't get to the bottom of. Averaged, the two seeds put this architecture at ~59.3%, *below* the
+single-seed plain baseline it was supposed to be beating. Stopped here, on request, rather than
+chasing a third seed or building priority on an unconfirmed number.
+
+**What this leaves as the actual finding of the night, separate from any one architecture's score:**
+interception ratio (and `reward_balance`'s own airtime-shaping terms, which price the identical
+behaviour during training) cannot tell "learned to prioritise spectrum that's plausibly worth
+watching" apart from "learned exactly which of this one finite synthetic dataset's 36 dwell
+frequencies its generator happens to never populate." Both look the same in the numbers. Whether the
+twelve dead bands are a fact about a real operating environment or an artifact of this dataset's own
+construction isn't answerable from the 47-config development set alone, because every checkpoint
+here trained and was scored against the same population. The 45-config held-out split would answer
+it directly, and has not been touched. Written up as D80, and as a third entry beside D14's two
+traps in `EVALUATION.md` §4 — not a code or environment change, a caution about what the existing
+numbers have been able to hide.
