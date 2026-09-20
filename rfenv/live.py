@@ -99,7 +99,7 @@ class NullView:
     def open(self, env) -> None:
         pass
 
-    def update(self, env) -> None:
+    def update(self, env, *, force: bool = False) -> None:
         pass
 
     def close(self) -> None:
