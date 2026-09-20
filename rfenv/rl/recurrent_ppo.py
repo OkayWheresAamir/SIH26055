@@ -165,13 +165,17 @@ def main(argv: list[str] | None = None) -> int:
     )
     ap.add_argument("--policy", default="MlpLstmPolicy",
                      choices=["MlpLstmPolicy", "CnnLstmPolicy", "MultiInputLstmPolicy",
-                              "MlpFeatureLstmPolicy"],
+                              "MlpFeatureLstmPolicy", "BandEncoderLstmPolicy"],
                      help="sb3-contrib recurrent policy type (default: MlpLstmPolicy, "
-                          "obs -> LSTM -> actor/critic). MlpFeatureLstmPolicy "
-                          "(rfenv/rl/policies.py) is the opt-in alternative: "
-                          "obs -> 2-layer LayerNorm MLP -> LSTM -> actor/critic, LSTM "
-                          "hidden size and actor/critic heads unchanged -- a matched-pair "
-                          "architecture comparison, not a replacement.")
+                          "obs -> LSTM -> actor/critic). rfenv/rl/policies.py adds two "
+                          "opt-in alternatives, each a matched-pair architecture "
+                          "comparison against the baseline, not a replacement: "
+                          "MlpFeatureLstmPolicy (D78, obs -> 2-layer LayerNorm MLP -> "
+                          "LSTM -> actor/critic) and BandEncoderLstmPolicy (D79, obs -> "
+                          "per-band encoder, shared across all 36 bands, mean-pooled, "
+                          "concatenated with an encoded global-feature vector -> LSTM -> "
+                          "actor/critic). LSTM hidden size and actor/critic heads are "
+                          "unchanged by either.")
     ap.add_argument("--reward", default=DEFAULT_REWARD, choices=sorted(REWARDS),
                      help="reward candidate, passed to ScanEnv(reward=...) (D29)")
     ap.add_argument("--timesteps", type=int, default=20_000,
