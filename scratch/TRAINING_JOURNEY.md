@@ -1749,3 +1749,50 @@ here trained and was scored against the same population. The 45-config held-out 
 it directly, and has not been touched. Written up as D80, and as a third entry beside D14's two
 traps in `EVALUATION.md` §4 — not a code or environment change, a caution about what the existing
 numbers have been able to hide.
+
+### 19.4 D77 finally got run for real, and the two speeds turned out to be different things (2026-09-20)
+
+D77 (online fine-tuning) has existed since the day before yesterday and had never once been run to
+completion. Asked directly to actually do it: build a world where the model's own known blind spot
+(the ten bands it gives zero airtime to, from D80) becomes the *only* place anything happens, and
+watch how long it takes to stop ignoring them.
+
+**Built a synthetic world by hand.** Not from the real dataset -- a fabricated `EmitterPool`, two
+emitters per target band, transmitting almost continuously, strong enough that a miss is essentially
+physically impossible (10 standard deviations above the detection threshold). Every other band left
+completely silent. `band_priority` held at its constant, uninformative default throughout -- whatever
+happened had to come from hits and misses, nothing handed to it.
+
+**First surprise: the frozen model, untouched, already handled it.** Watching it live with no
+training at all: nothing in the first 30 seconds, 2 finds in the next 30, then 18-20 out of 20 new
+emitters every single 30-second window from 90 seconds onward, for the full half hour measured. That's
+the recurrent hidden state doing exactly the thing D75 always claimed it could -- adjusting within a
+single mission, no gradient step, for free. Genuinely fast, and genuinely already there.
+
+**Then online fine-tuning ran for the first time ever, in two pieces.** The first session got
+Ctrl-C'd partway through -- on request, specifically to check whether progress was actually being
+saved along the way. It wasn't: `online.py` only ever saved on a clean stop, so a crash or a closed
+terminal would have thrown away everything. Fixed properly (`checkpoint_freq`, on by default here,
+unlike offline training where it's opt-in) rather than just noted and left. The second session then
+resumed cleanly from exactly where the first one stopped -- the whole point of building the fix
+before continuing rather than after. Total: about 26 minutes of real time, about 72 minutes of
+simulated mission time, across the two sessions.
+
+**The result that actually mattered: tested cold, on a mission it had never seen, not a continuation
+of anything it trained on.** 314 hits out of 600 slots in the first 30 seconds, no ramp-up at all.
+That's the number worth sitting with next to the frozen model's own 90-second warm-up, because they
+are not the same kind of fast. The frozen model's speed is real but it resets every single time a new
+mission starts -- it has to rediscover the pattern from nothing, every time, for free, in about 90
+seconds. What the 26 minutes of actual training bought was making that discovery permanent -- baked
+into the weights themselves, available instantly on any future mission, no 90-second tax paid ever
+again. Conflating "it reacts fast within a mission" with "it learned something" would have missed
+that these are genuinely two different mechanisms doing two different jobs, one free and one that
+needed real gradient steps.
+
+**One more thing caught along the way, on myself.** Building a fourth colour into the animation
+GIFs (correct silence, alongside hit/miss/false-alarm) turned up a real mistake in how I'd been
+reading my own printouts a few messages earlier -- I'd counted "any declaration" as a hit, which
+quietly mislabelled a genuine false alarm (one real event, slot 162, band 18, in the very first
+frozen-model segment) as a success. Caught only by going back and checking the actual rendered pixel
+data directly instead of trusting the summary line I'd already told the user. Fixed, and said so
+plainly rather than letting the earlier wrong claim stand uncorrected. Written up as D81.

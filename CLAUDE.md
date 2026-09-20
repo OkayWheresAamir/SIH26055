@@ -291,6 +291,28 @@ training/comparison data alone, since both draw from the same population. The on
 the 45-config held-out split (D8), never touched. **Rule added to `EVALUATION.md` §4** (a third
 trap alongside D14's two): report dead-band airtime alongside a ratio gain before trusting it.
 
+**D77's online fine-tuning was run for the first time and produced a real result (D81, 2026-09-20).**
+Built a synthetic test world (not from any real recording): traffic only on the 10 bands 23a gives
+zero airtime to on real data (D80), nothing on the other 26, signal strength set high enough that a
+miss is essentially impossible ("easy mode"), `band_priority` held uninformative throughout. **The
+frozen model (no training at all) already adapts *within one mission* in under 90 seconds** — 0 new
+emitters found in the first 30s, 2 in the next 30s, 18–20 every 30s segment from 90s onward — the
+LSTM's own hidden state integrating evidence with no gradient step, exactly as D75 predicted, and free.
+**Then real online fine-tuning ran**: two sessions (resumed cleanly across a Ctrl-C stop), 163,840
+steps beyond 23a's base 802,816, ≈26 minutes of real wall-clock time, ≈72 minutes of simulated mission
+time. **Tested cold, on a brand-new episode it had never seen, the fine-tuned checkpoint scored 314/600
+hits (52.3%) immediately, no warm-up** — the two numbers are easy to conflate and are not the same
+thing: the frozen model's 90-second ramp-up is fast, free, and per-mission (it resets on every new
+episode); the ≈26 minutes of fine-tuning is what made that same strong performance available
+**instantly, on any future mission, with no warm-up needed at all** — genuinely new weight-level
+knowledge, not just a hidden state that happens to reset cleanly. Two gaps were found and fixed along
+the way: `online.py` had no periodic checkpointing (only a Ctrl-C save; now `checkpoint_freq=8192`
+by default, unlike offline `train()` where it's opt-in), and `compare_animation` conflated true hits
+with false alarms under one red marker (caught by checking rendered pixel data directly after a
+printout had mislabeled a real false alarm as a hit) — now draws all four outcomes distinctly (hit
+red, miss green, false alarm blue, correct silence yellow). One synthetic world, one seed for the
+cold-start test, no claim this generalises beyond what was actually run. Full account: D81.
+
 **The four validation gates ran for the first time on 2026-09-04** (`python -m rfenv.validate`,
 47 train configs, seed 0, artefacts in `runs/validation/`): **gates 2, 3 and 4 PASS; gate 1 is
 MEASURED** — D37 fixed its convention and deliberately left its threshold undecided. Every
