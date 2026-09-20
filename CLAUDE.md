@@ -232,7 +232,16 @@ D47/D68's 5 pp no-selection margin. Interception ratio is essentially tied; the 
 entirely censored intercept time (MLP-feature 3.12 s vs control 2.25 s mean) — the deeper network is
 measurably slower to first-detect, not worse at eventually covering the spectrum. Read as suggestive,
 not conclusive (one seed, no mechanism check yet, same caution as D64/D73/D74's first pairs); not
-adopted, not promoted, code not removed. Full account: D78.
+adopted, not promoted, code not removed.
+
+**A convergence check says this looks like a plateau, not an unfinished run** — training reward flattened
+by ~82k of 800k steps, and evaluating the run's own checkpoint-freq snapshots (200k/400k/600k/800k) on 12
+scenarios found no clean upward trend late in training. The 600k snapshot scored marginally best on that
+small probe, registered as rung 25b and checked properly on the full 47-config/3-seed set against rung
+23a (D74's own strongest checkpoint, 73.1% beats-recency-both) — **which corrected the small-sample
+finding rather than confirming it**: 25b scored 36.9% there, clearly worse than the final 800k checkpoint
+(25a)'s 46.8%, not better. 23a stays the strongest checkpoint measured in this project by a wide margin.
+Full account: D78.
 
 **The four validation gates ran for the first time on 2026-09-04** (`python -m rfenv.validate`,
 47 train configs, seed 0, artefacts in `runs/validation/`): **gates 2, 3 and 4 PASS; gate 1 is
