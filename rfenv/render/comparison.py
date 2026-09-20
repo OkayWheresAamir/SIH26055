@@ -19,6 +19,7 @@ from rfenv.constants import BAND_CENTRES_MHZ, EPISODE_S, N_BANDS, SLOT_S
 from rfenv.render._common import _band_axis, _save
 
 HIT_COLOUR = "#ff3b30"
+MISS_COLOUR = "#3b82ff"
 PATH_COLOUR = "white"
 
 
@@ -164,6 +165,13 @@ def compare_animation(
     the episode is still unfolding is backwards. Read the final numbers off
     `EVALUATION.md`-style artefacts instead.
 
+    **Misses are drawn too, in blue, alongside hits in red** -- a miss being a
+    slot where the receiver was tuned to a truth-occupied cell (`Z = 1`) but
+    declared nothing (`Y = 0`, the receiver's own `Pd < 1`), read straight off
+    `schedule_series`'s `occupied`/`hit` arrays rather than computed separately.
+    A single legend, drawn once (top row only, so it does not repeat down a
+    multi-row figure), names both colours.
+
     The y-axis labels every 5th band (`_band_axis`), same as `schedule_timeline`
     and `waterfall` -- with several rows stacked at `figsize_per_row` height each,
     every-band labels (`_full_band_axis`, used by the single-row `env_frame`
@@ -229,10 +237,14 @@ def compare_animation(
                 bbox=dict(boxstyle="round,pad=0.2", fc="black", alpha=0.55, ec="none"),
             )
         (path_line,) = ax.step([], [], where="post", color=PATH_COLOUR, linewidth=1.0, alpha=0.9)
-        hit_scatter = ax.scatter([], [], s=10, color=HIT_COLOUR, zorder=4)
+        hit_scatter = ax.scatter([], [], s=10, color=HIT_COLOUR, zorder=4, label="hit")
+        miss_scatter = ax.scatter([], [], s=10, color=MISS_COLOUR, zorder=4, label="miss")
         (now_marker,) = ax.plot([], [], "o", color="white", markersize=5.5, zorder=5,
                                  markeredgecolor="black", markeredgewidth=0.7)
-        dynamic[label] = (path_line, hit_scatter, now_marker)
+        dynamic[label] = (path_line, hit_scatter, miss_scatter, now_marker)
+        if row == 0:
+            ax.legend(loc="lower right", fontsize=8, framealpha=0.6,
+                      facecolor="black", labelcolor="white")
 
     axes[-1][0].set_xlabel("time (s)")
     axes[-1][0].set_xlim(0.0, EPISODE_S)
@@ -252,7 +264,7 @@ def compare_animation(
                 mask = s["slot"] < cutoff
                 t = s["time_s"][mask]
                 band = s["band"][mask].astype(float)
-                path_line, hit_scatter, now_marker = dynamic[label]
+                path_line, hit_scatter, miss_scatter, now_marker = dynamic[label]
                 path_line.set_data(t, band)
                 hit_mask = mask & s["hit"]
                 if hit_mask.any():
@@ -261,6 +273,13 @@ def compare_animation(
                     )
                 else:
                     hit_scatter.set_offsets(np.empty((0, 2)))
+                miss_mask = mask & s["occupied"] & ~s["hit"]
+                if miss_mask.any():
+                    miss_scatter.set_offsets(
+                        np.column_stack([s["time_s"][miss_mask] + SLOT_S / 2, s["band"][miss_mask]])
+                    )
+                else:
+                    miss_scatter.set_offsets(np.empty((0, 2)))
                 if len(t):
                     now_marker.set_data([t[-1]], [band[-1]])
             writer.grab_frame()

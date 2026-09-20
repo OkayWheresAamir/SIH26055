@@ -243,6 +243,7 @@ def fine_tune(
     run: str | None = None,
     description: str = "",
     env_kwargs: dict | None = None,
+    checkpoint_freq: int | None = 8192,
 ):
     """Load a checkpoint, keep training it on a continuous grid, save the result.
 
@@ -251,11 +252,30 @@ def fine_tune(
     makes "run it until you have seen enough" a usable workflow rather than a way
     to lose an hour of adaptation. The rollout in progress is discarded, which is
     correct -- a partial rollout has no advantages to learn from.
+
+    **`checkpoint_freq` is periodic, in-progress checkpointing** -- separate from
+    the Ctrl-C path above, which only ever saves once, when the run actually
+    stops. A long unattended fine-tune (an hour of simulated time is tens of
+    thousands of steps) can be killed by anything -- a crash, a closed terminal,
+    the machine sleeping -- with no chance to press Ctrl-C, and until now that
+    meant losing the whole run. Defaults to `8192` (one rollout, i.e. every
+    weight update) rather than `None`, unlike offline `train()` where
+    checkpointing is opt-in: an online run is exactly the case where losing
+    unsaved progress is the expensive failure, and the cost of one manifested
+    snapshot per rollout is small next to a hyperparameter update's own cost.
+    Reuses `ManifestedCheckpointCallback` (`rl/common.py`) -- same
+    `<run>_s1.zip`, `<run>_s2.zip`, ... naming and manifest-per-snapshot
+    discipline offline checkpoint-freq runs already have, written beside
+    `out_checkpoint`. Resuming is `fine_tune(checkpoint=<last snapshot>,
+    out_checkpoint=..., total_timesteps=<remaining>, ...)` -- the same call,
+    just pointed at the snapshot instead of the original checkpoint, since
+    `reset_num_timesteps=False` (below) means the step count keeps counting
+    from wherever the snapshot left off.
     """
     from sb3_contrib import RecurrentPPO
     from stable_baselines3.common.vec_env import DummyVecEnv
 
-    from rfenv.rl.common import finish_training, require_loadable
+    from rfenv.rl.common import ManifestedCheckpointCallback, finish_training, require_loadable
 
     started_at = time.time()
     checkpoint = Path(checkpoint)
@@ -283,6 +303,18 @@ def fine_tune(
     callbacks = _callbacks(live, Path(out) / "segments.jsonl" if out else None)
     if out:
         Path(out).mkdir(parents=True, exist_ok=True)
+
+    if checkpoint_freq is not None:
+        manifest_kwargs = {"reward": reward, "hyperparameters": resolved,
+                           "started_at": started_at,
+                           "description": description or f"online fine-tune of {checkpoint.name} (in-progress snapshot)"}
+        out_checkpoint = Path(out_checkpoint)
+        callbacks.append(ManifestedCheckpointCallback(
+            run=run or out_checkpoint.stem,
+            manifest_kwargs=manifest_kwargs,
+            save_freq=checkpoint_freq,
+            save_path=str(out_checkpoint.parent),
+        ))
 
     interrupted = False
     try:
@@ -341,6 +373,14 @@ def main(argv=None) -> int:
                          "one. Not deployable -- the agent optimises a quantity no "
                          "receiver can compute. Label any result from it accordingly.")
     ap.add_argument("--hyperparam", action="append", default=[], metavar="KEY=VALUE")
+    ap.add_argument("--checkpoint-freq", type=int, default=8192,
+                    help="save a manifested snapshot every N steps during the run "
+                         "(default 8192, one per rollout/weight update); pass 0 or "
+                         "a negative number to disable. Separate from the Ctrl-C "
+                         "save -- this is what survives a crash or a closed "
+                         "terminal, not just a deliberate stop. Snapshots land "
+                         "beside --out-checkpoint as <run>_s1.zip, <run>_s2.zip, ...; "
+                         "resume with --checkpoint pointed at the last one.")
     args = ap.parse_args(argv)
 
     from rfenv.rl.common import parse_hyperparameters
@@ -365,6 +405,7 @@ def main(argv=None) -> int:
         device=args.device,
         run=args.run_name,
         description=args.description,
+        checkpoint_freq=args.checkpoint_freq if args.checkpoint_freq > 0 else None,
     )
     print(f"saved  {out_checkpoint}")
     print(f"       {out_checkpoint.with_suffix('.json')}")

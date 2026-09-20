@@ -176,8 +176,44 @@ def test_a_tty_frame_carries_exactly_one_row_per_band():
     _run(env, 30)
     view.update(env, force=True)
     frame = buf.getvalue().split("\x1b[H")[-1]
-    rows = [ln for ln in frame.split("\n") if ln[:3].strip().isdigit()]
+    # Row format is "{marker}{band:3d} ..." -- marker is " " or the current-band
+    # ">", always exactly one column, so the band number always sits at [1:4].
+    rows = [ln for ln in frame.split("\n") if ln[1:4].strip().isdigit()]
     assert len(rows) == N_BANDS
+
+
+def test_the_legend_appears_before_the_band_rows_not_after():
+    """It used to sit in the footer, after 36 rows of glyphs a viewer had
+    already had to guess at -- moved to right under the headline instead."""
+    from rfenv.live import _LEGEND
+
+    buf = _FakeTTY()
+    view = AnsiHeatStrip(stream=buf, min_interval_s=0.0, width=40)
+    env = _env()
+    view.open(env)
+    _run(env, 10)
+    view.update(env, force=True)
+    frame = buf.getvalue().split("\x1b[H")[-1]
+    legend_line = next(i for i, ln in enumerate(frame.split("\n")) if _LEGEND in ln)
+    first_band_row = next(
+        i for i, ln in enumerate(frame.split("\n")) if ln[1:4].strip().isdigit()
+    )
+    assert legend_line < first_band_row
+
+
+def test_exactly_one_row_is_marked_as_the_current_band():
+    buf = _FakeTTY()
+    view = AnsiHeatStrip(stream=buf, min_interval_s=0.0, width=40)
+    env = _env()
+    view.open(env)
+    _run(env, 15)
+    view.update(env, force=True)
+    frame = buf.getvalue().split("\x1b[H")[-1]
+    rows = [ln for ln in frame.split("\n") if ln[1:4].strip().isdigit()]
+    marked = [ln for ln in rows if ln[0] == ">"]
+    assert len(marked) == 1
+    marked_band = int(marked[0][1:4])
+    assert marked_band == int(env.log[-1]["band"])
 
 
 def test_the_refresh_throttle_collapses_a_burst_into_one_write():
