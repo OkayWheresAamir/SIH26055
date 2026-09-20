@@ -121,6 +121,14 @@ six-rung ladder. **Delete them; this file is the source.**
 > `prev_reward` is unaffected and remains "v3"'s one genuinely new column; `prev_hit` stays too,
 > lacking the same direct duplicate. Same `DECISIONS.md` D75 entry, extended.
 >
+> **AMENDED 2026-09-20 -- (17)** Asked directly whether offline training is still available after
+> D77: yes, completely unaffected, and it stays the default. `rfenv.rl.{ppo,recurrent_ppo,dqn}.train()`
+> -- frozen checkpoint, the path every rung in `EVALUATION.md` §5 has ever been produced by -- is
+> untouched by D77; `rfenv/rl/online.py` is a *second*, additional driver that loads an
+> already-trained checkpoint and keeps adapting it, never a replacement for the first. Verified
+> directly: a plain offline `train()` call, including on the narrowed 400-wide "v3" (amendment (16)),
+> still produces an ordinary loadable checkpoint with no code path change.
+>
 > The PDF beside this file is older still and does not carry any of these amendments.
 
 **Audience:** the 2–3 people building rung 7. **Owner of this file:** Aamir.

@@ -148,6 +148,12 @@
 > `prev_reward` is unaffected and remains "v3"'s one genuinely new column; `prev_hit` stays too,
 > lacking the same direct duplicate. Same `DECISIONS.md` D75 entry, extended.
 >
+> **AMENDED 2026-09-20 — (17)** Asked directly whether offline training is still available after D77
+> (online fine-tuning): yes, completely unaffected, and it stays the default. Everything this
+> document describes — the observation, the action space, every layout including "v3" — is built by
+> the ordinary `rfenv.rl.{ppo,recurrent_ppo,dqn}.train()` path exactly as before; `rfenv/rl/online.py`
+> only ever loads an already-trained checkpoint from that path and keeps adapting it.
+>
 > The PDF beside this file is older still and does not carry any of these amendments.
 
 
