@@ -208,6 +208,104 @@ def obs_width(version: str) -> int:
     return sum(_BLOCK_SPECS[name][0] for name in OBS_LAYOUTS[version])
 
 
+def obs_version_for_width(width: int) -> str:
+    """The layout whose `obs_width()` is `width` -- the reverse of `obs_width()`.
+
+    For a policy that needs to know its own layout but is only ever handed a
+    `gymnasium.spaces.Box` (D79's `BandEncoderFeaturesExtractor`, built by SB3
+    from nothing but `observation_space`): every registered width is unique
+    today (183/362/398/400), so this is unambiguous, but raises rather than
+    guessing if that ever stops being true, and raises if `width` matches no
+    registered layout at all -- both cheaper to catch here than as a bad
+    gather three layers down.
+    """
+    matches = [v for v in OBS_LAYOUTS if obs_width(v) == width]
+    if len(matches) == 1:
+        return matches[0]
+    if not matches:
+        raise ValueError(
+            f"no registered obs_version builds a {width}-wide observation "
+            f"(known: {sorted(obs_width(v) for v in OBS_LAYOUTS)})"
+        )
+    raise ValueError(
+        f"{width}-wide is ambiguous between {sorted(matches)} -- pass obs_version explicitly"
+    )
+
+
+@dataclasses.dataclass(frozen=True)
+class BandLayout:
+    """How one `obs_version`'s flat vector splits into per-band and global parts.
+
+    `band_index[i, j]` is the flat-vector column holding per-band block
+    `per_band_blocks[j]`'s value for band `i` -- shape `(N_BANDS,
+    len(per_band_blocks))`. `global_index[k]` is the flat-vector column for
+    the `k`-th scalar among `global_blocks`, in block order -- shape
+    `(sum(width of global_blocks),)`. Both are plain `int64` arrays so a
+    caller can gather with them directly (`flat[:, band_index]` ->
+    `(rows, N_BANDS, len(per_band_blocks))` in both numpy and torch).
+    """
+
+    version: str
+    per_band_blocks: tuple[str, ...]
+    global_blocks: tuple[str, ...]
+    band_index: np.ndarray
+    global_index: np.ndarray
+
+
+def band_layout(version: str) -> BandLayout:
+    """Split `version`'s flat observation into its per-band and global parts.
+
+    Purely from `_BLOCK_SPECS`'s declared widths and `OBS_LAYOUTS`' block
+    order -- nothing about which *named* block is per-band or global is
+    hardcoded here. A block is per-band exactly when `_BLOCK_SPECS` declares
+    it `N_BANDS` wide (today: `hit_rate`, `visit_density`, `staleness`,
+    `current_band`, `measured_dbm_band`, `hit_streak`, `pulse_width`,
+    `aoa_sin`, `aoa_cos`, `pulse_count`, `band_priority`, `prev_action`) and
+    global otherwise (`clock`, `measured_dbm`, `current_hit_streak`,
+    `prev_reward`, `prev_hit`). This is what lets `prev_action` be handled
+    correctly with no special case at all: no `OBS_LAYOUTS` entry uses it
+    today (D75 shipped it in "v3", then removed it the next day once
+    `current_band` was shown to already carry the same information -- see
+    "v3"'s own comment), but it is still `N_BANDS` wide in `_BLOCK_SPECS`, so
+    a layout that *did* include it would have it fall into the per-band
+    bucket automatically, exactly like any other `N_BANDS`-wide block --
+    never silently dropped into "global" or left out of the gather.
+
+    Built for `rfenv/rl/policies.py`'s `BandEncoderFeaturesExtractor` (D79),
+    which needs to turn the flat vector into `(N_BANDS, n_band_features)` +
+    `(n_global_features,)` without ever hardcoding which columns are which --
+    the flat vector interleaves blocks (`hit_rate[0:36]`, `visit_density[0:36]`,
+    ...), not bands (`band_0`'s full feature vector, then `band_1`'s, ...), so
+    this is a strided gather, not a reshape.
+    """
+    if version not in OBS_LAYOUTS:
+        raise ValueError(f"obs_version must be one of {sorted(OBS_LAYOUTS)}, got {version!r}")
+
+    per_band_blocks: list[str] = []
+    global_blocks: list[str] = []
+    band_offsets: list[int] = []
+    global_columns: list[int] = []
+
+    offset = 0
+    for name in OBS_LAYOUTS[version]:
+        width = _BLOCK_SPECS[name][0]
+        if width == N_BANDS:
+            per_band_blocks.append(name)
+            band_offsets.append(offset)
+        else:
+            global_blocks.append(name)
+            global_columns.extend(range(offset, offset + width))
+        offset += width
+
+    band_index = (np.asarray(band_offsets, dtype=np.int64)[np.newaxis, :]
+                  + np.arange(N_BANDS, dtype=np.int64)[:, np.newaxis])
+    global_index = np.asarray(global_columns, dtype=np.int64)
+
+    return BandLayout(version=version, per_band_blocks=tuple(per_band_blocks),
+                       global_blocks=tuple(global_blocks),
+                       band_index=band_index, global_index=global_index)
+
+
 # --------------------------------------------------------------------------- #
 # Reward candidates (D7, D29)
 # --------------------------------------------------------------------------- #

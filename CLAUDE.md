@@ -243,6 +243,27 @@ finding rather than confirming it**: 25b scored 36.9% there, clearly worse than 
 (25a)'s 46.8%, not better. 23a stays the strongest checkpoint measured in this project by a wide margin.
 Full account: D78.
 
+**A third recurrent-PPO policy exists, opt-in, unmeasured (D79, 2026-09-20).** `BandEncoderLstmPolicy`
+(`rfenv/rl/policies.py`): `obs -> shared per-band encoder -> mean pool across bands -> concat encoded
+global features -> LSTM -> actor/critic`, testing whether making the observation's per-band structure
+explicit (36 repeats of an 11-feature description, in "v3") helps, versus handing the network one
+undifferentiated vector the way the baseline and D78 both do. The hard part is the gather, not the
+network: the flat observation interleaves *blocks* (`hit_rate[0:36]`, `visit_density[0:36]`, ...), not
+*bands*, so turning it into `(36, n_band_features)` is a strided, non-contiguous read, not a reshape —
+`rfenv/env.py`'s new `band_layout(version)` builds the gather indices once from `_BLOCK_SPECS`'s own
+declared widths (per-band exactly when a block is `N_BANDS` wide, global otherwise — nothing hardcoded
+by name), verified against synthetic values that encode their own source block, not just checked by
+shape. One `band_encoder` (not 36) is applied via `nn.Linear`/`nn.LayerNorm`'s ordinary last-dimension
+broadcasting, checked directly (parameter count independent of band count; permuting which band holds
+which feature vector before pooling leaves the output unchanged). Mean pooling only, no attention, on
+purpose — isolating whether structured encoding helps before touching how the bands are combined.
+`obs_version` auto-detects from `observation_space`'s own width, refusing rather than silently
+gathering wrong columns on a mismatch. `lstm_hidden_size` and the actor/critic heads are untouched,
+same convention D78 set. 21 tests (`test_band_layout.py`, no training stack needed) + 18
+(`test_policies.py`, extended). No training result yet — the natural next step is rung 23a's exact
+command (reward_balance, "v2p", its own strengthened band-priority settings, seed 2, 512-wide LSTM,
+800k steps), differing only in `--policy`, not started without being asked. Full account: D79.
+
 **The four validation gates ran for the first time on 2026-09-04** (`python -m rfenv.validate`,
 47 train configs, seed 0, artefacts in `runs/validation/`): **gates 2, 3 and 4 PASS; gate 1 is
 MEASURED** — D37 fixed its convention and deliberately left its threshold undecided. Every

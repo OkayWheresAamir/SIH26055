@@ -5121,3 +5121,90 @@ round_robin/recency; artefacts in `runs/baselines/d78_s12_vs_23a/`. The converge
 curve read + snapshot trend) was a scratch script, not committed, reported here in full with method
 and numbers rather than only a conclusion, per this repository's own provenance rules — same
 discipline D74's permutation ablations followed.
+
+## D79 — A third recurrent-PPO policy, `BandEncoderLstmPolicy`: represent each band, then pool
+
+**Status:** `BUILT` (2026-09-20). Mechanism built and tested; no training result yet.
+
+**What it is.** A second architecture ablation on rung 9, fully specified and requested directly, in
+the same spirit as D78: `obs -> shared per-band encoder -> mean pool across bands -> concat encoded
+global features -> LSTM -> actor/critic`, in place of the baseline's `obs -> LSTM -> actor/critic` or
+D78's `obs -> flat-vector MLP -> LSTM -> actor/critic`. The idea being tested: the flat observation
+already *is* 11 (in "v3") interleaved per-band arrays plus a handful of global scalars, but the
+baseline and D78 both feed it to the network as one undifferentiated vector, with no structural signal
+telling the network "these 396 numbers are 36 repeats of an 11-feature description, one per band."
+This architecture makes that structure explicit instead of hoping the network discovers it.
+
+**The gather, not a reshape — this is the part most likely to be built wrong.** The flat vector
+interleaves *blocks* (`hit_rate[0:36]`, `visit_density[0:36]`, ...), not *bands* (band 0's full
+feature vector, then band 1's, ...), so turning it into `(36, n_band_features)` cannot be a `.reshape()`
+— it has to gather column `offset_of_block + i` for band `i`, for every per-band block, which is a
+strided, non-contiguous read. `rfenv/env.py` gained `band_layout(version)` for exactly this: a
+`BandLayout` (`per_band_blocks`, `global_blocks`, `band_index` shape `(N_BANDS, n_band_blocks)`,
+`global_index` shape `(n_global,)`) built once from `_BLOCK_SPECS`'s own declared widths — a block is
+per-band **exactly when its width is `N_BANDS`**, global otherwise, nothing about which *named* block
+falls where is hardcoded. `observations[:, band_index]` then gathers `(rows, 36, n_band_features)` in
+one indexing op, in both numpy and torch (verified — `x[:, idx]` with a 2D integer index array gives
+`x.shape[:1] + idx.shape`, checked directly rather than assumed). This is also what makes `prev_action`
+handled correctly with zero special-casing: no `OBS_LAYOUTS` entry uses it today (D75 shipped it in
+"v3", removed it the next day once `current_band` was shown to already carry the same information),
+but it is still registered `N_BANDS` wide in `_BLOCK_SPECS` — a layout that included it again would
+have it fall into the per-band bucket automatically, the same as any other `N_BANDS`-wide block, with
+nothing to remember to update. `tests/test_band_layout.py` (21 tests, no training stack needed) proves
+the gather against synthetic values encoding their own source block, not just shapes.
+
+**One `band_encoder`, not thirty-six.** `nn.Linear`/`nn.LayerNorm` operate only on a tensor's last
+dimension and broadcast over every leading one, so `band_encoder(x)` on `x` shaped `(rows, 36,
+n_band_features)` applies identical weights to all 36 bands with no reshape and no per-band parameter
+— the risk the task named directly (`encoder_0..encoder_35`) doesn't arise from the architecture, but
+`tests/test_policies.py` still checks it isn't happening by accident: the encoder's parameter count is
+compared against a manually built single-band-equivalent stack and must match exactly (36x too many
+would be an instant, obvious mismatch), and permuting which physical band holds which feature vector
+before pooling is checked to leave the final output unchanged (true only if the same function is
+applied to every band and mean-pooling doesn't care about order).
+
+**Mean pooling only, deliberately — no attention.** Per the request: the point of this first
+experiment is to isolate whether structured per-band representation helps at all, before spending a
+second experiment on how the bands get combined. `band_context = band_embeddings.mean(dim=-2)`.
+
+**Global features get their own small encoder** (`Linear -> activation_fn()`), not raw concatenation,
+so `global_dim` is independently configurable from both the observation's actual global-feature count
+(fixed by `obs_version`: 3 for "v1"/"v2"/"v2p", 4 for "v3") and `band_embed_dim`. Defaults `band_embed_dim=128`,
+`band_hidden_dim=128`, `global_dim=64` — `features_dim = 192`, all constructor kwargs, all configurable.
+
+**`obs_version` auto-detects from `observation_space`'s own width** (`rfenv.env.obs_version_for_width`,
+new alongside `band_layout`) rather than needing to be threaded through the CLI/manifest separately —
+SB3 always constructs the extractor from the real training env's `observation_space`, so the common
+case needs no extra wiring and cannot silently drift from what the env actually built. Every registered
+width is unique today (183/362/398/400), so this is unambiguous; an explicit `obs_version` that
+disagrees with the space's width is refused, not silently trusted, the same "checked, not assumed"
+discipline `require_loadable` applies to checkpoint width.
+
+**`lstm_hidden_size` and the post-LSTM actor/critic heads are untouched**, same convention D78 set —
+`features_dim` (192 by default) becomes the LSTM's input width in place of the raw observation, but the
+recurrent core's own size stays at whatever is passed (library default 256, or 512 to match rung 23a's
+config for a fair first comparison, per the request). Every recurrent-PPO guarantee — episode-start
+masking, hidden-state reset, truncated-BPTT sequence handling, the rollout buffer — is `sb3_contrib`'s
+own code, never touched: the extractor only ever sees a flat `(rows, obs_dim)` tensor (one live
+timestep or a whole flattened rollout) and has no parameters that could depend on the sequence
+dimension, exactly the same guarantee D78 relies on and for the same underlying reason (SB3 reshapes
+into a sequence *after* feature extraction, in `_process_sequence`, never before).
+
+**Registered as a third policy, not a replacement** — `--policy BandEncoderLstmPolicy` opts in,
+`--policy MlpLstmPolicy` stays what every existing rung trained on. Verified directly (2026-09-20): a
+300-timestep smoke run on "v3" (11 per-band blocks, 4 global) confirms `band_index.shape == (36, 11)`,
+`global_index.shape == (4,)`, `lstm_actor.input_size == 192`, `lstm_actor.hidden_size` untouched from
+whatever is passed; a checkpoint trained under the policy reloads via `load_checkpoint()` and predicts.
+No training result yet — same status D78 opened at. The natural next step, per the request: the exact
+23a training command (reward_balance, "v2p", `band_priority=True` at 23a's own strengthened settings,
+seed 2, `lstm_hidden_size=512`, `n_steps=8192`, 800k steps), differing only in `--policy`, not started
+without being asked.
+
+**Evidence.** `rfenv/env.py` (`BandLayout`, `band_layout`, `obs_version_for_width`); `rfenv/rl/policies.py`
+(`BandEncoderFeaturesExtractor`, `BandEncoderLstmPolicy`, `POLICY_ALIASES`); `rfenv/rl/recurrent_ppo.py`
+(`--policy` gains the fifth choice); `tests/test_band_layout.py` (21 tests, pure numpy, no training-stack
+skip needed); `tests/test_policies.py` (extended to 18 tests): the gather reconstructs known per-band and
+global values from synthetic data, not just shapes; the encoder's parameter count is independent of the
+band count; permuting bands before pooling leaves the output unchanged; `obs_version` auto-detects and a
+mismatch is refused; `lstm_hidden_size` matches the baseline unless overridden; the post-LSTM heads are
+the same classes as the baseline's; a checkpoint round-trips through `load_checkpoint()` and predicts.
