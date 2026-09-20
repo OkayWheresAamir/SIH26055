@@ -177,9 +177,9 @@ def test_the_band_encoder_policy_puts_a_shared_band_encoder_ahead_of_the_lstm(tm
     fe = model.policy.features_extractor
     assert isinstance(fe, BandEncoderFeaturesExtractor)
     assert fe.obs_version == "v3"
-    # v3: 11 per-band blocks, 4 global -- band_index/global_index shapes pin the gather.
+    # v3: 11 per-band blocks, 3 global -- band_index/global_index shapes pin the gather.
     assert tuple(fe.band_index.shape) == (36, 11)
-    assert tuple(fe.global_index.shape) == (4,)
+    assert tuple(fe.global_index.shape) == (3,)
     # LSTM input is band_embed_dim + global_dim (128 + 64), not the raw observation width.
     assert model.policy.lstm_actor.input_size == 192
     assert model.policy.lstm_actor.input_size != model.observation_space.shape[0]
@@ -223,7 +223,7 @@ def test_a_checkpoint_trained_under_the_band_encoder_policy_reloads_and_predicts
 def test_the_band_encoder_has_one_shared_set_of_weights_not_one_per_band():
     """Parameter count must not scale with the number of bands -- otherwise
     36 encoders would be hiding behind one attribute name."""
-    space = _flat_box(400)  # "v3"
+    space = _flat_box(399)  # "v3"
     fe = BandEncoderFeaturesExtractor(space, obs_version="v3",
                                        band_embed_dim=16, band_hidden_dim=8)
     n_band_features = fe.band_index.shape[1]
@@ -240,10 +240,10 @@ def test_permuting_which_band_holds_which_feature_vector_does_not_change_the_poo
     """Mean pooling over the same multiset of per-band vectors is invariant
     to which physical band each one sits in -- proof that one shared encoder
     is applied per band (a per-band-indexed encoder would break this)."""
-    space = _flat_box(400)
+    space = _flat_box(399)
     fe = BandEncoderFeaturesExtractor(space, obs_version="v3")
     fe.eval()
-    x = torch.randn(3, 400)
+    x = torch.randn(3, 399)
     with torch.no_grad():
         out1 = fe(x)
         x2 = x.clone()
@@ -266,10 +266,10 @@ def test_obs_version_mismatch_with_observation_space_width_is_refused():
 
 
 def test_the_band_encoder_treats_each_row_of_the_batch_independently():
-    space = _flat_box(400)
+    space = _flat_box(399)
     fe = BandEncoderFeaturesExtractor(space, obs_version="v3")
     fe.eval()
-    batch = torch.randn(5, 400)
+    batch = torch.randn(5, 399)
     with torch.no_grad():
         out = fe(batch)
         permuted_out = fe(batch[[4, 3, 2, 1, 0]])

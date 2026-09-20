@@ -154,6 +154,16 @@
 > the ordinary `rfenv.rl.{ppo,recurrent_ppo,dqn}.train()` path exactly as before; `rfenv/rl/online.py`
 > only ever loads an already-trained checkpoint from that path and keeps adapting it.
 >
+> **AMENDED 2026-09-20 — (18)** Amendment (15)'s `prev_hit` block, above, was removed from "v3" too,
+> the same day as (16), narrowing it 400 → 399 wide **in place** — requested directly, ahead of the
+> layout's first training run, to isolate `prev_reward`'s own effect rather than test two additions
+> at once. `prev_hit` was already on record (amendment (15)) as "pre-existing information" with no
+> companion block making the redundancy as directly provable as `prev_action`'s, but had been kept
+> anyway; asked plainly whether that was a reason to keep it or just a weaker excuse, it was removed.
+> **`prev_reward` is now the only block "v3" carries beyond "v2p"** — no checkpoint cost this time,
+> since nothing was ever successfully trained on the intermediate 400-wide shape. Same `DECISIONS.md`
+> D75 entry, extended a second time.
+>
 > The PDF beside this file is older still and does not carry any of these amendments.
 
 

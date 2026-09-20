@@ -194,15 +194,30 @@ OBS_LAYOUTS: dict[str, tuple[str, ...]] = {
     # change D49/D55/D67/D72 made before it: every checkpoint trained on the
     # 436-wide shape (`lstm_v3_seed0`, `lstm_v3_seed1`) is now permanently
     # unloadable. Not free, paid on purpose -- see D75's amendment.
+    #
+    # **Second amendment, same day (2026-09-20): `prev_hit` removed too,
+    # requested directly, on a first-pass "does prev_reward alone train well"
+    # question.** 400 -> 399. `prev_hit` was already flagged as the weaker of
+    # the two additions when "v3" first shipped -- pre-existing information
+    # (`current_hit_streak > 0`), just with no companion block making the
+    # redundancy as mechanically provable as `prev_action`'s was. Unlike that
+    # first amendment, this one has no real cost to pay: no checkpoint has
+    # ever been successfully trained on the 400-wide shape (every file under
+    # `runs/checkpoints/v3/` still predates it, at 436), so nothing loadable
+    # is lost -- this narrows the *target* before anything was built against
+    # it, not after. `prev_reward` is now the only in-context block "v3"
+    # carries, isolating D75's own central claim (the raw per-step reward is
+    # genuinely new information an LSTM's hidden state could not otherwise
+    # reconstruct) from a second, weaker one in the same layout.
     "v3": ("hit_rate", "visit_density", "staleness", "current_band", "clock",
            "measured_dbm_band", "hit_streak", "current_hit_streak",
            "pulse_width", "aoa_sin", "aoa_cos", "pulse_count", "band_priority",
-           "prev_reward", "prev_hit"),
+           "prev_reward"),
 }
 
 
 def obs_width(version: str) -> int:
-    """Flat width for one layout: 183 "v1", 362 "v2", 398 "v2p", 400 "v3"."""
+    """Flat width for one layout: 183 "v1", 362 "v2", 398 "v2p", 399 "v3"."""
     if version not in OBS_LAYOUTS:
         raise ValueError(f"obs_version must be one of {sorted(OBS_LAYOUTS)}, got {version!r}")
     return sum(_BLOCK_SPECS[name][0] for name in OBS_LAYOUTS[version])
@@ -214,7 +229,7 @@ def obs_version_for_width(width: int) -> str:
     For a policy that needs to know its own layout but is only ever handed a
     `gymnasium.spaces.Box` (D79's `BandEncoderFeaturesExtractor`, built by SB3
     from nothing but `observation_space`): every registered width is unique
-    today (183/362/398/400), so this is unambiguous, but raises rather than
+    today (183/362/398/399), so this is unambiguous, but raises rather than
     guessing if that ever stops being true, and raises if `width` matches no
     registered layout at all -- both cheaper to catch here than as a bad
     gather three layers down.

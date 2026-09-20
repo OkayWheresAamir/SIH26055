@@ -1637,3 +1637,58 @@ view asked for" used `isinstance(view, NullView)`, which is true for every real 
 backends subclass it to share its no-op `open`/`close`. Online fine-tuning with `--view light` had
 been running and silently drawing nothing this whole time. Fixed with an exact type comparison,
 caught only because a smoke test finally looked for actual output instead of a clean exit.
+
+### 19.2 Two architecture ablations on rung 9, and a second narrowing of "v3" (D78/D79, 2026-09-20)
+
+Rung 9's policy has been `MlpLstmPolicy` since it existed — `FlattenExtractor` is a no-op on an
+already-flat observation, so the architecture every checkpoint has ever trained on is really
+`obs -> LSTM -> actor/critic`. Two requests, same day, each asking whether a different piece of
+structure ahead of the LSTM would help.
+
+**D78 — a flat MLP first.** `obs -> 2-layer LayerNorm MLP (256) -> LSTM -> actor/critic`,
+`MlpFeatureLstmPolicy`, registered opt-in via `--policy`. Trained the matched pair against the
+already-trained `lstm_v2p_ctrl_seed0` (reused as the control, not retrained — identical config,
+differing only in `--policy`). **The baseline won, decisively for one seed**: paired against
+recency, control beat treatment 62.4% to 46.8% on beats-recency-both, three times the 5pp margin
+this repo treats as real. Ratio was essentially tied; the gap was almost entirely censored intercept
+time — the deeper network was measurably slower to first-detect, not worse at eventually covering
+the spectrum. A convergence check (training-reward curve flattened by ~82k of 800k steps; evaluating
+the run's own 200k/400k/600k/800k snapshots found no clean late-training climb) said this looked like
+a genuine plateau, not an unfinished run — and a follow-up comparison of the "best-looking" 600k
+snapshot against rung 23a (the project's strongest checkpoint) **corrected** that snapshot's own
+apparent edge rather than confirming it: on the full 47-config/3-seed set the 600k snapshot scored
+worse than the final 800k one, not better. A 12-scenario probe, it turns out, isn't enough to rank
+snapshots by, only enough to say training has stopped moving.
+
+**D79 — represent each band, then pool.** A more structural ask: since the observation already *is*
+11 interleaved per-band arrays (in "v3") plus a few global scalars, make that explicit instead of
+handing the network one undifferentiated vector. `obs -> shared per-band encoder -> mean pool across
+bands -> concat encoded global features -> LSTM -> actor/critic`, `BandEncoderLstmPolicy`. The
+interesting part wasn't the network, which is two lines of `nn.Sequential` — it was the gather:
+the flat vector interleaves *blocks* (`hit_rate[0:36]`, `visit_density[0:36]`, ...), not *bands*, so
+turning it into `(36, n_band_features)` needed a precomputed strided index, not a reshape, or it
+would have silently mixed one band's `hit_rate` with a different band's `staleness`. Built
+`rfenv.env.band_layout()` to compute that index purely from `_BLOCK_SPECS`'s declared widths —
+per-band exactly when a block is 36 wide, global otherwise, nothing hardcoded by name — checked
+against synthetic values that encode their own source block before trusting it near anything real.
+One shared encoder, not 36: `nn.Linear`/`nn.LayerNorm` already only touch a tensor's last dimension,
+so calling it on a `(rows, 36, K)` tensor applies the same weights to every band for free, checked
+directly (parameter count independent of band count; permuting which band holds which feature vector
+leaves mean-pooled output unchanged). No training run yet.
+
+**Then, asked directly: what does "v3" even add if I'm training offline, and can we strip it down to
+just `prev_reward` and try that first?** `prev_hit` was always the weaker of "v3"'s two additions —
+§19.1 already called it "pre-existing information... lacking the same direct duplicate" `prev_action`
+had, and kept it anyway on that weaker footing. Asked plainly whether that was a reason to keep it or
+just an excuse, it came out too: `OBS_LAYOUTS["v3"]` narrows a second time, 400 -> 399, so a first
+training run tests exactly one hypothesis (does the raw per-step reward help) instead of two tangled
+ones. No checkpoint cost this time — nothing had ever been successfully trained on the 400-wide shape
+it replaces. Also asked for: band-priority off for this run (not literal zero — `band_priority`'s
+declared range is `[1.0, priority_high]`, so zero would violate `ScanEnv`'s own `observation_space`
+the same way D74's `priority_high` bug once did; "off" still means the reset default, all-ones,
+uninformative but in-bounds), and the architecture to use is D79's brand-new `BandEncoderLstmPolicy`
+— untested combination, both the narrowed observation and the representation architecture unproven
+together, picked deliberately over the safer one-variable-at-a-time choice. Training launched at
+23a's own scale (512-wide LSTM, `n_steps=8192`, 800k steps, `reward_balance`) so a result, if it
+comes, is comparable to the project's best-known number. Full accounts: D78, D79, D75's second
+amendment.

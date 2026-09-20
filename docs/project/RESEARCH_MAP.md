@@ -83,7 +83,8 @@ that primary is not in this repository.
 
 **Resolved since the 2026-08-28 list:**
 - **An online agent, in three pieces (D75/D76/D77, all `BUILT` 2026-09-19/20, none measured).** A
-  fourth observation layout, "v3" (400-wide = "v2p" + `prev_reward`/`prev_hit`), so a recurrent
+  fourth observation layout, "v3" (399-wide = "v2p" + `prev_reward`, narrowed twice the same day —
+  `prev_action` and then `prev_hit` both removed once shown redundant/requested off), so a recurrent
   policy sees what its last decision returned and can adapt inside a mission with no gradient step —
   the RL² construction, and the most literal reading of the PS's *"absence of prior reliable
   intelligence"* / *"trained based on hits and misses"*. `episode_slots` lets a mission outrun the

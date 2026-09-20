@@ -91,10 +91,10 @@ def test_v1_has_five_per_band_blocks_and_three_global():
     assert layout.global_blocks == ("clock", "measured_dbm", "current_hit_streak")
 
 
-def test_v3_has_eleven_per_band_blocks_and_four_global():
+def test_v3_has_eleven_per_band_blocks_and_three_global():
     layout = band_layout("v3")
     assert len(layout.per_band_blocks) == 11
-    assert layout.global_blocks == ("clock", "current_hit_streak", "prev_reward", "prev_hit")
+    assert layout.global_blocks == ("clock", "current_hit_streak", "prev_reward")
 
 
 def test_unknown_obs_version_raises():

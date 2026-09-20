@@ -15,7 +15,9 @@ session, 2026-09-14 (D30/D71), updated the same session for D72's `pulse_count` 
 2026-09-19 for the "v2p" `band_priority` block described in §2.4 (D74, `MEASURED`: the mechanism is
 built and registered, but a control-arm comparison plus a permutation ablation found it was never
 learned at the scale tested — see §2.4 for the numbers), and again the same day for "v3"'s three
-in-context blocks in §2.5 (D75, `BUILT` — no training run yet, so there is no result to quote).
+in-context blocks in §2.5 (D75, `BUILT` — no training run yet, so there is no result to quote), and a
+second time the same day for §2.5's own narrowing from two in-context blocks to one (`prev_hit`
+removed, 2026-09-20).
 
 ---
 
@@ -28,18 +30,20 @@ in-context blocks in §2.5 (D75, `BUILT` — no training run yet, so there is no
 | **"v1"** | 183 | `float32` | D34, extended D49, rescaled D55, extended D67 | — (this is the baseline) |
 | **"v2"** | 362 | `float32` | D30, resolved as D71 (2026-09-14), extended by D72 (2026-09-14) | trains on "v1"; "v2" is opt-in, additive |
 | **"v2p"** | 398 | `float32` | "v2" + `band_priority` (D74, `MEASURED` — see §2.4) | trains on "v1" or "v2"; "v2p" is opt-in, additive |
-| **"v3"** | 400 | `float32` | "v2p" + `prev_reward`/`prev_hit` (D75, `BUILT` — see §2.5) | trains on any earlier layout; "v3" is opt-in, additive |
+| **"v3"** | 399 | `float32` | "v2p" + `prev_reward` (D75, `BUILT` — see §2.5) | trains on any earlier layout; "v3" is opt-in, additive |
 
 **"v1" never changes when "v2" or "v2p" exist.** Unlike every previous observation change in this
 project (D49, D55, D67), which widened the vector in place and made every prior checkpoint
 permanently unloadable, "v2" and "v2p" are separate, parallel layouts. A checkpoint trained on
 "v1" stays exactly as loadable as it always was; nothing about it is affected by "v2"/"v2p"
 existing. **A checkpoint trained on D71's own 326-wide "v2" is invalidated by D72 the same way**,
-**and "v3" carries the same cost once already: it shipped 436-wide with a third block,
-`prev_action`, then narrowed in place to 400 the next day (D75's amendment) once `prev_action` was
-confirmed redundant with `current_band`** — `lstm_v3_seed0`/`lstm_v3_seed1`, both complete
-checkpoints, are now permanently unloadable. Only "v1" is guaranteed stable.
-`rfenv.rl.common.known_observation_widths()` returns `{183, 362, 398, 400}` — all four are live,
+**and "v3" carries the same cost twice over: it shipped 436-wide with a third block,
+`prev_action`, narrowed in place to 400 the next day (D75's amendment) once `prev_action` was
+confirmed redundant with `current_band`, then narrowed again to 399 the same day once `prev_hit`
+was removed too** — `lstm_v3_seed0`/`lstm_v3_seed1`, both complete 436-wide checkpoints, are now
+permanently unloadable; no checkpoint was ever successfully trained on the intermediate 400-wide
+shape, so the second narrowing costs nothing additional. Only "v1" is guaranteed stable.
+`rfenv.rl.common.known_observation_widths()` returns `{183, 362, 398, 399}` — all four are live,
 current, and correct, simultaneously.
 
 **Both layouts are built from a single per-band bookkeeping system.** `ScanEnv` always tracks
@@ -211,9 +215,9 @@ promoted, code not removed — nothing defaults to it. Full account: `DECISIONS.
 
 ---
 
-### 2.5 "v3"-only blocks (D75, `BUILT` — no training run yet; amended 2026-09-20)
+### 2.5 "v3"-only blocks (D75, `BUILT` — no training run yet; amended twice, both 2026-09-20)
 
-Two blocks, appended after `band_priority`, that hand the recurrent policy what its last decision
+One block, appended after `band_priority`, that hands the recurrent policy what its last decision
 returned. This is the RL² construction: a recurrent policy shown its previous outcome can run an
 adaptation rule *inside* the episode, in its hidden state, with no gradient step — which is what
 "online" means in the PS's sense of working *"in the absence of prior reliable intelligence"*.
@@ -221,32 +225,40 @@ adaptation rule *inside* the episode, in its hidden state, with no gradient step
 | block | width | range | what it is |
 |---|---|---|---|
 | `prev_reward` | 1 | `[0, 1]` | `reward_balance_obs`, clipped to ±6.0 and affinely rescaled |
-| `prev_hit` | 1 | `[0, 1]` | `1.0` if the last dwell declared anything (`dwell.Y.any()`), else `0.0` |
 
-**A third block, `prev_action` (36-wide, one-hot of the last band chosen), shipped originally and
-was removed the next day.** Asked directly why the observation needed it when an LSTM's hidden state
-already carries information forward: the recurrence is `h_t = f(h_{t-1}, x_t)`, so it can only carry
-forward what appeared *in its input* at some point — and `current_band` (every layout since "v1") has
-always been in that input, since `step()` assigns `self._current_band = action` and
-`self._prev_action = action` from the same value. `prev_action` was therefore never adding a channel
-the network lacked, only a duplicate of one it already had, and there was no argument for keeping it
-once that was put plainly — it is removed from `OBS_LAYOUTS["v3"]` (**436 → 400 wide, in place** —
+**"v3" shipped with three in-context blocks and now has one, in two same-day amendments.**
+
+**First: `prev_action` (36-wide, one-hot of the last band chosen), removed the next day.** Asked
+directly why the observation needed it when an LSTM's hidden state already carries information
+forward: the recurrence is `h_t = f(h_{t-1}, x_t)`, so it can only carry forward what appeared *in
+its input* at some point — and `current_band` (every layout since "v1") has always been in that
+input, since `step()` assigns `self._current_band = action` and `self._prev_action = action` from
+the same value. `prev_action` was therefore never adding a channel the network lacked, only a
+duplicate of one it already had — removed from `OBS_LAYOUTS["v3"]` (**436 → 400 wide, in place** —
 the same class of width change D49/D55/D67/D72 made, invalidating `lstm_v3_seed0`/`lstm_v3_seed1`,
-both complete 800k-step checkpoints). `_BLOCK_SPECS["prev_action"]` still exists and is still built
-by `_observation_blocks()` (every block is built unconditionally, D30's own convention); it is simply
-in no registered layout any more.
+both complete 800k-step checkpoints).
 
-`prev_hit` stays: it is `current_hit_streak > 0`, also pre-existing information, but there is no
-companion block that makes it provably redundant the same direct way `current_band` made
-`prev_action` redundant, and it costs one column. **`prev_reward` is, and remains, the only genuinely
-new information in this layout** — no layout before "v3" ever exposed the raw per-step reward, only
-running aggregate statistics (`hit_rate`, `hit_streak`, `staleness`, `visit_density`). The argument
-for keeping it despite being theoretically reconstructible from those aggregates is the standard RL²
-one: a shorter gradient path, not new information the architecture otherwise lacks a route to — and
-D74 is the reason not to trust that argument uncritically, having already shown twice that this exact
-training setup does not reliably learn to use even a much stronger signal that was equally
-unavailable elsewhere. That is exactly what D75's ablation, corrupting `prev_reward` specifically, is
-built to test directly rather than assume.
+**Second, the same day: `prev_hit`, removed too, on a direct request to isolate `prev_reward`'s own
+effect before training anything.** It was `current_hit_streak > 0`, also pre-existing information,
+but with no companion block making the redundancy provably direct the way `current_band` made
+`prev_action`'s — so it had a real, if weaker, claim to stay. Removed anyway, narrowing "v3" a
+second time (**400 → 399**), so that a first training run answers one question (does `prev_reward`
+alone train well) rather than two entangled ones. Unlike the first amendment, this one has no
+checkpoint cost: no `.zip` was ever successfully trained on the 400-wide shape it replaces — every
+file under `runs/checkpoints/v3/` still predates even the first amendment, at 436.
+
+Both `_BLOCK_SPECS["prev_action"]` and `_BLOCK_SPECS["prev_hit"]` still exist and are still built by
+`_observation_blocks()` (every block is built unconditionally, D30's own convention); neither is in
+any registered layout any more.
+
+**`prev_reward` is, and remains, the only block "v3" carries** — no layout before "v3" ever exposed
+the raw per-step reward, only running aggregate statistics (`hit_rate`, `hit_streak`, `staleness`,
+`visit_density`). The argument for keeping it despite being theoretically reconstructible from those
+aggregates is the standard RL² one: a shorter gradient path, not new information the architecture
+otherwise lacks a route to — and D74 is the reason not to trust that argument uncritically, having
+already shown twice that this exact training setup does not reliably learn to use even a much
+stronger signal that was equally unavailable elsewhere. That is exactly what D75's ablation,
+corrupting `prev_reward` specifically, is built to test directly rather than assume.
 
 **`prev_reward` is not the training reward.** It is `reward_balance_obs` — `reward_balance` with
 `dwell.Y` substituted for `dwell.Z`, i.e. what the receiver *declared* rather than what was truly
@@ -348,19 +360,19 @@ heuristic rung currently needs to address past index 144 under it (see §5).
 `measured_dbm` (1-wide) is replaced by `measured_dbm_band` (36-wide) at that point and every later
 block shifts. "v2" and "v2p" agree on every index up to 362; "v2p" simply appends one more block.
 
-### "v3" (400 wide, appends the two in-context blocks after `band_priority`; D75, amended 2026-09-20)
+### "v3" (399 wide, appends `prev_reward` after `band_priority`; D75, amended twice, both 2026-09-20)
 
 | Index range | Block |
 |---|---|
 | `0 : 398` | exactly "v2p", unchanged |
 | `398` | `prev_reward` |
-| `399` | `prev_hit` |
 
 Append-only, so every "v2p" offset holds — a test asserts `obs_v3[:398]` is byte-identical to the
-"v2p" vector for identically seeded, identically acted environments. Was 436 wide with a third block,
-`prev_action`, at `398:434` (pushing `prev_reward`/`prev_hit` to `434`/`435`) until D75's amendment
-removed it as confirmed-redundant with `current_band`; checkpoints trained on that shape no longer
-load.
+"v2p" vector for identically seeded, identically acted environments. Was 436 wide with two more
+blocks, `prev_action` at `398:434` and `prev_hit` at `435` (pushing `prev_reward` to `434`), until
+D75's two amendments removed them in turn — `prev_action` as confirmed-redundant with `current_band`,
+`prev_hit` on a direct request to isolate `prev_reward`'s own effect. Checkpoints trained on the
+436-wide shape no longer load; no checkpoint was ever trained on the intermediate 400-wide shape.
 
 ---
 
