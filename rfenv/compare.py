@@ -128,6 +128,32 @@ def resolve_priority_kwargs(
             priority_high, occupancy_coef, occupancy_decay_cap)
 
 
+def resolve_obs_version(key: str, obs_version: str) -> str:
+    """A rung's own declared `obs_version` (`ladder.py`'s `Rung`), not the caller's.
+
+    `Rung.obs_version`'s docstring already promises this -- "so `compare.py` can
+    build its env correctly ... without the caller having to pass matching
+    flags" -- but until D75 nothing actually read the field; every episode used
+    one CLI-wide `--obs-version`, applied uniformly to every rung in the
+    invocation. That was invisible as long as a comparison only ever needed one
+    layout at a time (20d/21a on "v2", 22a-23b on "v2p", one flag covering the
+    whole run). D75's matched pair breaks that assumption outright: 24a needs
+    "v3", its own matched control 24b needs "v2p", in the same invocation, and
+    there is no single `--obs-version` value that is correct for both.
+
+    Unlike `resolve_priority_kwargs`, this always defers to the rung's own
+    value rather than treating the CLI flag as a default only some rungs
+    override -- every `Rung` declares one, and a heuristic rung's default
+    ("v1") is harmless under any layout: `recency`/`camper` only ever read
+    `HIT_RATE`/`STALENESS`, both inside the first `4 * N_BANDS` elements, which
+    every layout lays out identically (`OBSERVATION_SPACE.md` §4). A trained
+    checkpoint's own value is exactly what its own `.predict()` needs; getting
+    it from anywhere else is the silent-mismatch risk `resolve_priority_kwargs`
+    was already written to close for the priority fields.
+    """
+    return B.BY_KEY[key].obs_version
+
+
 def run_one(
     key: str,
     scenario: Scenario,
@@ -146,6 +172,7 @@ def run_one(
     priority_high: float = 3.0,
     occupancy_coef: float = 0.0,
     occupancy_decay_cap: float = 2.0,
+    corrupt_obs_blocks: tuple[str, ...] = (),
 ):
     """Run one rung on one scenario at one seed; return its artefacts.
 
@@ -176,6 +203,7 @@ def run_one(
     if grid is None:
         grid = TruthGrid.from_scenario(scenario)
 
+    obs_version = resolve_obs_version(key, obs_version)
     (band_priority, priority_coef, priority_n_bands, priority_uniform,
      priority_high, occupancy_coef, occupancy_decay_cap) = resolve_priority_kwargs(
         key, band_priority, priority_coef, priority_n_bands, priority_uniform,
@@ -185,7 +213,8 @@ def run_one(
                   obs_version=obs_version, band_priority=band_priority,
                   priority_coef=priority_coef, priority_n_bands=priority_n_bands,
                   priority_uniform=priority_uniform, priority_high=priority_high,
-                  occupancy_coef=occupancy_coef, occupancy_decay_cap=occupancy_decay_cap)
+                  occupancy_coef=occupancy_coef, occupancy_decay_cap=occupancy_decay_cap,
+                  corrupt_obs_blocks=corrupt_obs_blocks)
     policy = B.make(key, seed=seed, grid=grid)
     run_episode(env, policy, seed=seed)
 
@@ -288,6 +317,7 @@ def compare(
     priority_high: float = 3.0,
     occupancy_coef: float = 0.0,
     occupancy_decay_cap: float = 2.0,
+    corrupt_obs_blocks: tuple[str, ...] = (),
 ) -> dict[str, list[dict]]:
     """Every rung on every scenario at every seed. Returns `{key: [row, ...]}`.
 
@@ -311,7 +341,8 @@ def compare(
                               priority_coef=priority_coef, priority_n_bands=priority_n_bands,
                               priority_uniform=priority_uniform, priority_high=priority_high,
                               occupancy_coef=occupancy_coef,
-                              occupancy_decay_cap=occupancy_decay_cap)
+                              occupancy_decay_cap=occupancy_decay_cap,
+                              corrupt_obs_blocks=corrupt_obs_blocks)
                 rows[key].append(scheduler_metrics(run))
         if progress:
             print(f"  [{i:3d}/{len(scenarios)}] {scenario.name:<34} "
@@ -723,13 +754,17 @@ def figures(out_root: Path, summary: dict[str, dict], keys: tuple[str, ...],
                                         occupancy_decay_cap)
             for k in keys
         }
-        priority_config = next(
-            (row for row in resolved.values() if row[0] and not row[3]),
+        priority_entry = next(
+            ((k, row) for k, row in resolved.items() if row[0] and not row[3]),
             None,
         )
-        if priority_config is not None:
+        if priority_entry is not None:
+            priority_key, priority_config = priority_entry
             eff_bp, eff_coef, eff_nbands, eff_uniform, eff_high, eff_occ, eff_cap = priority_config
-            priority_env = ScanEnv(scenario=scenario, obs_version=obs_version,
+            # The rung's own obs_version (D75), not the loop's CLI-wide one --
+            # matches how `run_one` builds this same rung's env.
+            priority_env = ScanEnv(scenario=scenario,
+                                    obs_version=resolve_obs_version(priority_key, obs_version),
                                     band_priority=eff_bp, priority_coef=eff_coef,
                                     priority_n_bands=eff_nbands, priority_uniform=eff_uniform,
                                     priority_high=eff_high, occupancy_coef=eff_occ,
@@ -794,7 +829,12 @@ def main(argv: list[str] | None = None) -> int:
                     help="fair-share visit_density at which the occupancy term above "
                          "has decayed to zero (default 2.0). No effect unless "
                          "--occupancy-coef is nonzero.")
+    ap.add_argument("--corrupt-obs-blocks", default="",
+                    help="comma-separated observation blocks to corrupt (D75 ablation): each is "
+                         "replaced per step by a draw from its own recent history, off a "
+                         "separate RNG so the receiver noise stays bit-identical to a clean run.")
     args = ap.parse_args(argv)
+    corrupt = tuple(b for b in args.corrupt_obs_blocks.split(",") if b)
 
     keys = tuple(r.key for r in B.LADDER)
     if args.rungs:
@@ -824,7 +864,8 @@ def main(argv: list[str] | None = None) -> int:
                    priority_n_bands=tuple(args.priority_n_bands),
                    priority_uniform=args.priority_uniform,
                    priority_high=args.priority_high, occupancy_coef=args.occupancy_coef,
-                   occupancy_decay_cap=args.occupancy_decay_cap)
+                   occupancy_decay_cap=args.occupancy_decay_cap,
+                   corrupt_obs_blocks=corrupt)
     summary = summarise(rows)
     wins = {ref: paired_wins(rows, against=ref) for ref in PAIRED_REFERENCES}
 
@@ -841,6 +882,7 @@ def main(argv: list[str] | None = None) -> int:
         "priority_high": args.priority_high,
         "occupancy_coef": args.occupancy_coef,
         "occupancy_decay_cap": args.occupancy_decay_cap,
+        "corrupt_obs_blocks": list(corrupt),
         "split": "train",
         "source": COMPARISON_SOURCE,
         "n_scenarios": len(scenarios),
