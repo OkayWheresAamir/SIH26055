@@ -4962,3 +4962,68 @@ really does differ from the truth reward; a fine-tune moves the weights **and** 
 bit-identical**, which is the no-op control that rules out the harness perturbing the policy by some
 route other than the optimiser; `custom_objects` really resizes the rollout buffer; an adapted
 checkpoint still runs through `run_episode` under `guarded()`).
+
+## D78 — A second recurrent-PPO policy, `MlpFeatureLstmPolicy`: a feature MLP ahead of the LSTM
+
+**Status:** `BUILT` (2026-09-20). Mechanism built and tested; no training result yet.
+
+**What it is.** Rung 9's policy has always been sb3-contrib's `MlpLstmPolicy`
+(`RecurrentActorCriticPolicy` with the library-default `FlattenExtractor`) — since the observation
+is already a flat vector, that extractor is a no-op reshape, so the architecture actually trained on
+every existing checkpoint is `obs -> LSTM -> actor/critic`. `rfenv/rl/policies.py` adds a second,
+selectable policy, `MlpFeatureLstmPolicy`: `obs -> 2-layer LayerNorm MLP -> LSTM -> actor/critic`,
+each MLP stage `Linear -> LayerNorm -> Tanh`, widths `obs_dim -> 256 -> 256` — the LSTM's own input
+width becomes 256 (fixed by the extractor's `features_dim`) in place of the raw observation width,
+but its **hidden size is untouched** (still whatever `lstm_hidden_size` the caller passes, library
+default 256), and the post-LSTM actor/critic heads are `RecurrentActorCriticPolicy`'s own, unmodified.
+
+**Registered as a second policy, not a replacement — `--policy MlpFeatureLstmPolicy` opts in,
+`--policy MlpLstmPolicy` (the default) is bit-for-bit what every existing rung trained on.** The
+same convention every other architecture question here has followed (D71 "v2", D74 band-priority,
+D75 "v3"): a fully-specified, directly-requested build, landed as a matched-pair comparison waiting
+to be run, not a change made to what the baseline already trains on.
+
+**Why a features-extractor swap and not a new policy class written from scratch.** SB3's own
+`RecurrentActorCriticPolicy.forward`/`evaluate_actions` already separate "turn one timestep's
+observation into a feature vector" (`self.extract_features`, called on a flat `(batch, obs_dim)`
+tensor) from "run those features through the LSTM as a sequence" (`_process_sequence`, which does
+the `(n_seq, seq_len, features_dim)` reshape and the episode-start masking) — the extractor never
+sees, and cannot leak information across, the sequence dimension, whether `batch` is one live
+timestep during rollout collection or a whole flattened rollout during a gradient update. Swapping
+only `features_extractor_class`/`features_extractor_kwargs` and subclassing nothing else is what
+keeps every other guarantee intact for free: episode-start masks, hidden-state initialisation and
+reset, truncated-BPTT sequence handling, the recurrent rollout buffer, and inference-time state
+handling are all `sb3_contrib`'s own code, never touched.
+
+**Why this policy is passed as a class object, not registered as a new string alias.**
+`RecurrentPPO.policy_aliases` is a `ClassVar` dict shared by every `RecurrentPPO` instance in the
+process — mutating it to add `"MlpFeatureLstmPolicy"` would be a global, load-order-dependent side
+effect on third-party library state for the sake of one repo's convenience. `RecurrentPPO(policy=...)`
+already accepts a class directly (`str | type[RecurrentActorCriticPolicy]`) and bypasses the alias
+lookup entirely when given one; `recurrent_ppo.py::_resolve_policy` maps the CLI's string choice to
+`rfenv.rl.policies.MlpFeatureLstmPolicy` locally, at the one call site that needs it.
+`RecurrentPPO.save()` pickles the policy class itself into the checkpoint's `data` member (not a
+string name), so a checkpoint trained this way reloads through the ordinary `load_checkpoint()` with
+no special-casing — verified directly (round-tripped a checkpoint through `train()` -> `load_checkpoint()`
+-> `predict()`).
+
+**Verified directly (2026-09-20), not yet trained to a result:** a 300-timestep smoke run under each
+policy confirms the split — `MlpLstmPolicy`'s `lstm_actor.input_size` is 183 (the raw "v1"
+observation, `FlattenExtractor` doing nothing), `MlpFeatureLstmPolicy`'s is 256 (`MlpFeaturesExtractor`'s
+output); both leave `lstm_actor.hidden_size` at the library default (256) since neither this change
+nor the CLI's `--policy` flag touches `lstm_hidden_size`; a checkpoint trained under
+`MlpFeatureLstmPolicy` reloads via `load_checkpoint()` and predicts correctly. No comparison has been
+run — this is the same status D75/D76/D77 opened at: a mechanism this repository can defend, with the
+matched-pair run (`MlpLstmPolicy` vs `MlpFeatureLstmPolicy`, same reward/obs-version/seed/timesteps)
+still to do.
+
+**Evidence.** `rfenv/rl/policies.py` (`MlpFeaturesExtractor`, `MlpFeatureLstmPolicy`,
+`POLICY_ALIASES`); `rfenv/rl/recurrent_ppo.py` (`_resolve_policy`, `--policy` gains the fourth
+choice); `tests/test_policies.py` (9 tests, module-skipped without the training stack, mirroring
+`test_online.py`'s shape): the baseline's extractor and LSTM input width are untouched; the new
+policy's LSTM input width is the extractor's `features_dim` (256), not the observation width;
+`lstm_hidden_size` matches the baseline unless explicitly overridden, and an override still takes;
+the post-LSTM `mlp_extractor`/`action_net`/`value_net` are the same classes as the baseline's; the
+extractor transforms each row of a batch independently of every other row (permuting the batch
+permutes the output the same way, and a single row reproduces its row from a batched pass exactly);
+a checkpoint trained under the new policy reloads through `load_checkpoint()` and predicts.

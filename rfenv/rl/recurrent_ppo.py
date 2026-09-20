@@ -46,8 +46,25 @@ from rfenv.rl.common import (
     add_manifest_arguments, finish_training, make_train_env,
     parse_hyperparameters, require_loadable, training_callbacks,
 )
+from rfenv.rl.policies import POLICY_ALIASES
 
 DEFAULT_CHECKPOINT = Path("runs/checkpoints/v1/recurrent_ppo/recurrent_ppo.zip")
+
+
+def _resolve_policy(policy: str):
+    """`"MlpFeatureLstmPolicy"` -> the class; anything else passes through.
+
+    `RecurrentPPO`'s own `policy_aliases` only knows its three library
+    policies (`MlpLstmPolicy`/`CnnLstmPolicy`/`MultiInputLstmPolicy`) --
+    `rfenv/rl/policies.py` deliberately does not mutate that class-level dict
+    (it is shared by every `RecurrentPPO` instance in the process, library
+    code, not ours to patch). Passing the class object itself instead of a
+    string bypasses that lookup entirely; SB3 accepts either
+    (`policy: str | type[RecurrentActorCriticPolicy]`) and records whichever
+    was given, so a checkpoint trained this way still round-trips through
+    `RecurrentPPO.load()` with no special casing there.
+    """
+    return POLICY_ALIASES.get(policy, policy)
 
 
 def train(
@@ -105,7 +122,8 @@ def train(
                           priority_n_bands=priority_n_bands, priority_uniform=priority_uniform,
                           priority_high=priority_high, occupancy_coef=occupancy_coef,
                           occupancy_decay_cap=occupancy_decay_cap)
-    model = RecurrentPPO(policy, env, seed=seed, verbose=verbose, device=device, **hyperparameters)
+    model = RecurrentPPO(_resolve_policy(policy), env, seed=seed, verbose=verbose,
+                          device=device, **hyperparameters)
     manifest_kwargs = {"reward": reward, "hyperparameters": hyperparameters,
                        "started_at": started_at, "description": description}
     callbacks = training_callbacks(
@@ -146,8 +164,14 @@ def main(argv: list[str] | None = None) -> int:
                      "Day-1 pass: library defaults, nothing tuned.",
     )
     ap.add_argument("--policy", default="MlpLstmPolicy",
-                     choices=["MlpLstmPolicy", "CnnLstmPolicy", "MultiInputLstmPolicy"],
-                     help="sb3-contrib recurrent policy type (default: MlpLstmPolicy)")
+                     choices=["MlpLstmPolicy", "CnnLstmPolicy", "MultiInputLstmPolicy",
+                              "MlpFeatureLstmPolicy"],
+                     help="sb3-contrib recurrent policy type (default: MlpLstmPolicy, "
+                          "obs -> LSTM -> actor/critic). MlpFeatureLstmPolicy "
+                          "(rfenv/rl/policies.py) is the opt-in alternative: "
+                          "obs -> 2-layer LayerNorm MLP -> LSTM -> actor/critic, LSTM "
+                          "hidden size and actor/critic heads unchanged -- a matched-pair "
+                          "architecture comparison, not a replacement.")
     ap.add_argument("--reward", default=DEFAULT_REWARD, choices=sorted(REWARDS),
                      help="reward candidate, passed to ScanEnv(reward=...) (D29)")
     ap.add_argument("--timesteps", type=int, default=20_000,

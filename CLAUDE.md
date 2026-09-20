@@ -209,6 +209,22 @@ recording the interruption. What gets measured, when it is run, is **coverage pe
 segment index**, streamed to `segments.jsonl` as it happens. Full accounts: D75, D76, D77;
 mechanism: `OBSERVATION_SPACE.md` §2.5.
 
+**A second recurrent-PPO policy exists, opt-in, unmeasured (D78, 2026-09-20).** Rung 9's policy has
+always been `MlpLstmPolicy` — since the observation is already flat, its `FlattenExtractor` is a
+no-op and the architecture every existing checkpoint trained on is `obs -> LSTM -> actor/critic`.
+`rfenv/rl/policies.py` adds `MlpFeatureLstmPolicy`, selectable via `--policy`, not a replacement:
+`obs -> 2-layer LayerNorm MLP (obs_dim -> 256 -> 256, Tanh) -> LSTM -> actor/critic`. Only
+`features_extractor_class`/`features_extractor_kwargs` change from the library default; `lstm_hidden_size`
+and the post-LSTM actor/critic heads are untouched, and every recurrent-PPO guarantee (episode-start
+masking, hidden-state reset, truncated-BPTT sequence handling, the rollout buffer) is `sb3_contrib`'s
+own code, never touched, because the extractor only ever sees a flat `(batch, obs_dim)` tensor — one
+live timestep or a whole flattened rollout, transformed one row at a time, never the sequence
+dimension. Passed to `RecurrentPPO` as a class object rather than registered in its `policy_aliases`
+(a `ClassVar` dict shared process-wide, not this repo's to mutate); a checkpoint trained this way
+round-trips through the ordinary `load_checkpoint()` with no special casing, verified directly.
+9 tests (`test_policies.py`). No training result yet — the matched-pair run against `MlpLstmPolicy`
+is the next step, the same status D75/D76/D77 opened at. Full account: D78.
+
 **The four validation gates ran for the first time on 2026-09-04** (`python -m rfenv.validate`,
 47 train configs, seed 0, artefacts in `runs/validation/`): **gates 2, 3 and 4 PASS; gate 1 is
 MEASURED** — D37 fixed its convention and deliberately left its threshold undecided. Every
