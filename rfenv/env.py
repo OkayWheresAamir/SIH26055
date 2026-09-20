@@ -164,34 +164,45 @@ OBS_LAYOUTS: dict[str, tuple[str, ...]] = {
     "v2p": ("hit_rate", "visit_density", "staleness", "current_band", "clock",
             "measured_dbm_band", "hit_streak", "current_hit_streak",
             "pulse_width", "aoa_sin", "aoa_cos", "pulse_count", "band_priority"),
-    # D75: "v2p" plus the three in-context blocks, appended last so every "v2p"
-    # offset holds. 398 + 38 = 436 wide. This is the RL^2 interface -- a
-    # recurrent policy that is shown its own last action and what that action
-    # returned can run an adaptation rule inside the episode, in its hidden
-    # state, with no gradient step. That is what makes it "online" in the sense
-    # the PS asks for: no prior library, learning from hits and misses.
+    # D75: "v2p" plus two in-context blocks, appended last so every "v2p"
+    # offset holds. 398 + 2 = 400 wide. This is the RL^2 interface -- a
+    # recurrent policy that is shown what its last action returned can run an
+    # adaptation rule inside the episode, in its hidden state, with no
+    # gradient step. That is what makes it "online" in the sense the PS asks
+    # for: no prior library, learning from hits and misses.
     #
-    # **Known redundancy, recorded here rather than discovered later.**
-    # `prev_action` is bit-identical to the `current_band` block at every step
-    # after the first: `step()` assigns `_current_band = action` and
-    # `_prev_action = action` from the same value. `prev_hit` is likewise
-    # `current_hit_streak > 0`. The two blocks differ from their twins only in
-    # the cold-start sentinel (`current_band` reads one-hot at band 0 after
-    # `reset()`, claiming a dwell that never happened; `prev_action` reads all
-    # zeros, which is off the one-hot simplex and so unreachable by any real
-    # action). They are kept because the RL^2 interface is conventional and 38
-    # columns is cheap -- but **`prev_reward` is the only genuinely new
-    # information in this layout**, and any claim about "v3" should say so. An
-    # ablation corrupting `prev_action` alone will read null by construction.
+    # **`prev_action` was here too, originally, and was removed the next day
+    # (2026-09-20) on a direct question: doesn't the LSTM already carry the
+    # previous action forward on its own?** For this one block, yes --
+    # `current_band` (every layout since "v1") is bit-identical to `prev_action`
+    # at every step after the first, since `step()` assigns `_current_band =
+    # action` and `_prev_action = action` from the same value. Recorded as a
+    # known redundancy when "v3" first shipped, then actually removed once
+    # asked rather than kept for the RL^2 interface's own sake. `prev_hit`
+    # stays -- it is `current_hit_streak > 0`, also pre-existing information,
+    # but there is no companion block making that one redundant in the same
+    # direct way, and it costs one column. `prev_reward` is, and remains, the
+    # only block here carrying information nothing else in the vector does:
+    # an LSTM's hidden state can only carry forward what appeared in its
+    # *input* at some point, and no layout before "v3" ever exposed the raw
+    # per-step reward -- `hit_rate`/`hit_streak`/`staleness` are running
+    # aggregate statistics, not the scalar the policy is actually optimised
+    # against. Whether this agent actually reads it is untested; see D75's
+    # ablation.
+    #
+    # **This is an in-place width change** (436 -> 400), the same class of
+    # change D49/D55/D67/D72 made before it: every checkpoint trained on the
+    # 436-wide shape (`lstm_v3_seed0`, `lstm_v3_seed1`) is now permanently
+    # unloadable. Not free, paid on purpose -- see D75's amendment.
     "v3": ("hit_rate", "visit_density", "staleness", "current_band", "clock",
            "measured_dbm_band", "hit_streak", "current_hit_streak",
            "pulse_width", "aoa_sin", "aoa_cos", "pulse_count", "band_priority",
-           "prev_action", "prev_reward", "prev_hit"),
+           "prev_reward", "prev_hit"),
 }
 
 
 def obs_width(version: str) -> int:
-    """Flat width for one layout: 183 "v1", 362 "v2", 398 "v2p", 436 "v3"."""
+    """Flat width for one layout: 183 "v1", 362 "v2", 398 "v2p", 400 "v3"."""
     if version not in OBS_LAYOUTS:
         raise ValueError(f"obs_version must be one of {sorted(OBS_LAYOUTS)}, got {version!r}")
     return sum(_BLOCK_SPECS[name][0] for name in OBS_LAYOUTS[version])

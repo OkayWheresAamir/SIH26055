@@ -138,6 +138,16 @@
 > gradient fed `reward_balance_obs` rather than `step()`'s truth-fed return (D77). Per-mission
 > updates are deliberately not offered: 300-600 decisions cannot fill an `n_steps=8192` rollout.
 >
+> **AMENDED 2026-09-20 — (16)** Amendment (15)'s `prev_action` block, above, was removed from "v3"
+> the next day, narrowing it 436 → 400 wide **in place** (the same class of width change D49/D55/D67/
+> D72 made — `lstm_v3_seed0`/`lstm_v3_seed1`, both complete 800k-step checkpoints, are now
+> permanently unloadable). Asked directly why the observation needed `prev_action` when an LSTM's
+> hidden state already carries information forward: it can only carry forward what appeared in its
+> *input*, and `current_band` — in every layout since "v1" — already put the last action there at
+> every step, so `prev_action` was duplicating a channel the network already had, not adding one.
+> `prev_reward` is unaffected and remains "v3"'s one genuinely new column; `prev_hit` stays too,
+> lacking the same direct duplicate. Same `DECISIONS.md` D75 entry, extended.
+>
 > The PDF beside this file is older still and does not carry any of these amendments.
 
 

@@ -1,14 +1,19 @@
 """The "v3" in-context observation layout and `reward_balance_obs` (D75).
 
-Pinned here: (1) "v3" is 436 wide and leaves "v1"/"v2"/"v2p" byte-identical;
-(2) the cold-start sentinels are what they claim to be, including the deliberate
-disagreement between `prev_action` and `current_band` at t=0; (3) `prev_action`
-*is* `current_band` after any step -- the known redundancy, pinned so a later
-change to either is noticed rather than discovered; (4) `reward_balance_obs` is
-`reward_balance` with `Y` for `Z`, exactly, and two dwells with the same `Y` and
-different `Z` are indistinguishable to it -- which is the deployability claim in
-mechanical form; (5) it never reaches `total_reward`; (6) the ablation's block
-corruption preserves the receiver's noise stream, so a paired run stays paired.
+`"v3"` is 400 wide, not 436 -- `prev_action` shipped, was found bit-identical to
+the pre-existing `current_band` block, and was removed the next day on a direct
+question (2026-09-20). `_BLOCK_SPECS["prev_action"]` still exists (blocks are
+built unconditionally regardless of layout, D30's own convention), it is simply
+not in any registered layout any more; kept mainly so the code that computes it
+in `_observation_blocks()` needs no special-casing.
+
+Pinned here: (1) "v3" is 400 wide and leaves "v1"/"v2"/"v2p" byte-identical;
+(2) the cold-start sentinels are what they claim to be; (3) `reward_balance_obs`
+is `reward_balance` with `Y` for `Z`, exactly, and two dwells with the same `Y`
+and different `Z` are indistinguishable to it -- which is the deployability
+claim in mechanical form; (4) it never reaches `total_reward`; (5) the
+ablation's block corruption preserves the receiver's noise stream, so a paired
+run stays paired.
 """
 from __future__ import annotations
 
@@ -69,16 +74,14 @@ def _dwell(Y, Z, *, band=0, slot0=0) -> DwellResult:
 # The layout
 # --------------------------------------------------------------------------- #
 
-def test_v3_is_436_wide():
-    assert obs_width("v3") == obs_width("v2p") + 2 * 1 + K.N_BANDS == 436
-    assert _env().observation_space.shape == (436,)
+def test_v3_is_400_wide():
+    assert obs_width("v3") == obs_width("v2p") + 2 == 400
+    assert _env().observation_space.shape == (400,)
 
 
-def test_v3_is_v2p_plus_exactly_three_named_blocks_in_order():
+def test_v3_is_v2p_plus_exactly_two_named_blocks_in_order():
     assert OBS_LAYOUTS["v3"][: len(OBS_LAYOUTS["v2p"])] == OBS_LAYOUTS["v2p"]
-    assert OBS_LAYOUTS["v3"][len(OBS_LAYOUTS["v2p"]):] == (
-        "prev_action", "prev_reward", "prev_hit"
-    )
+    assert OBS_LAYOUTS["v3"][len(OBS_LAYOUTS["v2p"]):] == ("prev_reward", "prev_hit")
 
 
 def test_earlier_layouts_are_untouched_by_v3_existing():
@@ -87,13 +90,22 @@ def test_earlier_layouts_are_untouched_by_v3_existing():
     assert obs_width("v2p") == 398
 
 
-def test_the_three_new_blocks_declare_the_unit_interval_even_at_a_raised_priority_high():
+def test_the_two_new_blocks_declare_the_unit_interval_even_at_a_raised_priority_high():
     """They must not inherit `band_priority`'s `_high_for` override (D74's bug)."""
     env = _env(priority_high=5.0)
     high = env.observation_space.high
-    for name in ("prev_action", "prev_reward", "prev_hit"):
+    for name in ("prev_reward", "prev_hit"):
         assert np.all(high[OFF[name]] == 1.0), name
     assert np.all(high[OFF["band_priority"]] == 5.0)
+
+
+def test_prev_action_is_registered_but_unused_by_any_layout():
+    """The block still builds (D30's unconditional-blocks convention) but is
+    not in "v1"/"v2"/"v2p"/"v3" any more -- removed from "v3" specifically
+    (2026-09-20) once confirmed redundant with `current_band`."""
+    assert "prev_action" in _BLOCK_SPECS
+    for version in OBS_LAYOUTS:
+        assert "prev_action" not in OBS_LAYOUTS[version], version
 
 
 def test_v3_passes_the_gymnasium_env_checker():
@@ -103,20 +115,6 @@ def test_v3_passes_the_gymnasium_env_checker():
 # --------------------------------------------------------------------------- #
 # Cold start
 # --------------------------------------------------------------------------- #
-
-def test_prev_action_is_all_zero_at_reset_while_current_band_is_one_hot_at_zero():
-    """Asserted together, because the disagreement is the point.
-
-    `current_band` claims band 0 after `reset()` -- a dwell that never happened.
-    `prev_action` reads the zero vector instead, which is off the one-hot simplex
-    and so unreachable by any real action. That difference is the only
-    information `prev_action` carries over `current_band` in the whole layout.
-    """
-    obs, _ = _env().reset(seed=0)
-    assert obs[OFF["prev_action"]].sum() == 0.0
-    assert obs[OFF["current_band"]].sum() == 1.0
-    assert obs[OFF["current_band"]].argmax() == 0
-
 
 def test_prev_reward_is_exactly_one_half_at_reset():
     """Zero reward, and the symmetric clamp puts zero at the midpoint exactly."""
@@ -136,28 +134,8 @@ def test_a_second_episode_carries_nothing_from_the_first(_band=13):
     for _ in range(20):
         env.step(_band)
     obs, _ = env.reset(seed=1)
-    assert obs[OFF["prev_action"]].sum() == 0.0
     assert obs[OFF["prev_reward"]][0] == 0.5
     assert obs[OFF["prev_hit"]][0] == 0.0
-
-
-# --------------------------------------------------------------------------- #
-# The known redundancy
-# --------------------------------------------------------------------------- #
-
-@pytest.mark.parametrize("band", [0, 7, 17, 35])
-def test_prev_action_is_one_hot_at_the_last_action_and_equals_current_band(band):
-    """Pins the redundancy documented in OBS_LAYOUTS["v3"].
-
-    If this ever fails, one of the two blocks changed meaning, and any ablation
-    conclusion drawn about `prev_action` needs revisiting.
-    """
-    env = _env()
-    env.reset(seed=0)
-    obs, *_ = env.step(band)
-    assert obs[OFF["prev_action"]].argmax() == band
-    assert obs[OFF["prev_action"]].sum() == 1.0
-    assert np.array_equal(obs[OFF["prev_action"]], obs[OFF["current_band"]])
 
 
 def test_prev_hit_agrees_with_current_hit_streak_being_positive():
@@ -357,11 +335,11 @@ def test_corruption_changes_the_block_it_names_and_leaves_the_others_alone():
 def test_corruption_only_ever_emits_values_the_block_really_took():
     """Resampling preserves the marginal; it does not invent out-of-range values."""
     env = ScanEnv(scenario=Scenario.replay("config_2", "stare"), obs_version="v3",
-                  band_priority=True, corrupt_obs_blocks=("prev_action",))
+                  band_priority=True, corrupt_obs_blocks=("current_band",))
     env.reset(seed=2)
     for k in range(120):
         obs, *_ = env.step((4 * k) % 36)
-        block = obs[OFF["prev_action"]]
+        block = obs[OFF["current_band"]]
         assert block.sum() in (0.0, 1.0)
         assert set(np.unique(block)).issubset({0.0, 1.0})
 
@@ -369,6 +347,7 @@ def test_corruption_only_ever_emits_values_the_block_really_took():
 @pytest.mark.parametrize("blocks,version", [
     (("no_such_block",), "v3"),
     (("band_priority",), "v1"),
+    (("prev_action",), "v3"),   # removed from "v3" (2026-09-20); still refused correctly
 ])
 def test_corrupt_obs_blocks_refuses_a_block_the_layout_cannot_show(blocks, version):
     with pytest.raises(ValueError):
