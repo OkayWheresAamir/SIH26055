@@ -4762,6 +4762,33 @@ registered-but-unused by every layout, the marginal-preservation ablation test m
 `current_band`, a new refusal case confirming `corrupt_obs_blocks=("prev_action",)` is correctly
 rejected for `obs_version="v3"`); `tests/test_online.py` (the manifest-width assertion updated).
 
+**Second amendment, same day: `prev_hit` removed too, "v3" narrows to 399 wide (2026-09-20).**
+Requested directly, ahead of the layout's first training run: strip the weaker of the two remaining
+new blocks so a first pass isolates `prev_reward`'s own effect rather than testing two additions
+(`prev_reward` and `prev_hit`) at once. The previous amendment had already flagged `prev_hit` as
+holding "a weaker version of the same argument" as `prev_action` — pre-existing information
+(`current_hit_streak > 0`), just without a companion block making the redundancy as mechanically
+provable — and this amendment acts on that weakness rather than leaving it as a footnote.
+`OBS_LAYOUTS["v3"]` narrows from `v2p` + 2 blocks (400 wide) to `v2p` + 1 (399 wide), the same
+plain tail-deletion the first amendment was. **`prev_reward` is now the only block "v3" carries
+beyond `v2p`**, which is also the cleanest form of D75's own central claim: this layout tests
+exactly one hypothesis, that the raw per-step reward is information an LSTM's hidden state could
+not otherwise reconstruct, with nothing else in the way of reading that result.
+
+**Cost: none, this time.** Unlike the first amendment, no checkpoint is invalidated by this one —
+every file under `runs/checkpoints/v3/` still predates even the *first* amendment, at 436 wide; the
+intermediate 400-wide shape this amendment replaces was never successfully trained on to begin
+with. Rung 24a's docstring is updated to record both amendments in sequence rather than only the
+first.
+
+**Evidence.** `rfenv/env.py` (`OBS_LAYOUTS["v3"]` edited a second time; `obs_width()`'s docstring and
+`obs_version_for_width()`'s updated); `rfenv/baselines/ladder.py` (rung 24a/24b docstrings updated
+for the second narrowing); `tests/test_v3_observation.py` (width assertion 400 → 399, `prev_hit`
+pinned alongside `prev_action` as registered-but-unused, the two prev_hit-specific tests removed, a
+new refusal case for `corrupt_obs_blocks=("prev_hit",)`); `tests/test_band_layout.py`/
+`tests/test_policies.py` (v3's global-block count 4 → 3 everywhere it's asserted);
+`tests/test_online.py` (the manifest-width assertion 400 → 399).
+
 ---
 
 ## D76 — An episode may run longer than one recording, and you can watch it

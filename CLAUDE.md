@@ -140,23 +140,26 @@ measured).** A direct request: make the recurrent policy an online learner, let 
 as you like, and make the environment watchable while it runs. Nothing here is a result yet; the
 matched pair and the ablation that would make one are pre-registered in D75 and not run.
 
-**D75 — a fourth layout, "v3" (400-wide = "v2p" + `prev_reward` 1 + `prev_hit` 1).** This is the RL²
-construction: a recurrent policy shown what its last action returned can run an adaptation rule
-inside the episode, in its hidden state, with no gradient step. **A third block, `prev_action`,
-shipped originally and was removed the next day (2026-09-20) once asked directly why it was needed
-at all, given `step()` already assigns `_current_band = action` and `_prev_action = action` from the
-same value** — an LSTM's hidden state can only carry forward what appeared in its *input*, and
-`current_band` has always been in that input since "v1", so `prev_action` was never adding a channel
-the network lacked, only duplicating one it already had. Narrowed `OBS_LAYOUTS["v3"]` in place,
+**D75 — a fourth layout, "v3" (399-wide = "v2p" + `prev_reward` 1).** This is the RL² construction: a
+recurrent policy shown what its last action returned can run an adaptation rule inside the episode,
+in its hidden state, with no gradient step. **It shipped with three in-context blocks and now has
+one, in two same-day amendments (2026-09-20).** First, `prev_action` — asked directly why it was
+needed at all, given `step()` already assigns `_current_band = action` and `_prev_action = action`
+from the same value, and an LSTM's hidden state can only carry forward what appeared in its *input*
+— `current_band` has always been in that input since "v1", so `prev_action` was never adding a
+channel the network lacked, only duplicating one it already had; removed, narrowing `OBS_LAYOUTS["v3"]`
 436→400, the same class of width change D49/D55/D67/D72 made — `lstm_v3_seed0`/`lstm_v3_seed1` (both
-complete 800k-step checkpoints) are now permanently unloadable, paid on purpose. `prev_hit` stays: it
-is `current_hit_streak > 0`, also pre-existing information, but there is no companion block making it
-provably redundant the same direct way, and it costs one column. **`prev_reward` remains the only
-genuinely new information in the layout** — no layout before "v3" ever exposed the raw per-step
-reward, only running aggregate statistics (`hit_rate`, `hit_streak`, `staleness`) — and an ablation
-corrupting it is the pre-registered test of whether this agent actually reads it, alongside a
-`hit_rate` positive control (if corrupting a block the policy has leaned on since D34 changes nothing
-either, the ablation is measuring nothing — the lesson D74 paid for twice).
+complete 800k-step checkpoints) are now permanently unloadable, paid on purpose. Second, `prev_hit`
+— it is `current_hit_streak > 0`, also pre-existing information, with no companion block making it
+provably redundant the same direct way, but removed anyway on a direct request to isolate
+`prev_reward`'s own effect before the layout's first training run — narrowing again, 400→399, at no
+further checkpoint cost (nothing was ever trained on the 400-wide shape). **`prev_reward` is now the
+only block "v3" carries beyond "v2p", and remains the only genuinely new information in the
+layout** — no layout before "v3" ever exposed the raw per-step reward, only running aggregate
+statistics (`hit_rate`, `hit_streak`, `staleness`) — and an ablation corrupting it is the
+pre-registered test of whether this agent actually reads it, alongside a `hit_rate` positive control
+(if corrupting a block the policy has leaned on since D34 changes nothing either, the ablation is
+measuring nothing — the lesson D74 paid for twice).
 The reward the policy *sees* is **not** the reward it is trained on: `reward_balance_obs` is
 `reward_balance` with `dwell.Y` for `dwell.Z`, because the agent already holds `hit_rate`,
 `visit_density`, `staleness` and `n_slots` and could otherwise solve the remaining term for
@@ -191,7 +194,7 @@ of it.** Every rung in `EVALUATION.md` §5, including both of D77's own arms, is
 ordinary `rfenv.rl.{ppo,recurrent_ppo,dqn}.train()` path — frozen checkpoint, offline, unchanged and
 still the default; `rfenv/rl/online.py` only ever loads a checkpoint that path already produced and
 keeps adapting it. Verified directly (2026-09-20): plain offline `train()` calls, including on the
-narrowed 400-wide "v3", still produce ordinary loadable checkpoints with no code path change. D29 recorded
+narrowed 399-wide "v3", still produce ordinary loadable checkpoints with no code path change. D29 recorded
 that *"the restriction would only bite if we ever fine-tuned online, which we do not"*; we now do, and
 **the rule is satisfied rather than relaxed** — `ObservableRewardWrapper` feeds the gradient
 `reward_balance_obs`, so the agent optimises a quantity a real receiver could compute, while

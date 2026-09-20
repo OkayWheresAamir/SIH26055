@@ -129,6 +129,15 @@ six-rung ladder. **Delete them; this file is the source.**
 > directly: a plain offline `train()` call, including on the narrowed 400-wide "v3" (amendment (16)),
 > still produces an ordinary loadable checkpoint with no code path change.
 >
+> **AMENDED 2026-09-20 -- (18)** Amendment (15)'s `prev_hit` block was removed from "v3" too, the
+> same day as (16), narrowing it 400 -> 399 wide **in place** -- requested directly, ahead of the
+> layout's first training run, to isolate `prev_reward`'s own effect rather than test two additions
+> at once. `prev_hit` was on record (amendment (15)) as pre-existing information with no companion
+> block making the redundancy as directly provable as `prev_action`'s, kept anyway at the time;
+> removed once asked plainly whether that was a reason or just a weaker excuse. `prev_reward` is now
+> the only block "v3" carries beyond "v2p" -- no checkpoint cost, since nothing was ever successfully
+> trained on the intermediate 400-wide shape. Same `DECISIONS.md` D75 entry, extended a second time.
+>
 > The PDF beside this file is older still and does not carry any of these amendments.
 
 **Audience:** the 2–3 people building rung 7. **Owner of this file:** Aamir.
