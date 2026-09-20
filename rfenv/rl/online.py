@@ -59,7 +59,7 @@ import numpy as np
 
 from rfenv.constants import N_SLOTS, SLOT_S
 from rfenv.env import DEFAULT_REWARD, ScanEnv
-from rfenv.live import make_live_view
+from rfenv.live import NullView, make_live_view
 
 # Defaults, chosen for adaptation rather than training and pre-registered here.
 # A low learning rate and a tight clip because this starts from a policy that
@@ -216,7 +216,13 @@ def _callbacks(view, segments_path: Path | None):
             return True
 
     out = [SegmentMetricsCallback(segments_path)]
-    if not isinstance(view, type(make_live_view("off"))):
+    # `type(view) is not NullView`, not `isinstance` -- both `AnsiHeatStrip` and
+    # `MatplotlibLiveView` are themselves subclasses of `NullView` (they share
+    # its no-op `open`/`close`), so `isinstance(real_view, NullView)` is True
+    # for every real view too. That silently dropped this callback for every
+    # `--view light`/`--view full` run: the fine-tune ran correctly, nothing
+    # ever drew. Caught by a smoke test that actually looked for output.
+    if type(view) is not NullView:
         out.insert(0, OnlineViewCallback(view))
     return out
 

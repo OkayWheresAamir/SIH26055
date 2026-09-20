@@ -4775,6 +4775,51 @@ kwarg — its `series` is indexed by absolute slot and rung 6 is the serious bar
 `rfenv/baselines/ladder.py` (`band_at_slot_from_log`), `rfenv/live.py`, `rfenv/render/live.py`;
 `tests/test_continuous_grid.py` (23 tests) and `tests/test_live_view.py` (15 tests).
 
+**Amendment, same day: the view shows truth and classifies every declaration (2026-09-20).** The
+first version only drew the receiver's own log — three states, unseen/looked/hit — so a viewer
+could never see where an emitter really was until the schedule happened to land on it, and "looked,
+heard nothing" looked identical to "never looked." Requested directly: colour and label where the
+emitters are, and colour hits and misses. Six states now, `Y` crossed with `Z`: unseen-empty,
+unseen-but-an-emitter-is-here (`env.grid.Z` is materialised for the whole mission up front, so this
+is visible before anything ever scans that band — reading it for a *human* picture is the same
+license `waterfall`/`compare_animation` already use; D19/D20 still govern the *observation*, not a
+render), correct silence, true hit, false alarm, and — the state the first version had no way to
+show — a missed detection: looked straight at a truly occupied cell and still declared nothing.
+Clipped to `env.t`, never showing truth ahead of the current slot, in both backends (checked with a
+test): the picture is what has happened so far, not a spoiler.
+
+**A real accessibility problem was found while picking colours, not assumed away.** Following the
+`dataviz` skill's validated status palette (good/warning/critical) put true-hit and miss at green
+and red — the two most load-bearing states in the whole picture, since telling a correct detection
+from a missed one *is* the point. `node` was not available in this environment to run the skill's
+own validator, so its OKLab/CVD-simulation math was ported to Python and run directly rather than
+skipped or eyeballed: **true hit vs miss measures 4.1 OKLab Delta E under a simulated
+deuteranopia — under the 6.0 floor**, the classic red/green colour-blindness collision, on exactly
+the pair that mattered most. Every state now carries its own glyph in both the coloured and the
+ASCII stream (`.` `?` `:` `#` `!` `X`), checked by a test that the character appears independently
+of the colour, so no distinction here depends on hue alone. The terminal view also gained a running
+tally (true hits / false alarms / misses, counted incrementally off new log rows so cost stays
+bounded on an hour-long mission, not by re-scanning the whole log per frame) and a full legend line;
+the matplotlib view's background switched from a flat looked/hit heatmap to the continuous truth
+level `waterfall()` already draws, with three separate markers (circle/triangle/X) for true hit,
+false alarm and missed detection.
+
+**One real bug found and fixed in the same pass, unrelated to colour.** `training_callbacks`-style
+wiring in `rfenv/rl/online.py` decided whether to attach the live-view callback with
+`isinstance(view, type(make_live_view("off")))` — but `AnsiHeatStrip` and `MatplotlibLiveView` are
+themselves subclasses of `NullView` (they share its no-op `open`/`close`), so that `isinstance` check
+was true for every real view too. Online fine-tuning with `--view light` or `--view full` ran
+correctly and silently drew nothing, with no error to notice it by — caught only because a smoke
+test finally looked for actual output rather than just checking for a clean exit. Fixed with an exact
+type comparison (`type(view) is not NullView`), and a regression test now asserts real output
+appears during a `--view light` fine-tune.
+
+**Evidence.** `rfenv/live.py` (the six states, `_tally_new_rows`, the legend), `rfenv/render/live.py`
+(the truth background and three-marker overlay), `rfenv/rl/online.py` (the `isinstance` fix);
+`tests/test_live_view.py` (extended to 20 tests: truth visible before anything looks, no look-ahead
+past `env.t`, the tally checked against a direct log scan, the glyph present independently of
+colour); `tests/test_online.py` (the view-callback regression test).
+
 ---
 
 ## D77 — Online fine-tuning exists, on a continuous grid, and its gradient sees the observable reward

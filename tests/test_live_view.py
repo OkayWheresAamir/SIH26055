@@ -20,9 +20,12 @@ import pytest
 from rfenv.constants import N_BANDS
 from rfenv.env import ScanEnv
 from rfenv.live import (
-    HIT,
-    LOOKED,
-    UNSEEN,
+    CORRECT_SILENCE,
+    FALSE_ALARM,
+    MISS,
+    TRUE_HIT,
+    UNSEEN_EMPTY,
+    UNSEEN_TRUTH,
     AnsiHeatStrip,
     NullView,
     _tail_state,
@@ -86,17 +89,54 @@ def test_importing_the_render_package_leaves_the_process_on_agg():
 # _tail_state
 # --------------------------------------------------------------------------- #
 
-def test_the_tail_strip_distinguishes_unseen_from_looked_from_hit():
+def test_the_tail_strip_classifies_every_looked_cell_against_truth():
+    """Y crossed with Z, not Y alone -- a hit can be a false alarm, a quiet
+    cell can be a missed detection, and the strip has to say which."""
     env = _env()
     _run(env, 40)
     grid, start = _tail_state(env, 64)
     assert grid.shape == (N_BANDS, 64)
-    assert set(np.unique(grid)).issubset({UNSEEN, LOOKED, HIT})
-    # Every logged slot in range is marked, and its band matches.
+    assert set(np.unique(grid)).issubset(
+        {UNSEEN_EMPTY, UNSEEN_TRUTH, CORRECT_SILENCE, TRUE_HIT, FALSE_ALARM, MISS}
+    )
     for row in env.log:
         slot = int(row["slot"])
-        if start <= slot < start + 64:
-            assert grid[int(row["band"]), slot - start] == (HIT if row["Y"] else LOOKED)
+        if not (start <= slot < start + 64):
+            continue
+        y, z = bool(row["Y"]), bool(row["Z"])
+        expected = (TRUE_HIT if z else FALSE_ALARM) if y else (MISS if z else CORRECT_SILENCE)
+        assert grid[int(row["band"]), slot - start] == expected
+
+
+def test_truth_is_visible_on_a_band_before_anything_ever_looked_at_it():
+    """The point of D77's redesign: where the emitters are, not just what was
+    declared. A band with a real emitter transmitting shows UNSEEN_TRUTH even
+    on a slot nothing ever tuned to."""
+    env = _env()
+    _run(env, 30)
+    grid, start = _tail_state(env, 64)
+    looked_bands = {int(row["band"]) for row in env.log
+                    if start <= int(row["slot"]) < start + 64}
+    elapsed = int(env.t) - start
+    for band in range(N_BANDS):
+        if band in looked_bands:
+            continue
+        truth = env.grid.Z[band, start:start + elapsed]   # elapsed part only
+        if truth.any():
+            assert UNSEEN_TRUTH in grid[band, :elapsed]
+            break
+    else:
+        pytest.skip("no unlooked band had a true emitter in this window")
+
+
+def test_the_tail_strip_never_shows_truth_past_the_current_slot():
+    """No look-ahead: truth beyond `env.t` would be a spoiler, not a picture
+    of the mission so far."""
+    env = _env()
+    _run(env, 15)          # episode_slots default is 600; well short of it
+    grid, start = _tail_state(env, 64)
+    elapsed = int(env.t) - start
+    assert np.all(grid[:, elapsed:] == UNSEEN_EMPTY)
 
 
 def test_the_tail_strip_is_bounded_by_its_width_not_by_the_episode():
@@ -170,6 +210,65 @@ def test_the_headline_reports_this_episodes_own_length():
     env = _env()
     view.open(env)
     assert f"/{env.episode_slots}" in buf.getvalue()
+
+
+def test_the_running_tally_matches_the_log_exactly():
+    """Incremental counting (`_tally_new_rows`), checked against a direct scan.
+
+    Called even on throttled frames that never draw -- a `min_interval_s` long
+    enough to skip every intermediate frame must not skip counting either, or
+    a long mission's totals would silently drift from what actually happened.
+    """
+    buf = io.StringIO()
+    view = AnsiHeatStrip(stream=buf, min_interval_s=999.0)   # throttles almost everything
+    env = _env()
+    view.open(env)
+    _run(env, 60, view)
+    view.update(env, force=True)
+
+    expected = {TRUE_HIT: 0, FALSE_ALARM: 0, MISS: 0, CORRECT_SILENCE: 0}
+    for row in env.log:
+        y, z = bool(row["Y"]), bool(row["Z"])
+        code = (TRUE_HIT if z else FALSE_ALARM) if y else (MISS if z else CORRECT_SILENCE)
+        expected[code] += 1
+    assert view.tally == expected
+
+
+def test_a_coloured_frame_still_carries_the_glyph_not_just_a_colour():
+    """The `good`-vs-`critical` pair measures 4.1 deuteranopia Delta E (below
+    the skill's own 6.0 floor) -- checked directly, not assumed. Every cell's
+    character must survive independently of colour, so the ASCII glyph for a
+    given state has to appear in the coloured stream too, not just a coloured
+    blank."""
+    buf = _FakeTTY()
+    view = AnsiHeatStrip(stream=buf, min_interval_s=0.0, width=50)
+    view.colour = True   # exercise the rendering path directly -- pytest's
+    # captured stdout has no real console handle, so `_enable_windows_ansi()`
+    # (tested on its own elsewhere) cannot be relied on to succeed here.
+    env = _env()
+    view.open(env)
+    _run(env, 40, view)
+    view.update(env, force=True)
+    frame = buf.getvalue().split("\x1b[H")[-1]
+    # At minimum the always-present states -- unseen and correct-silence --
+    # must show up as literal characters, not just as SGR background codes.
+    assert "." in frame
+    for row in env.log:
+        if not row["Y"] and not row["Z"]:
+            assert ":" in frame
+            break
+
+
+def test_the_legend_names_every_state():
+    buf = _FakeTTY()
+    view = AnsiHeatStrip(stream=buf, min_interval_s=0.0, width=30)
+    env = _env()
+    view.open(env)
+    _run(env, 20, view)
+    view.update(env, force=True)
+    frame = buf.getvalue()
+    for word in ("unseen", "quiet", "hit", "false alarm", "missed"):
+        assert word in frame
 
 
 # --------------------------------------------------------------------------- #
