@@ -212,6 +212,30 @@ def test_per_segment_metrics_are_written_and_never_describe_an_unfinished_segmen
         assert 0 <= row["found_total"] <= row["n_detectable"]
 
 
+def test_a_real_view_actually_draws_during_fine_tuning(base_checkpoint, tmp_path, capsys):
+    """Regression: `isinstance(view, NullView)` is true for every real view too.
+
+    `AnsiHeatStrip`/`MatplotlibLiveView` are themselves subclasses of `NullView`
+    (they share its no-op `open`/`close`), so an `isinstance` check meant to
+    single out "no view was asked for" matched every view -- `_callbacks()`
+    silently never attached `OnlineViewCallback` for `--view light` or
+    `--view full`. The fine-tune ran correctly and nothing ever drew, with no
+    error to notice it by. Caught only by looking for actual output, which no
+    prior test in this file did (every one of them runs at `view="off"`).
+    """
+    fine_tune(
+        checkpoint=base_checkpoint, out_checkpoint=tmp_path / "watched.zip",
+        total_timesteps=200, episode_slots=2 * N_SLOTS, obs_version="v3",
+        view="light", device="cpu",
+        hyperparameters={"n_steps": 100, "batch_size": 25},
+        env_kwargs={"band_priority": True},
+    )
+    out = capsys.readouterr().out
+    assert "slot" in out and "found" in out, (
+        "the live view drew nothing during a --view light fine-tune"
+    )
+
+
 def test_the_manifest_records_the_adapted_checkpoint(base_checkpoint, tmp_path):
     out = tmp_path / "adapted.zip"
     fine_tune(

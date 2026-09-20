@@ -41,52 +41,117 @@ import numpy as np
 
 from rfenv.constants import N_BANDS, SLOT_S
 
-# Cell states in the strip. "Looked and heard nothing" and "never looked" are
-# different facts and the picture has to say which -- a blank column is a gap in
-# coverage, a dark-blue one is a dwell that came back empty.
-UNSEEN, LOOKED, HIT = 0, 1, 2
+# Six cell states -- what truth says (an emitter really transmitting there or
+# not) crossed with what the receiver did about it (never looked, or looked
+# and declared Y=0/Y=1). Collapsing "looked, no hit" and "never looked" into
+# one grey, as the first version of this view did, hid the two facts a viewer
+# actually wants live: **where the emitters are** (visible even before
+# anything has looked, since the truth grid is materialised for the whole
+# mission up front) and **whether a declaration was right** -- a false alarm
+# and a missed detection are opposite failures and look nothing alike here.
+UNSEEN_EMPTY = 0     # never looked, and truly nothing there
+UNSEEN_TRUTH = 1     # never looked, but an emitter is transmitting here now
+CORRECT_SILENCE = 2  # looked, correctly declared nothing (Y=0, Z=0)
+TRUE_HIT = 3         # looked, correctly declared a hit (Y=1, Z=1)
+FALSE_ALARM = 4      # looked, declared a hit where nothing was there (Y=1, Z=0)
+MISS = 5             # looked straight at it and still missed it (Y=0, Z=1)
 
-# xterm-256 indices. Chosen to survive both light and dark terminal themes, and
-# to keep HIT unmistakable at a glance, since finding something is the event.
-_BG = {UNSEEN: 236, LOOKED: 24, HIT: 196}
-_ASCII = {UNSEEN: ".", LOOKED: ":", HIT: "#"}
+# Kept for callers built against the pre-truth-aware version.
+UNSEEN, LOOKED, HIT = UNSEEN_EMPTY, CORRECT_SILENCE, TRUE_HIT
+
+# xterm-256 indices, chosen from the validated status palette
+# (`dataviz` skill, `references/palette.md`): good #0ca30c, warning #fab219,
+# critical #d03b3b, sequential blue step 300 #6da7ec for the unvisited-truth
+# ghost. **Not relied on alone**: `good` (true hit) and `critical` (miss) --
+# the two states that matter most here -- measure only 4.1 OKLab Delta E under
+# a deuteranopia simulation (computed with the skill's own validator math;
+# `node` was not available in this environment, so the check was ported to
+# Python rather than skipped), well under the 6.0 floor. Every state below
+# therefore also gets its own glyph, in both the coloured and the ASCII
+# fallback, so no distinction here depends on hue.
+_BG = {
+    UNSEEN_EMPTY: 236,      # near-black -- nothing to report
+    UNSEEN_TRUTH: 111,      # light blue -- "something is here, unconfirmed"
+    CORRECT_SILENCE: 24,    # dim blue -- looked, correctly quiet
+    TRUE_HIT: 34,           # good, green
+    FALSE_ALARM: 214,       # warning, amber
+    MISS: 160,              # critical, red
+}
+_ASCII = {
+    UNSEEN_EMPTY: ".",
+    UNSEEN_TRUTH: "?",
+    CORRECT_SILENCE: ":",
+    TRUE_HIT: "#",
+    FALSE_ALARM: "!",
+    MISS: "X",
+}
+_LEGEND = (
+    ". unseen  ? emitter here, unseen  : looked, quiet  "
+    "# hit  ! false alarm  X missed"
+)
 
 _DEFAULT_MIN_INTERVAL_S = 0.1     # 10 Hz; a mission is 20 slots/s at real time
 
 
 def _tail_state(env, width: int) -> tuple[np.ndarray, int]:
-    """The last `width` slots of the episode as a (36, width) uint8 strip.
+    """The last `width` slots of the episode as a (36, width) uint8 strip of
+    the six states above.
 
-    Reads `env.log`, which is the same per-slot record `metrics/` serialises, so
-    the live picture and the saved one cannot disagree about what happened.
-    Walks backwards and stops early, so cost is bounded by `width` rather than by
-    the length of a mission that may have been running for an hour.
+    Two sources, combined: `env.grid.Z`, truth for the whole mission,
+    materialised up front and independent of what has been scanned -- reading
+    it is not new information reaching the agent (D19/D20 still govern the
+    *observation*; this is a picture for a human, the same license
+    `waterfall`/`compare_animation` already use); and `env.log`, the same
+    per-slot record `metrics/` serialises, for what was actually declared.
+    The log walk is bounded by `width`, not by how long the mission has been
+    running.
     """
-    grid = np.zeros((N_BANDS, width), dtype=np.uint8)
-    log = env.log
-    if not log:
-        return grid, 0
-    end = int(log[-1]["slot"]) + 1
+    end = int(env.t)
     start = max(0, end - width)
-    for row in reversed(log):
+    truth = env.grid.Z[:, start:min(end, env.grid.n_slots)]
+    w = truth.shape[1]
+    state = np.where(truth, UNSEEN_TRUTH, UNSEEN_EMPTY).astype(np.uint8)
+    if w < width:
+        state = np.concatenate(
+            [state, np.full((N_BANDS, width - w), UNSEEN_EMPTY, dtype=np.uint8)],
+            axis=1,
+        )
+    for row in reversed(env.log):
         slot = int(row["slot"])
         if slot < start:
             break
-        grid[int(row["band"]), slot - start] = HIT if row["Y"] else LOOKED
-    return grid, start
+        if slot >= end:
+            continue
+        y, z = bool(row["Y"]), bool(row["Z"])
+        code = (TRUE_HIT if z else FALSE_ALARM) if y else (MISS if z else CORRECT_SILENCE)
+        state[int(row["band"]), slot - start] = code
+    return state, start
 
 
-def _headline(env) -> str:
-    """One line of state, shared by both backends."""
+def _headline(env, tally: dict[int, int] | None = None) -> str:
+    """One line of state, shared by both backends.
+
+    `tally` (from `_RateLimited._tally_new_rows`) adds the mission's running
+    true-hit/false-alarm/miss counts -- the summary a viewer wants alongside
+    "found X/Y", since coverage alone does not say whether the misses on the
+    way there were close calls or a band never even looked at properly.
+    """
     detectable = len(getattr(env, "detectable", ()) or ())
     found = len(getattr(env, "tracks", ()) or ())
     coverage = found / detectable if detectable else float("nan")
     segment = int(env.t) // 600
-    return (
+    line = (
         f"t {env.t * SLOT_S:8.2f}s  slot {int(env.t):6d}/{int(env.episode_slots)}"
         f"  seg {segment:3d}  found {found:4d}/{detectable:<4d}"
         f" ({coverage:5.1%})  reward {env.total_reward:10.1f}"
     )
+    if tally is not None:
+        line += (
+            f"   hits {tally.get(TRUE_HIT, 0):4d}"
+            f"  false alarms {tally.get(FALSE_ALARM, 0):4d}"
+            f"  misses {tally.get(MISS, 0):4d}"
+        )
+    return line
 
 
 class NullView:
@@ -123,6 +188,10 @@ class _RateLimited(NullView):
     def __init__(self, *, min_interval_s: float = _DEFAULT_MIN_INTERVAL_S):
         self.min_interval_s = float(min_interval_s)
         self._last = 0.0
+        self.tally: dict[int, int] = {
+            TRUE_HIT: 0, FALSE_ALARM: 0, MISS: 0, CORRECT_SILENCE: 0,
+        }
+        self._tallied_upto = 0
 
     def _due(self, *, force: bool = False) -> bool:
         now = time.monotonic()
@@ -130,6 +199,31 @@ class _RateLimited(NullView):
             return False
         self._last = now
         return True
+
+    def _tally_new_rows(self, env) -> None:
+        """Fold every log row since the last call into the running tally.
+
+        Called every `update()`, before the throttle check -- counting has to
+        see every row, even on a frame that ends up not being drawn, or a
+        long mission's counts would silently undercount between redraws.
+        Bounded by new rows only, same as `_tail_state`.
+
+        If `log_window_slots` (D76) is set, old rows are dropped from the
+        front of `env.log` once the window fills, which would make this
+        index run past the end. Detected and reset rather than raising -- the
+        tally then resumes from what remains, undercounting whatever was
+        already tallied and has since aged out. A known, documented cost of
+        the memory bound, not a correctness bug in the common (unbounded-log)
+        case this view is mainly built for.
+        """
+        log = env.log
+        if self._tallied_upto > len(log):
+            self._tallied_upto = 0
+        for row in log[self._tallied_upto:]:
+            y, z = bool(row["Y"]), bool(row["Z"])
+            code = (TRUE_HIT if z else FALSE_ALARM) if y else (MISS if z else CORRECT_SILENCE)
+            self.tally[code] = self.tally.get(code, 0) + 1
+        self._tallied_upto = len(log)
 
 
 def _enable_windows_ansi() -> bool:
@@ -188,42 +282,39 @@ class AnsiHeatStrip(_RateLimited):
         self.update(env, force=True)
 
     def update(self, env, *, force: bool = False) -> None:
+        self._tally_new_rows(env)
         if not self._due(force=force):
             return
         if not self.is_tty:
             # No cursor movement, no colour: one appendable line.
-            self.stream.write(_headline(env) + "\n")
+            self.stream.write(_headline(env, self.tally) + "\n")
             self.stream.flush()
             return
 
         width = self._width()
         grid, start = _tail_state(env, width)
-        out = ["\x1b[H", _headline(env), "\x1b[K\n"]
+        out = ["\x1b[H", _headline(env, self.tally), "\x1b[K\n"]
         for band in range(N_BANDS):
             out.append(f"{band:3d} ")
             row = grid[band]
             if self.colour:
-                # Runs of one colour are emitted as a single SGR sequence: a
-                # 36x200 frame is ~7k cells and a per-cell escape would be
-                # slower than the environment step it is drawing.
+                # A cell is one glyph, not one blank, coloured -- a run of the
+                # same state is still one SGR sequence (a 36x200 frame is ~7k
+                # cells; a per-cell escape would be slower than the env step
+                # it draws), but the character itself now also carries the
+                # state, so colour is never the only way to read a cell.
                 prev = None
                 for state in row:
+                    state = int(state)
                     if state != prev:
-                        out.append(f"\x1b[48;5;{_BG[int(state)]}m")
+                        out.append(f"\x1b[38;5;15m\x1b[48;5;{_BG[state]}m")
                         prev = state
-                    out.append(" ")
+                    out.append(_ASCII[state])
                 out.append("\x1b[0m")
             else:
                 out.append("".join(_ASCII[int(s)] for s in row))
             out.append("\x1b[K\n")
-        out.append(
-            f"    slots {start}..{start + width - 1}"
-            f"   \x1b[48;5;{_BG[UNSEEN]}m \x1b[0m unseen"
-            f"  \x1b[48;5;{_BG[LOOKED]}m \x1b[0m looked"
-            f"  \x1b[48;5;{_BG[HIT]}m \x1b[0m hit\x1b[K\n"
-            if self.colour else
-            f"    slots {start}..{start + width - 1}   . unseen  : looked  # hit\n"
-        )
+        out.append(f"    slots {start}..{start + width - 1}   {_LEGEND}\x1b[K\n")
         self.stream.write("".join(out))
         self.stream.flush()
 
