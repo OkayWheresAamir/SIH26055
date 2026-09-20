@@ -285,3 +285,62 @@ def test_an_adapted_checkpoint_still_runs_through_the_ordinary_deployable_driver
     run_episode(env, policy, seed=0)
     assert len(env.log) == N_SLOTS
     assert np.isfinite(env.episode_metrics()["emitter_coverage"])
+
+
+# --------------------------------------------------------------------------- #
+# Periodic checkpointing (crash/close-the-terminal survival, not just Ctrl-C)
+# --------------------------------------------------------------------------- #
+
+def test_checkpoint_freq_saves_manifested_snapshots_along_the_way(base_checkpoint, tmp_path):
+    out = tmp_path / "adapted.zip"
+    fine_tune(
+        checkpoint=base_checkpoint, out_checkpoint=out, total_timesteps=300,
+        episode_slots=2 * N_SLOTS, obs_version="v3", view="off", device="cpu",
+        hyperparameters={"n_steps": 64, "batch_size": 16},
+        env_kwargs={"band_priority": True}, checkpoint_freq=64,
+    )
+    snapshots = sorted(tmp_path.glob("adapted_s*.zip"))
+    assert len(snapshots) >= 3  # 300 steps / 64 = at least 4 rollouts worth
+    for snap in snapshots:
+        manifest = json.loads(snap.with_suffix(".json").read_text())
+        assert manifest["algorithm"] == "RecurrentPPO"
+        assert manifest["observation_width"] == 399
+    # The final save (out itself) still lands too -- periodic and final coexist.
+    assert out.exists()
+
+
+def test_checkpoint_freq_none_disables_periodic_snapshots(base_checkpoint, tmp_path):
+    out = tmp_path / "adapted.zip"
+    fine_tune(
+        checkpoint=base_checkpoint, out_checkpoint=out, total_timesteps=300,
+        episode_slots=2 * N_SLOTS, obs_version="v3", view="off", device="cpu",
+        hyperparameters={"n_steps": 64, "batch_size": 16},
+        env_kwargs={"band_priority": True}, checkpoint_freq=None,
+    )
+    assert list(tmp_path.glob("adapted_s*.zip")) == []
+    assert out.exists()
+
+
+def test_resuming_from_a_periodic_snapshot_continues_the_step_count(base_checkpoint, tmp_path):
+    """The whole point of the naming convention: --checkpoint the last snapshot,
+    not the original, and the step count keeps counting rather than restarting."""
+    out = tmp_path / "adapted.zip"
+    fine_tune(
+        checkpoint=base_checkpoint, out_checkpoint=out, total_timesteps=200,
+        episode_slots=2 * N_SLOTS, obs_version="v3", view="off", device="cpu",
+        hyperparameters={"n_steps": 64, "batch_size": 16},
+        env_kwargs={"band_priority": True}, checkpoint_freq=64,
+    )
+    snapshots = sorted(tmp_path.glob("adapted_s*.zip"))
+    assert snapshots
+    last_snapshot_steps = json.loads(snapshots[-1].with_suffix(".json").read_text())["total_timesteps"]
+
+    resumed = tmp_path / "resumed.zip"
+    fine_tune(
+        checkpoint=snapshots[-1], out_checkpoint=resumed, total_timesteps=64,
+        episode_slots=2 * N_SLOTS, obs_version="v3", view="off", device="cpu",
+        hyperparameters={"n_steps": 64, "batch_size": 16},
+        env_kwargs={"band_priority": True}, checkpoint_freq=None,
+    )
+    resumed_manifest = json.loads(resumed.with_suffix(".json").read_text())
+    assert resumed_manifest["total_timesteps"] > last_snapshot_steps

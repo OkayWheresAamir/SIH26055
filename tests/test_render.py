@@ -23,6 +23,7 @@ from rfenv.scenario import Scenario
 from rfenv.truth import TruthGrid
 
 CAMPER = lambda obs, info: 6
+BUSY_CAMPER = lambda obs, info: 18  # config_2, band 18: 358 hits / 184 misses (seed 0) -- reliably both
 ROUND_ROBIN = lambda obs, info: info["slot"] % K.N_BANDS
 
 
@@ -80,6 +81,34 @@ def test_compare_animation_writes_a_nonempty_gif(tmp_path):
     out = R.compare_animation(runs, small_grid, tmp_path / "cmp.gif", stride=150, fps=10)
     assert out.exists()
     assert out.stat().st_size > 0
+
+
+def test_compare_animation_miss_scatter_has_the_right_colour_and_count(tmp_path):
+    """A miss is `occupied` (Z=1) with no declared hit (Y=0) -- the receiver's
+    own Pd<1. `compare_animation` closes its figure inside `PillowWriter`, so
+    it isn't introspectable after the fact the way `waterfall`'s returned
+    figure is; this asserts on the data `compare_animation` actually draws
+    from (`schedule_series`'s `occupied`/`hit` arrays) and that the render
+    still completes with both hits and misses present, rather than on pixels."""
+    from rfenv.metrics.views import schedule_series
+    from rfenv.render.comparison import HIT_COLOUR, MISS_COLOUR, compare_animation
+
+    scenario = Scenario.replay("config_2", "stare")
+    small_grid = TruthGrid.from_scenario(scenario)
+    env = ScanEnv(scenario=scenario)
+    run_episode(env, BUSY_CAMPER, seed=0)
+    run = M.write_run(tmp_path / "camper", env, scheduler="camper", seed=0)
+    n_hits = sum(1 for row in run.log if row["Y"])
+    n_misses = sum(1 for row in run.log if row["Z"] and not row["Y"])
+    assert n_hits > 0 and n_misses > 0  # otherwise this test can't tell colours apart
+
+    s = schedule_series(run)
+    assert int((s["occupied"] & ~s["hit"]).sum()) == n_misses
+    assert int(s["hit"].sum()) == n_hits
+    assert HIT_COLOUR != MISS_COLOUR
+
+    out = compare_animation({"camper": run}, small_grid, tmp_path / "cmp.gif", stride=150, fps=10)
+    assert out.exists() and out.stat().st_size > 0
 
 
 def test_declared_hits_are_marked_and_true_occupancy_is_not(grid, run):

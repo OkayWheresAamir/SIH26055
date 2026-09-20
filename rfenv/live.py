@@ -272,8 +272,8 @@ class AnsiHeatStrip(_RateLimited):
     def _width(self) -> int:
         if self._forced_width is not None:
             return self._forced_width
-        # 5 columns of band label, 2 of margin.
-        return max(20, shutil.get_terminal_size((100, 40)).columns - 7)
+        # 1 column current-band marker, 3 band index, 1 space, 2 margin.
+        return max(20, shutil.get_terminal_size((100, 40)).columns - 8)
 
     def open(self, env) -> None:
         self._opened = True
@@ -293,9 +293,14 @@ class AnsiHeatStrip(_RateLimited):
 
         width = self._width()
         grid, start = _tail_state(env, width)
-        out = ["\x1b[H", _headline(env, self.tally), "\x1b[K\n"]
+        current_band = int(env.log[-1]["band"]) if env.log else -1
+        out = [
+            "\x1b[H", _headline(env, self.tally), "\x1b[K\n",
+            _LEGEND, "\x1b[K\n",
+        ]
         for band in range(N_BANDS):
-            out.append(f"{band:3d} ")
+            marker = ">" if band == current_band else " "
+            out.append(f"{marker}{band:3d} ")
             row = grid[band]
             if self.colour:
                 # A cell is one glyph, not one blank, coloured -- a run of the
@@ -314,7 +319,8 @@ class AnsiHeatStrip(_RateLimited):
             else:
                 out.append("".join(_ASCII[int(s)] for s in row))
             out.append("\x1b[K\n")
-        out.append(f"    slots {start}..{start + width - 1}   {_LEGEND}\x1b[K\n")
+        out.append(f"     slots {start}..{start + width - 1}"
+                   f"   > = band the receiver is tuned to right now\x1b[K\n")
         self.stream.write("".join(out))
         self.stream.flush()
 
