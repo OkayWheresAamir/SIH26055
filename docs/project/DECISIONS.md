@@ -4965,7 +4965,9 @@ checkpoint still runs through `run_episode` under `guarded()`).
 
 ## D78 — A second recurrent-PPO policy, `MlpFeatureLstmPolicy`: a feature MLP ahead of the LSTM
 
-**Status:** `BUILT` (2026-09-20). Mechanism built and tested; no training result yet.
+**Status:** `MEASURED`, single seed (2026-09-20). Built and tested the same day; the first matched-pair
+result landed a few hours later, once training finished. **The baseline wins on the headline metric,
+decisively for one seed.**
 
 **What it is.** Rung 9's policy has always been sb3-contrib's `MlpLstmPolicy`
 (`RecurrentActorCriticPolicy` with the library-default `FlattenExtractor`) — since the observation
@@ -5007,15 +5009,48 @@ string name), so a checkpoint trained this way reloads through the ordinary `loa
 no special-casing — verified directly (round-tripped a checkpoint through `train()` -> `load_checkpoint()`
 -> `predict()`).
 
-**Verified directly (2026-09-20), not yet trained to a result:** a 300-timestep smoke run under each
-policy confirms the split — `MlpLstmPolicy`'s `lstm_actor.input_size` is 183 (the raw "v1"
-observation, `FlattenExtractor` doing nothing), `MlpFeatureLstmPolicy`'s is 256 (`MlpFeaturesExtractor`'s
-output); both leave `lstm_actor.hidden_size` at the library default (256) since neither this change
-nor the CLI's `--policy` flag touches `lstm_hidden_size`; a checkpoint trained under
-`MlpFeatureLstmPolicy` reloads via `load_checkpoint()` and predicts correctly. No comparison has been
-run — this is the same status D75/D76/D77 opened at: a mechanism this repository can defend, with the
-matched-pair run (`MlpLstmPolicy` vs `MlpFeatureLstmPolicy`, same reward/obs-version/seed/timesteps)
-still to do.
+**Verified directly (2026-09-20) before training:** a 300-timestep smoke run under each policy
+confirms the split — `MlpLstmPolicy`'s `lstm_actor.input_size` is 183 (the raw "v1" observation,
+`FlattenExtractor` doing nothing), `MlpFeatureLstmPolicy`'s is 256 (`MlpFeaturesExtractor`'s output);
+both leave `lstm_actor.hidden_size` at the library default (256) since neither this change nor the
+CLI's `--policy` flag touches `lstm_hidden_size`; a checkpoint trained under `MlpFeatureLstmPolicy`
+reloads via `load_checkpoint()` and predicts correctly.
+
+**The first matched-pair result (2026-09-20, `runs/baselines/d78_mlpfeature_vs_ctrl`, single seed).**
+Trained `lstm_v2p_mlpfeature_seed0` (rung 25a): `--policy MlpFeatureLstmPolicy`, `reward_balance`,
+`obs_version="v2p"`, seed 0, `ent_coef=0.01`, `gamma=0.997`, `n_steps=8192`, `lstm_hidden_size=512`,
+800k steps — identical in every training input to the already-trained `lstm_v2p_ctrl_seed0` (rung
+24b, D75's own control arm), reused as the baseline rather than retrained, since it differs from 25a
+in nothing but `--policy`. Compared over the full 47-config development set, 3 seeds
+(`python -m rfenv.compare --rungs lstm_v2p_mlpfeature_seed0,lstm_v2p_ctrl_seed0,round_robin,recency
+--seeds 3`):
+
+| rung | scheduler | ratio | cTTI (s) | coverage |
+|---|---|---|---|---|
+| 25a | `lstm_v2p_mlpfeature_seed0` (MLP) | 0.117 | 3.12 | 0.918 |
+| 24b | `lstm_v2p_ctrl_seed0` (baseline) | 0.118 | 2.25 | 0.910 |
+
+Paired against recency (**THE BAR**, per-episode, same scenario/seed/grid): 25a wins ratio on 65.2%
+of episodes, cTTI on 56.7%, both on **46.8%**; 24b wins ratio on 70.9%, cTTI on **78.0%**, both on
+**62.4%**. **The baseline beats the treatment by 15.6 pp on the paired-both headline** — three times
+D47/D68's 5 pp no-selection margin, not a coin flip. Interception ratio is essentially tied (0.117 vs
+0.118, a 5.7 pp paired-win-rate gap, inside the margin); the separation is almost entirely in censored
+intercept time — the MLP-feature policy is measurably slower to first-detect emitters (3.12 s vs
+2.25 s mean, a 21.3 pp paired-win-rate gap), even though it eventually reaches comparable overall
+ratio and coverage.
+
+**Read as suggestive, not conclusive — one seed, same caution every other single-seed result in this
+repository carries (D64, D73, D74's first pair).** No mechanism has been checked yet (no permutation
+ablation, no entropy/diffuseness comparison, no camping check — the three D74 ran before concluding
+its own null was a training-difficulty story and not a misused-signal story). The plausible reading,
+stated but not verified: the MLP ahead of the LSTM is extra capacity and extra optimisation depth in
+front of the recurrent core, and 800k steps that was enough to fit `MlpLstmPolicy` well may simply be
+a harder budget for a deeper network to converge on speed-to-first-detection specifically — the same
+"harder training problem" explanation D74 gave for its own treatment underperforming a simpler
+control. **Not adopted, not promoted, code not removed** — `MlpFeatureLstmPolicy` stays registered
+and available; nothing defaults to it. A second and third seed (mirroring D68's own escalation) is
+the natural next step before treating this direction as settled either way, not run without being
+asked.
 
 **Evidence.** `rfenv/rl/policies.py` (`MlpFeaturesExtractor`, `MlpFeatureLstmPolicy`,
 `POLICY_ALIASES`); `rfenv/rl/recurrent_ppo.py` (`_resolve_policy`, `--policy` gains the fourth
@@ -5026,4 +5061,6 @@ policy's LSTM input width is the extractor's `features_dim` (256), not the obser
 the post-LSTM `mlp_extractor`/`action_net`/`value_net` are the same classes as the baseline's; the
 extractor transforms each row of a batch independently of every other row (permuting the batch
 permutes the output the same way, and a single row reproduces its row from a batched pass exactly);
-a checkpoint trained under the new policy reloads through `load_checkpoint()` and predicts.
+a checkpoint trained under the new policy reloads through `load_checkpoint()` and predicts. Rung 25a
+(`rfenv/baselines/ladder.py`), paired against rung 24b; artefacts in
+`runs/baselines/d78_mlpfeature_vs_ctrl/`.

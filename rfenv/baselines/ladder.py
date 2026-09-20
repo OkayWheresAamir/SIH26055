@@ -643,6 +643,21 @@ LADDER: tuple[Rung, ...] = (
             obs_version="v2p"),
 
 
+    # D78 matched pair: architecture, not observation. Identical to rung 24b
+    # in every training input (reward_balance, obs_version='v2p', seed 0,
+    # ent_coef=0.01, gamma=0.997, n_steps=8192, 512-wide LSTM, 800k steps) --
+    # differs only in --policy. Reuses 24b as the control arm rather than
+    # retraining a duplicate baseline.
+    Rung("lstm_v2p_mlpfeature_seed0", "25a", "Recurrent PPO (reward_balance, v2p obs, MlpFeatureLstmPolicy, seed 0, 800k)",
+         "Ours. Treatment arm, D78: --policy MlpFeatureLstmPolicy (obs -> 2-layer "
+         "LayerNorm MLP -> LSTM -> actor/critic, rfenv/rl/policies.py) in place of "
+         "the library-default MlpLstmPolicy (obs -> LSTM -> actor/critic). Paired "
+         "against lstm_v2p_ctrl_seed0 (rung 24b), identical except --policy. Needs "
+         "ScanEnv(obs_version='v2p'); RecurrentPPO.load() reconstructs the policy "
+         "class from the checkpoint's own saved data, nothing extra to declare here.",
+         _recurrent_ppo_rung_factory(Path("runs/checkpoints/v2p/lstm_v2p_mlpfeature_seed0/lstm_v2p_mlpfeature_seed0.zip")),
+         obs_version="v2p"),
+
     Rung("camper_oracle", "—", "Greedy static, truth-fed (D14's camper)",
          "Reference line: D14's camper, which knew where the pulses were.",
          lambda rng, grid: OracleCamper(grid, rng),
