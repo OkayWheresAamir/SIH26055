@@ -5317,3 +5317,102 @@ occupancy check; `episode_log.csv` artefacts from `runs/baselines/d79_bandenc_fi
 Diagnostic scripts were scratch, not committed, per this repository's provenance rules (same
 discipline D74's permutation ablations and D78/D79's convergence checks followed) — reported here in
 full with method and numbers rather than only a conclusion.
+
+## D81 — D77's first real result: online fine-tuning works, and it is not the same thing as in-context adaptation
+
+**Status:** `MEASURED` (2026-09-20). D77 built the mechanism on 2026-09-19 and it had never been run
+for an actual result until tonight. This entry is that result, plus two things found and fixed along
+the way: `rfenv/rl/online.py` had no periodic checkpointing, and `compare_animation` couldn't show
+misses or false alarms at all.
+
+**The test world, built for this specifically.** D80 found that 23a gives **zero airtime, ever**, to
+ten bands: 12, 14, 24, 27, 28, 30, 32, 33, 34, 35 — seven of these are among D80's twelve
+structurally-always-empty bands, three (12, 24, 32) are bands that *do* carry real traffic sometimes
+but 23a has still learned to ignore. To test whether the model can be made to un-learn that habit, a
+fully synthetic `EmitterPool` was hand-built (not derived from any real recording): two emitters per
+target band, near-continuous (95% duty cycle), strong (`-80 dBm`, ~10 standard deviations above the
+detection threshold — "easy mode," chosen so a miss is essentially impossible and the measurement
+isn't confounded by the receiver's own imperfect detection), and **literally nothing on the other 26
+bands**. `band_priority` was held at its uninformative constant (`False`, i.e. all-ones) throughout,
+so any adaptation has to come from hits and misses alone, not a hint from that channel.
+
+**First measured: the frozen model (zero fine-tuning) already adapts *within one mission*, fast, for
+free.** Run on the inverted world with no gradient step at all, tracking new emitters found per 30 s
+segment:
+
+| time | new emitters found (of 20 that appeared) |
+|---|---|
+| 0–30s | 0 |
+| 30–60s | 2 |
+| **60–90s** | **18** |
+| 90s onward | 18–20, every segment, for the full 30 minutes measured (94.8% coverage by the end) |
+
+This is the LSTM's hidden state doing exactly what D75 predicted it could: integrating evidence within
+a mission and changing behaviour with no weight update. It is fast (under 90 seconds) and it is free —
+nothing about it required D77's mechanism, and this same curve reappeared, unchanged, at the very start
+of the fine-tuning run below, before a single gradient step had fired.
+
+**Then D77 itself was run for the first time.** Two sessions, resumed cleanly across a stop (below):
+163,840 additional steps beyond 23a's original 802,816 (≈25.6 minutes of real wall-clock fine-tuning:
+~900 s session 1, 635.7 s session 2 exactly, from the manifest), covering ≈72 minutes of simulated
+mission time — one complete 1-hour mission (reaching 97% coverage) plus 20.8% into a second before the
+run ended, `n_steps=8192` (unchanged from training, per D77's own reasoning), `learning_rate=1e-5`,
+`clip_range=0.1`, `target_kl=0.02` (D77's three brakes).
+
+**The result that matters: tested on a brand-new episode the fine-tuned checkpoint had never seen —
+not a continuation of anything it trained on — it performed strongly from the very first slot.** 314
+hits out of 600 slots (52.3%) in one fresh 30 s draw, 0 misses, 0 false alarms, no warm-up period at
+all. **This is the finding, stated precisely because it is easy to conflate with the free in-context
+result above and the two are not the same thing:**
+
+- **In-context adaptation** (the LSTM's memory, no training) is fast — under 90 seconds — but it is
+  *per-mission*: it has to rebuild from nothing every time a fresh episode starts, because nothing
+  about it survives a `reset()`.
+- **Weight-level adaptation** (what the ≈26 minutes of fine-tuning actually bought) is what makes that
+  same strong performance available **immediately, on any future mission, with no per-mission warm-up
+  required** — genuinely new information baked into the policy's parameters, not just held in a hidden
+  state that resets.
+
+Neither number is "how long adaptation took" on its own; conflating real fine-tuning time (~26 min)
+with the in-context ramp-up (~90 s) would misstate what each mechanism actually does. Read together,
+they say: this policy could already improvise a workable response to an unfamiliar world within one
+mission for free, and a comparatively small amount of real fine-tuning turned that improvisation into
+a standing skill.
+
+**Two gaps found and fixed while running this, not before.**
+
+1. **`rfenv/rl/online.py` had no periodic checkpointing.** The only save path was Ctrl-C (or the run
+   finishing), so a crash, a closed terminal, or the machine sleeping mid-run would have lost
+   everything with no way to recover. `fine_tune()` gained `checkpoint_freq` (default `8192`, one
+   snapshot per rollout/weight update — opt-in for offline `train()`, on by default here, since an
+   online run is exactly the case where losing unsaved progress is the expensive failure). Reuses
+   `ManifestedCheckpointCallback`, the same naming/manifest discipline offline checkpoint-freq runs
+   already had. Resuming is the same `fine_tune()` call pointed at the last snapshot instead of the
+   original checkpoint — used for real here: the first session was Ctrl-C'd by hand (before this fix
+   existed) and picked up cleanly from that save.
+2. **`compare_animation` could only ever show hits, and conflated true hits with false alarms under
+   one red marker.** Extended to draw all four declaration outcomes distinctly: hit (`Y=1,Z=1`) red,
+   miss (`Z=1,Y=0`, the receiver's own `Pd<1`) green, false alarm (`Y=1,Z=0`, the receiver's own noise
+   crossing `gamma` on empty spectrum) blue, correct silence (`Y=0,Z=0`) yellow. **Caught a real
+   mislabeling bug of my own while building this**: an early printout counted "hits" as any `Y=1`
+   regardless of `Z`, which reported a genuine false alarm (slot 162, band 18, segment 1 of the frozen
+   check above) as a hit — corrected once the pixel data itself was checked directly rather than trusted
+   from the printout, the same "verify, don't just assert" discipline this repository's provenance
+   rules ask for.
+
+**What this does not show.** One synthetic world, one seed for the fine-tuned cold-start test, no
+comparison against *not* fine-tuning for the same wall-clock budget, and the world was deliberately
+"easy mode" (near-zero miss rate by construction) — none of this is a claim that D77 generalises
+robustly to harder or differently-shaped distribution shifts, only that the mechanism, run for the
+first time end to end, produced a real, measurable, correctly-attributed effect.
+
+**Evidence.** `rfenv/rl/online.py` (`checkpoint_freq`, `--checkpoint-freq`, 3 new tests);
+`rfenv/render/comparison.py` (`MISS_COLOUR`, `FALSE_ALARM_COLOUR`, `CORRECT_SILENCE_COLOUR`, extended
+tests); `rfenv/live.py` (legend moved above the band rows, current-band `>` marker, 2 new tests);
+checkpoints and manifests under `runs/checkpoints/v2p/lstm_balance_v2p_priority_strong_seed2/
+lstm_balance_v2p_priority_strong_seed2_inverted_online*.zip`; segment-by-segment log in
+`runs/baselines/inverted_world_online_finetune/segments.jsonl`; GIFs in
+`runs/baselines/inverted_world_segment_animations/` (`segment_1/2/3.gif` for the frozen-model
+ramp-up, `finetuned.gif` for the cold-start result). The synthetic-pool construction and the
+fine-tune/resume driver were scratch scripts, not committed, per this repository's provenance
+rules — reported here in full with method and numbers.
