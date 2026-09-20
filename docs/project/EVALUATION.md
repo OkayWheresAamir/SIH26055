@@ -160,7 +160,7 @@ pick's +25.0%). Re-applying D47 on the new pair: `reward_balance` **81.9%** both
 **17.6 pp apart, decisively outside the margin — `reward_balance` is selected.** Full accounting
 in D68.
 
-### Two traps, both measured on real data (D14)
+### Three traps, all measured on real data (D14, D80)
 
 1. **Per-dwell hit rate is misleading.** A camper that parks on the busiest band scores 85–90%
    per-dwell and looks near-optimal, while capturing only 30% of emitters. The per-illumination
@@ -168,9 +168,23 @@ in D68.
 2. **Uncensored intercept time rewards not looking.** Averaged over only *found* emitters, the
    camper appears *faster* (6.5 s) than round-robin — because it only ever finds the loudest
    emitters. Censoring at episode end reverses it correctly (23.8 s vs 9.7 s).
+3. **A higher ratio can mean "learned this dataset's dead spectrum," not "scheduled better"
+   (D80, 2026-09-20).** Twelve of the 36 bands (indices 0, 13, 14, 25–30, 33–35) carry **zero**
+   occupied cells in every one of the 47 comparison scenarios — a fixed population regularity, not
+   scenario noise. Every checkpoint measured so far has its overall score track how much airtime it
+   wastes on exactly those twelve bands (23a: 1.73% airtime, 73.8% both-score; rung 25a: 12.53%
+   airtime, 46.8% both-score — the full table is in D80). This is not a deployability violation (the
+   policy learns it from its own scan history, same as anything else), but it is a distribution-shift
+   risk this project cannot currently rule out: whether "these bands are empty" is a fact worth
+   learning about the real operating environment, or an artifact of this one finite synthetic
+   emitter library, is only checkable against the 45-config held-out split (D8), which has not been
+   touched. Reporting dead-band airtime alongside a ratio gain is the cheap way to tell the two
+   apart until that check is run.
 
 **Rule: never publish interception ratio without coverage and censored intercept time beside
-it.** A single scalar hides the entire problem.
+it — and without dead-band airtime when comparing checkpoints that could plausibly differ in how
+much of the spectrum they've learned to skip.** A single scalar hides the entire problem, and the
+third trap shows that even three together don't say *why* a gain happened.
 
 ---
 

@@ -5235,3 +5235,85 @@ global values from synthetic data, not just shapes; the encoder's parameter coun
 band count; permuting bands before pooling leaves the output unchanged; `obs_version` auto-detects and a
 mismatch is refused; `lstm_hidden_size` matches the baseline unless overridden; the post-LSTM heads are
 the same classes as the baseline's; a checkpoint round-trips through `load_checkpoint()` and predicts.
+
+## D80 — A third trap on interception ratio: 12 of 36 bands are structurally empty in every scenario, and every checkpoint's score tracks how well it has learned to avoid them
+
+**Status:** `MEASURED` (2026-09-20). A population regularity in the 47-config development set, and a
+methodological caution that follows directly from it — not a code change, not an environment change.
+
+**The finding.** Building `TruthGrid.from_scenario()` for all 47 train-split **stare** replays (the
+comparison set every rung in this project is scored on) and summing `Z` (occupied cells) per band
+across all of them: **twelve of the thirty-six bands — indices 0, 13, 14, 25–30, 33–35 — have zero
+occupied cells in every single one of the 47 scenarios.** Not "usually empty" — zero, always, no
+exceptions, across the whole development set. Checked the same way on all 47 **scan** replays of the
+same config IDs: eleven of the same twelve match exactly; band 0 is the one exception, dead in every
+stare replay but carrying real (not fluke-sized) activity in scan — 1,499 occupied cells, 427,078
+pulses across the 47 scan configs, unexplained (whether "same config ID" scan/stare pairs are the same
+underlying emitter placement was not checked here). D36's own caution applies to the scan half of this
+check — a scan-replay grid is not a true occupancy counterfactual — so the scan comparison is read as
+a corroborating cross-check, not independent evidence on its own footing.
+
+**Every checkpoint measured tonight has its overall score track how much airtime it wastes on those
+twelve bands, almost exactly.** Airtime share on the 12 always-dead bands, against each checkpoint's
+own beats-recency-both score (fair share would be 33.3%, since these are 12 of 36 bands):
+
+| checkpoint | dead-band airtime | beats-recency, both |
+|---|---|---|
+| 23a (`lstm_balance_v2p_priority_strong_seed2_800k`) | **1.73%** | **73.8%** |
+| 26a (`lstm_v3_bandenc_noprior_seed2`, D79) | 4.73% | 66.7% |
+| 24b (`lstm_v2p_ctrl_seed0`, D75/D78 baseline) | 9.94% | 62.4% |
+| 25a (`lstm_v2p_mlpfeature_seed0`, D78) | 12.53% | 46.8% |
+
+Within rung 26a's own 800k-step training run, the same relationship holds internally: correlating
+beats-recency-both score against dead-band airtime across all 16 checkpoint-freq snapshots gives
+**r = −0.48**, and the run's single worst snapshot on *both* measures is the *same* one (500k steps:
+57.4% score, 9.68% dead-band airtime — both the worst point in their respective series).
+
+**It is not a perfect predictor, and the counterexample is instructive.** Rung 26b
+(`lstm_v3_bandenc_noprior_seed0` — identical config to 26a, seed 0 instead of 2) wastes only slightly
+more airtime on dead bands than 26a (5.64% vs 4.73%) but scores far worse overall (51.8% vs 66.7%,
+below even rung 24b's 62.4% despite lower dead-band airtime than 24b). The gap there is driven by
+censored intercept time on the *live* bands (2.70 s vs 1.97 s), not dead-band avoidance — a reminder
+that dead-band airtime explains most of the *cross-checkpoint* variance measured here, not all of it,
+and this project has not yet identified what drives the rest.
+
+**The methodological point, stated precisely — this is a third trap alongside D14's two, and a
+different kind.** D14's traps are about a *metric definition* rewarding a degenerate *policy*
+(per-dwell hit rate rewarding camping; uncensored intercept time rewarding not looking) regardless of
+what the data contains. This one is about the *data*: interception ratio (and `reward_balance`'s own
+`visit_density`/staleness terms, which price exactly the same airtime-avoidance behaviour during
+training) cannot distinguish a policy that has learned to prioritise spectrum with a real, general
+tendency to carry traffic from a policy that has learned the fixed empty zones of *this one finite
+47-config synthetic emitter library specifically*. Both look identical from the ratio/cTTI numbers
+alone, and both are rewarded identically by `reward_balance` during training — the training loop and
+the evaluation metric are jointly reinforcing the same regularity, whichever kind it turns out to be.
+**This is not a deployability violation** (D19/D20/D29): nothing about avoiding these bands requires
+information the observation doesn't legitimately carry — a policy that has scanned enough training
+episodes to notice `hit_rate`/`staleness` never move on these bands has learned it the same way it
+learns anything else, and the recurrent hidden state still resets cleanly every episode. **It is a
+distribution-shift risk**: whether "these twelve bands are empty" is a fact about the receiver's real
+operating environment (something worth learning) or an artifact of how this particular synthetic
+dataset's emitter library happened to be built (something that would not survive contact with a
+different population) is not answerable from the training/comparison data alone, because both draw
+from the same 47-config population (D60's split separates *which configs* train from which validate,
+not the underlying question of whether the population itself is representative). The only account this
+repository has of a genuinely different population is the 45-config **held-out test split**, guarded
+under D8 and never touched — checking whether the same twelve bands (or a different, disjoint set)
+are dead there is the direct test of whether this is real signal or dataset-specific memorisation, and
+it has not been run.
+
+**Rule, matching D14's own form: a higher interception ratio (or `reward_balance` score) is not
+straightforwardly better without checking *where* the airtime came from.** Two checkpoints can post
+the same ratio gain for different reasons — one from genuinely better prioritisation among bands that
+could plausibly carry traffic, the other from having simply memorised which of the 36 dwell
+frequencies this dataset's generator never assigns an emitter to. Reporting dead-band airtime
+alongside the standard three-metric line (§4) is the cheap, already-available way to tell them apart
+until the held-out split is checked.
+
+**Evidence.** All numbers in this entry were measured directly this session (not carried over from
+memory): `TruthGrid.from_scenario()` over all 47 stare and all 47 scan train-split replays for the
+occupancy check; `episode_log.csv` artefacts from `runs/baselines/d79_bandenc_final/`,
+`d79_bandenc_all_snapshots_vs_23a/`, and `d79_bandenc_seed0_check/` for the airtime-share figures.
+Diagnostic scripts were scratch, not committed, per this repository's provenance rules (same
+discipline D74's permutation ablations and D78/D79's convergence checks followed) — reported here in
+full with method and numbers rather than only a conclusion.
