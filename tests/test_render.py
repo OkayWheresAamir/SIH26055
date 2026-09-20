@@ -82,18 +82,21 @@ def test_compare_animation_writes_a_nonempty_gif(tmp_path):
     assert out.stat().st_size > 0
 
 
-def test_compare_animation_marks_all_three_outcomes_with_distinct_colours(tmp_path):
+def test_compare_animation_marks_all_four_outcomes_with_distinct_colours(tmp_path):
     """Hit (Y=1,Z=1) red, miss (Z=1,Y=0 -- the receiver's own Pd<1) green,
-    false alarm (Y=1,Z=0 -- the receiver's own Pfa) blue. `compare_animation`
-    closes its figure inside `PillowWriter`, so it isn't introspectable after
-    the fact the way `waterfall`'s returned figure is; this asserts on the
-    data it actually draws from (`schedule_series`'s `occupied`/`hit`
-    arrays) and that the render still completes with all three outcomes
-    present, rather than on pixels. `config_2` band 4 (seed 0) has a real
-    example of all three at once: 163 hits, 17 misses, 1 false alarm --
-    found by sweeping every band/config combo, not picked in advance."""
+    false alarm (Y=1,Z=0 -- the receiver's own noise alone crossing gamma)
+    blue, correct silence (Y=0,Z=0) yellow. `compare_animation` closes its
+    figure inside `PillowWriter`, so it isn't introspectable after the fact
+    the way `waterfall`'s returned figure is; this asserts on the data it
+    actually draws from (`schedule_series`'s `occupied`/`hit` arrays) and
+    that the render still completes with all four outcomes present, rather
+    than on pixels. `config_2` band 4 (seed 0) has a real example of hit/
+    miss/false-alarm all at once (163/17/1) -- found by sweeping every
+    band/config combo, not picked in advance; correct silence is present in
+    essentially every real episode."""
     from rfenv.metrics.views import schedule_series
     from rfenv.render.comparison import (
+        CORRECT_SILENCE_COLOUR,
         FALSE_ALARM_COLOUR,
         HIT_COLOUR,
         MISS_COLOUR,
@@ -109,13 +112,15 @@ def test_compare_animation_marks_all_three_outcomes_with_distinct_colours(tmp_pa
     n_hits = sum(1 for row in run.log if row["Y"] and row["Z"])
     n_misses = sum(1 for row in run.log if row["Z"] and not row["Y"])
     n_false_alarms = sum(1 for row in run.log if row["Y"] and not row["Z"])
-    assert n_hits > 0 and n_misses > 0 and n_false_alarms > 0  # otherwise colours are untestable
+    n_silence = sum(1 for row in run.log if not row["Y"] and not row["Z"])
+    assert n_hits > 0 and n_misses > 0 and n_false_alarms > 0 and n_silence > 0
 
     s = schedule_series(run)
     assert int((s["hit"] & s["occupied"]).sum()) == n_hits
     assert int((s["occupied"] & ~s["hit"]).sum()) == n_misses
     assert int((s["hit"] & ~s["occupied"]).sum()) == n_false_alarms
-    assert len({HIT_COLOUR, MISS_COLOUR, FALSE_ALARM_COLOUR}) == 3  # all distinct
+    assert int((~s["hit"] & ~s["occupied"]).sum()) == n_silence
+    assert len({HIT_COLOUR, MISS_COLOUR, FALSE_ALARM_COLOUR, CORRECT_SILENCE_COLOUR}) == 4
 
     out = compare_animation({"camper": run}, small_grid, tmp_path / "cmp.gif", stride=150, fps=10)
     assert out.exists() and out.stat().st_size > 0

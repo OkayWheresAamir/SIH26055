@@ -21,6 +21,7 @@ from rfenv.render._common import _band_axis, _save
 HIT_COLOUR = "#ff3b30"
 MISS_COLOUR = "#22c55e"
 FALSE_ALARM_COLOUR = "#3b82ff"
+CORRECT_SILENCE_COLOUR = "#eab308"
 PATH_COLOUR = "white"
 
 
@@ -166,13 +167,20 @@ def compare_animation(
     the episode is still unfolding is backwards. Read the final numbers off
     `EVALUATION.md`-style artefacts instead.
 
-    **All three declaration outcomes are drawn, not just hits.** Hit (`Y=1,
-    Z=1`) red, miss (`Z=1, Y=0` -- tuned to a truth-occupied cell but declared
-    nothing, the receiver's own `Pd < 1`) green, false alarm (`Y=1, Z=0` --
-    declared a hit where nothing was transmitting, the receiver's own `Pfa`)
-    blue. All three read straight off `schedule_series`'s `occupied`/`hit`
-    arrays, never computed separately. A single legend, drawn once (top row
-    only, so it does not repeat down a multi-row figure), names all three.
+    **All four declaration outcomes are drawn.** Hit (`Y=1, Z=1`) red, miss
+    (`Z=1, Y=0` -- tuned to a truth-occupied cell but declared nothing, the
+    receiver's own `Pd < 1`) green, false alarm (`Y=1, Z=0` -- declared a hit
+    where nothing was transmitting, the receiver's own noise alone crossing
+    `gamma`) blue, correct silence (`Y=0, Z=0`) yellow. All four read straight
+    off `schedule_series`'s `occupied`/`hit` arrays, never computed
+    separately. A single legend, drawn once (top row only, so it does not
+    repeat down a multi-row figure), names all four.
+
+    **Correct silence is usually the overwhelming majority of slots** (most
+    of the spectrum, most of the time, has nothing transmitting), so marking
+    it turns most of the path yellow rather than leaving a handful of sparse
+    markers the way the other three do -- a deliberate choice, not an
+    oversight, for when the point is to see how dominant it is.
 
     The y-axis labels every 5th band (`_band_axis`), same as `schedule_timeline`
     and `waterfall` -- with several rows stacked at `figsize_per_row` height each,
@@ -239,13 +247,16 @@ def compare_animation(
                 bbox=dict(boxstyle="round,pad=0.2", fc="black", alpha=0.55, ec="none"),
             )
         (path_line,) = ax.step([], [], where="post", color=PATH_COLOUR, linewidth=1.0, alpha=0.9)
+        silence_scatter = ax.scatter([], [], s=10, color=CORRECT_SILENCE_COLOUR, zorder=3,
+                                     label="correct silence")
         hit_scatter = ax.scatter([], [], s=10, color=HIT_COLOUR, zorder=4, label="hit")
         miss_scatter = ax.scatter([], [], s=10, color=MISS_COLOUR, zorder=4, label="miss")
         false_alarm_scatter = ax.scatter([], [], s=10, color=FALSE_ALARM_COLOUR, zorder=4,
                                          label="false alarm")
         (now_marker,) = ax.plot([], [], "o", color="white", markersize=5.5, zorder=5,
                                  markeredgecolor="black", markeredgewidth=0.7)
-        dynamic[label] = (path_line, hit_scatter, miss_scatter, false_alarm_scatter, now_marker)
+        dynamic[label] = (path_line, silence_scatter, hit_scatter, miss_scatter,
+                          false_alarm_scatter, now_marker)
         if row == 0:
             ax.legend(loc="lower right", fontsize=8, framealpha=0.6,
                       facecolor="black", labelcolor="white")
@@ -268,8 +279,17 @@ def compare_animation(
                 mask = s["slot"] < cutoff
                 t = s["time_s"][mask]
                 band = s["band"][mask].astype(float)
-                path_line, hit_scatter, miss_scatter, false_alarm_scatter, now_marker = dynamic[label]
+                (path_line, silence_scatter, hit_scatter, miss_scatter,
+                 false_alarm_scatter, now_marker) = dynamic[label]
                 path_line.set_data(t, band)
+                silence_mask = mask & ~s["hit"] & ~s["occupied"]
+                if silence_mask.any():
+                    silence_scatter.set_offsets(
+                        np.column_stack([s["time_s"][silence_mask] + SLOT_S / 2,
+                                         s["band"][silence_mask]])
+                    )
+                else:
+                    silence_scatter.set_offsets(np.empty((0, 2)))
                 # True hits only (Y=1 *and* Z=1) -- false alarms (Y=1, Z=0) get
                 # their own colour below rather than being lumped in as red too.
                 hit_mask = mask & s["hit"] & s["occupied"]
