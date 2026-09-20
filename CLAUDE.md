@@ -186,7 +186,12 @@ in `rfenv/render/live.py` (separate because importing `rfenv.render` forces the 
 tty means **zero escape bytes**, and a missing plotting backend degrades to the terminal rather than
 killing a one-hour run.
 
-**D77 — online fine-tuning (`rfenv/rl/online.py`), the repository's first resume path.** D29 recorded
+**D77 — online fine-tuning (`rfenv/rl/online.py`), a new mode alongside offline training, not instead
+of it.** Every rung in `EVALUATION.md` §5, including both of D77's own arms, is still produced by the
+ordinary `rfenv.rl.{ppo,recurrent_ppo,dqn}.train()` path — frozen checkpoint, offline, unchanged and
+still the default; `rfenv/rl/online.py` only ever loads a checkpoint that path already produced and
+keeps adapting it. Verified directly (2026-09-20): plain offline `train()` calls, including on the
+narrowed 400-wide "v3", still produce ordinary loadable checkpoints with no code path change. D29 recorded
 that *"the restriction would only bite if we ever fine-tuned online, which we do not"*; we now do, and
 **the rule is satisfied rather than relaxed** — `ObservableRewardWrapper` feeds the gradient
 `reward_balance_obs`, so the agent optimises a quantity a real receiver could compute, while

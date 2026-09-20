@@ -4882,6 +4882,17 @@ colour); `tests/test_online.py` (the view-callback regression test).
 
 **Status:** `BUILT` (2026-09-19). Mechanism built and tested; no adaptation result yet.
 
+**This is a new, additional mode, not a replacement.** Asked directly whether offline training —
+`rfenv.rl.{ppo,recurrent_ppo,dqn}.train()`, frozen-checkpoint, the path every rung in
+`EVALUATION.md` §5 has ever been produced by, including D77's own two arms — is still available: yes,
+completely unaffected, and it stays the default. `rfenv/rl/online.py` is a *second* driver that loads
+an already-trained checkpoint and keeps adapting it; nothing in D77 touches, wraps, or gates the
+ordinary `train()` functions, and `PROJECT_ARCHITECTURE.md` §10's `Develop RL scheduler → Freeze final
+system → Final held-out evaluation` workflow is exactly as true today as it was before this decision.
+Verified directly (2026-09-20): a plain `rfenv.rl.ppo.train()` call and a plain
+`rfenv.rl.recurrent_ppo.train(obs_version="v3", ...)` call both still produce ordinary, loadable,
+frozen checkpoints on the current (400-wide, post-amendment) "v3" layout, with no code path change.
+
 **What this changes about D29.** D29 records, correctly for its time, that *"there is no online
 learning after deployment anywhere in the architecture"* and that the observation/reward asymmetry
 *"would only bite if we ever fine-tuned online, which we do not."* We now do. **D29's rule is not
