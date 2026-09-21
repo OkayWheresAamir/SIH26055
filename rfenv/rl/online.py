@@ -227,6 +227,68 @@ def _callbacks(view, segments_path: Path | None):
     return out
 
 
+def _make_animated_checkpoint_callback(*, run: str, manifest_kwargs: dict,
+                                       save_freq: int, save_path: str,
+                                       animate_env_kwargs: dict, animate_slots: int):
+    """`ManifestedCheckpointCallback` (`rl/common.py`), extended to also
+    render a short animation of each snapshot's own behaviour -- see
+    `fine_tune`'s own docstring for why. Built lazily (subclasses the
+    common one, imports `rfenv.render` only when actually called) so a
+    `--view off, checkpoint_freq=None` run never pays for matplotlib.
+    """
+    from rfenv.rl.common import ManifestedCheckpointCallback
+
+    class AnimatedCheckpointCallback(ManifestedCheckpointCallback):
+        def _on_step(self) -> bool:
+            due = self.n_calls % self.save_freq == 0
+            result = super()._on_step()
+            if due:
+                self._render_animation(self._n_saved)
+            return result
+
+        def _render_animation(self, n: int) -> None:
+            import types
+
+            from sb3_contrib import RecurrentPPO
+
+            from rfenv.metrics.artefacts import RunArtefacts
+            from rfenv.render import compare_animation
+            from rfenv.rl.common import RecurrentRLScheduler
+
+            zip_path = Path(self.save_path) / f"{self._run}_s{n}.zip"
+            gif_path = Path(self.save_path) / f"{self._run}_s{n}.gif"
+            try:
+                snapshot = RecurrentPPO.load(zip_path, device="cpu")
+                # `make_online_env`, not a raw `ScanEnv` -- it is the one place
+                # that already knows how to default `pool` (D60's training
+                # half) when the caller's own `env_kwargs` did not supply one,
+                # and reusing it keeps the animation on the exact same world
+                # the checkpoint is training against.
+                env = make_online_env(episode_slots=animate_slots,
+                                      observable_reward=False,
+                                      **animate_env_kwargs)
+                policy = RecurrentRLScheduler(snapshot)
+                obs, info = env.reset(seed=0)
+                done = False
+                while not done:
+                    action = policy(obs, info)
+                    obs, _reward, terminated, truncated, info = env.step(action)
+                    done = terminated or truncated
+                log = sorted(env.log, key=lambda r: r["slot"])
+                run_artefacts = RunArtefacts(header={}, log=log, emitters=[])
+                grid_stub = types.SimpleNamespace(Z=env.grid.Z)
+                compare_animation({f"{self._run} snapshot {n}": run_artefacts},
+                                  grid_stub, gif_path)
+            except Exception as exc:      # pragma: no cover -- must never kill the run
+                print(f"checkpoint animation failed for snapshot {n}: {exc}",
+                      file=sys.stderr)
+
+    return AnimatedCheckpointCallback(
+        run=run, manifest_kwargs=manifest_kwargs,
+        save_freq=save_freq, save_path=save_path,
+    )
+
+
 def fine_tune(
     *,
     checkpoint: str | Path,
@@ -244,6 +306,8 @@ def fine_tune(
     description: str = "",
     env_kwargs: dict | None = None,
     checkpoint_freq: int | None = 8192,
+    animate_checkpoints: bool = True,
+    animate_slots: int = 3 * N_SLOTS,
 ):
     """Load a checkpoint, keep training it on a continuous grid, save the result.
 
@@ -271,6 +335,19 @@ def fine_tune(
     just pointed at the snapshot instead of the original checkpoint, since
     `reset_num_timesteps=False` (below) means the step count keeps counting
     from wherever the snapshot left off.
+
+    **`animate_checkpoints` is also on by default.** Every time
+    `checkpoint_freq` saves a snapshot, that snapshot is immediately loaded
+    back (fresh, on CPU, independent of the training model/device -- it
+    cannot perturb the run it is watching) and run for `animate_slots`
+    (default 3 segments, 90s) on the same distribution training is running
+    on, rendered as `<run>_s<n>.gif` beside the snapshot's own
+    `.zip`/`.json`. This is what made D81's finding legible in the first
+    place -- the segment scorecard alone said coverage was climbing, not
+    *how* the policy's behaviour was actually changing -- and doing it
+    automatically here means a future run does not depend on someone
+    remembering to build one by hand afterwards. One short inference
+    episode per snapshot, cheap next to a rollout/weight update.
     """
     from sb3_contrib import RecurrentPPO
     from stable_baselines3.common.vec_env import DummyVecEnv
@@ -309,12 +386,23 @@ def fine_tune(
                            "started_at": started_at,
                            "description": description or f"online fine-tune of {checkpoint.name} (in-progress snapshot)"}
         out_checkpoint = Path(out_checkpoint)
-        callbacks.append(ManifestedCheckpointCallback(
-            run=run or out_checkpoint.stem,
-            manifest_kwargs=manifest_kwargs,
-            save_freq=checkpoint_freq,
-            save_path=str(out_checkpoint.parent),
-        ))
+        if animate_checkpoints:
+            callbacks.append(_make_animated_checkpoint_callback(
+                run=run or out_checkpoint.stem,
+                manifest_kwargs=manifest_kwargs,
+                save_freq=checkpoint_freq,
+                save_path=str(out_checkpoint.parent),
+                animate_env_kwargs={"reward": reward, "obs_version": obs_version,
+                                    **(env_kwargs or {})},
+                animate_slots=animate_slots,
+            ))
+        else:
+            callbacks.append(ManifestedCheckpointCallback(
+                run=run or out_checkpoint.stem,
+                manifest_kwargs=manifest_kwargs,
+                save_freq=checkpoint_freq,
+                save_path=str(out_checkpoint.parent),
+            ))
 
     interrupted = False
     try:
@@ -381,6 +469,14 @@ def main(argv=None) -> int:
                          "terminal, not just a deliberate stop. Snapshots land "
                          "beside --out-checkpoint as <run>_s1.zip, <run>_s2.zip, ...; "
                          "resume with --checkpoint pointed at the last one.")
+    ap.add_argument("--no-animate-checkpoints", action="store_true",
+                    help="skip rendering a .gif for each checkpoint snapshot "
+                         "(on by default -- one short inference episode per "
+                         "snapshot, saved as <run>_s<n>.gif beside its .zip).")
+    ap.add_argument("--animate-slots", type=int, default=3 * N_SLOTS,
+                    help=f"how many slots each checkpoint's own animation covers "
+                         f"(default {3 * N_SLOTS} = 3 segments, 90s). No effect "
+                         f"if --no-animate-checkpoints.")
     args = ap.parse_args(argv)
 
     from rfenv.rl.common import parse_hyperparameters
@@ -406,6 +502,8 @@ def main(argv=None) -> int:
         run=args.run_name,
         description=args.description,
         checkpoint_freq=args.checkpoint_freq if args.checkpoint_freq > 0 else None,
+        animate_checkpoints=not args.no_animate_checkpoints,
+        animate_slots=args.animate_slots,
     )
     print(f"saved  {out_checkpoint}")
     print(f"       {out_checkpoint.with_suffix('.json')}")
