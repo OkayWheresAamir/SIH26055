@@ -1,0 +1,524 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>PPT_NOTES</title>
+<style>
+@page { size: a4 portrait; margin: 16mm 15mm 15mm 15mm; }
+body { font-family: "Charter","Georgia",serif; font-size: 10.2pt; line-height: 1.45;
+       color: #17181a; }
+h1,h2,h3,h4 { font-family: "Helvetica","Arial",sans-serif; }
+h1 { font-size: 21pt; margin: 0 0 3mm; }
+h2 { font-size: 13.5pt; margin: 8mm 0 2.5mm; padding-bottom: 1.5mm;
+     border-bottom: 1.2pt solid #17181a; }
+h3 { font-size: 11pt; margin: 5mm 0 1.5mm; }
+h4 { font-size: 10pt; margin: 4mm 0 1mm; color: #3a3d42; }
+p  { margin: 0 0 2.5mm; }
+ul,ol { margin: 0 0 2.8mm; }
+li { margin-bottom: 1.1mm; }
+code { font-family: "Courier","monospace"; font-size: 8.7pt; background-color: #f2f2f0; }
+pre { font-family: "Courier","monospace"; font-size: 8.3pt; background-color: #f7f7f5;
+      border: 0.5pt solid #dcdcd6; padding: 3mm; margin: 0 0 3mm; }
+table { width: 100%; margin: 0 0 3.5mm; font-size: 8.9pt; }
+th { text-align: left; font-size: 8.2pt; color: #55585e;
+     border-bottom: 1pt solid #17181a; padding: 1.6mm 2mm 1.2mm; }
+td { padding: 1.6mm 2mm; border-bottom: 0.5pt solid #e0e0dc; }
+blockquote { border-left: 2.5pt solid #17181a; background-color: #f7f7f5;
+             padding: 2.5mm 4mm; margin: 0 0 3.5mm; }
+hr { border-top: 0.5pt solid #d5d5cf; margin: 5mm 0; }
+a { color: #17181a; }
+</style></head><body><h1>NARADA — SIH 2026 Idea Deck: content pack</h1>
+<p><strong>For the PPT lane. Built 2026-09-11.</strong> Everything here is a <em>source</em> for slides, not slide text.
+Rewrite it in your own words — the point of this document is that you never have to go looking for
+a number, and that no number on a slide is one we cannot defend.</p>
+<ul>
+<li><strong>PS 26055</strong>, DRDO — <em>Smart Scan Strategy for Electronic Warfare</em>. Theme: Robotics &amp; Drones.
+  Category: Software. <strong>Team NIRVANA. Product: NARADA.</strong> Tagline: <em>Right place at the right time.</em></li>
+<li>Template: <code>SIH2026-IDEA-Presentation-Format.pptx</code> — <strong>6 slides, title slide included.</strong>
+  Its own rules slide: no paragraphs, use points/diagrams/infographics, don't change the
+  section headings, export to PDF.</li>
+<li>Figures are in <code>docs/ppt/figures/</code> at 200 dpi, drop-in ready. Regenerate with the <code>mk_*.py</code>
+  scripts beside them.</li>
+</ul>
+<hr />
+<h2>A. The one decision that shapes the whole deck</h2>
+<p>At idea-submission stage almost every deck is a <strong>promise</strong> — "we will build X". We are the rare
+team that can submit a <strong>result</strong>: the system is built, it ran 5,643 episodes, and it beat every
+baseline including the one from the published literature.</p>
+<p><strong>So the deck's job is not to describe an idea. It is to prove the work is already done.</strong>
+Everything follows from that:</p>
+<ul>
+<li>Lead each slide with a <strong>claim about approach</strong>, and let one number support it. A judge cannot
+  verify our numbers in the ninety seconds they spend on the slide — but they can absolutely
+  judge whether we thought clearly. <strong>Two or three numbers per slide, not a table.</strong></li>
+<li><strong>Show the course-corrections.</strong> This is the strongest and most unusual thing we have. We were
+  wrong about how to infer threat, wrong about how to encode it, wrong about our own reward
+  function twice, and we found a train/test leak in our own work. Every one of those is written
+  down with the evidence that changed our mind. Almost no team at idea stage can show that, and
+  it is exactly what separates a project from a proposal.</li>
+<li>Every claim traces to something we ran. Nothing is aspirational except the clearly-labelled
+  future work on slide 5.</li>
+<li>The threat-priority edge is <strong>one block on slide 2 and one line on slide 5.</strong> It is the tagline
+  and the differentiator, not the subject. The PS's own objectives are the subject, and we have
+  already met them.</li>
+</ul>
+<p><strong>Story spine, one sentence per slide:</strong></p>
+<table>
+<thead>
+<tr>
+<th>Slide</th>
+<th>The sentence it has to land</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1 Title</td>
+<td>—</td>
+</tr>
+<tr>
+<td>2 Proposed Solution</td>
+<td>Open-loop sweeps waste time; we built a closed-loop learned scheduler that beats every baseline on both of DRDO's objectives at once.</td>
+</tr>
+<tr>
+<td>3 Technical Approach</td>
+<td>Here is the four-layer system, and here is why you can believe its numbers.</td>
+</tr>
+<tr>
+<td>4 Feasibility &amp; Viability</td>
+<td>It already runs; here are the three real risks and what we did about each.</td>
+</tr>
+<tr>
+<td>5 Impact &amp; Benefits</td>
+<td>Faster, wider interception on the same hardware — plus an operator who can steer it.</td>
+</tr>
+<tr>
+<td>6 Research &amp; References</td>
+<td>The data, the papers we built on, and the papers we beat.</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2>B. Slide-by-slide content</h2>
+<h3>Slide 1 — TITLE PAGE</h3>
+<p>Template fields only. PS ID <strong>26055</strong> · <em>Smart Scan Strategy for Electronic Warfare</em> ·
+Theme <strong>Robotics and Drones</strong> · Category <strong>Software</strong> · Team ID · <strong>Team NIRVANA</strong>.</p>
+<p>Keep <strong>NARADA — Right place at the right time</strong> as the product lockup. It is a good tagline:
+the PS itself says interception <em>"involves adjusting receiver's frequency at correct time."</em></p>
+<hr />
+<h3>Slide 2 — PROPOSED SOLUTION</h3>
+<blockquote>
+<p><strong>Headline banner (replaces "A 3-RL agent phase sequencer…", which is dead — we ship one policy):</strong></p>
+<h2>Learns where to look. Listens when you know better.</h2>
+<p><em>A closed-loop scan scheduler that beats every baseline — including the published state of the
+art — on both DRDO objectives at once, and takes the threat library nobody ever wired in.</em></p>
+<p><strong>Alternative if you want the number in the headline instead:</strong> <em>"Both objectives at once —
+3.04 s to intercept at 13.0% ratio, beating every baseline. Then let the operator aim it."</em></p>
+</blockquote>
+<p><strong>Left block — what it is (4 bullets, short):</strong></p>
+<ul>
+<li>Today's ES receivers sweep a <strong>schedule fixed before the mission</strong> and cannot react.</li>
+<li>NARADA closes the loop: <strong>tune a band → hear a hit or not → update belief over all 36 bands →
+  choose the next band.</strong> 600 decisions in 30 seconds.</li>
+<li>Learned with <strong>Recurrent PPO</strong> on a simulated RF environment built from <strong>2.2 GB of real
+  recorded radar data</strong>.</li>
+<li><strong>Autonomous by default.</strong> An operator or threat library can hand it a priority vector; with no
+  input it runs the plain DRDO objective unchanged.</li>
+</ul>
+<p><strong>Middle block — our differentiation (this is the old "Aamir's idea / human intelligence layer" box).</strong>
+Lead with the <em>reasoning</em>, not the measurement. Suggested headline:</p>
+<blockquote>
+<p><strong>"Your threat library already exists. Nothing has ever wired it to the scanner."</strong></p>
+</blockquote>
+<ul>
+<li><strong>Human ON the loop, not in it.</strong> It runs autonomously; a priority input is there when someone
+  knows something the library doesn't. Default = uniform = the plain DRDO objective, unchanged.</li>
+<li><strong>It reuses data the platform already paid for</strong> — the threat library in the processing unit,
+  which every ES system has and no scan scheduler reads.</li>
+<li><strong>We found the problem in our own agent first.</strong> The better our scheduler got at the DRDO
+  objective, the <em>later</em> it reached threatening emitters — because adaptive scheduling chases
+  activity, and dangerous emitters here are the quiet ones.</li>
+<li><strong>Then we got the design wrong twice before getting it right</strong> — see <code>figures/fig4_threat.png</code>.
+  Asking <em>"is anything dangerous in this band?"</em> flags almost every band and cannot rank. Asking
+  <em>"how much of this band is dangerous?"</em> can.</li>
+</ul>
+<p><em>Keep at most one number in this block on the slide. The reasoning is the differentiator; the
+numbers are in the notes if a judge asks.</em></p>
+<p><strong>Right block — the numbers (use these four, nothing else):</strong></p>
+<table>
+<thead>
+<tr>
+<th></th>
+<th>NARADA</th>
+<th>Open-loop floor</th>
+<th>Best in literature</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Interception ratio ↑</td>
+<td><strong>0.130</strong></td>
+<td>0.061</td>
+<td>0.132</td>
+</tr>
+<tr>
+<td>Intercept time ↓</td>
+<td><strong>3.04 s</strong></td>
+<td>4.18 s</td>
+<td>4.32 s</td>
+</tr>
+<tr>
+<td>Emitter coverage ↑</td>
+<td><strong>0.902</strong></td>
+<td>0.865</td>
+<td>0.860</td>
+</tr>
+<tr>
+<td>Beats the floor on both, per episode</td>
+<td><strong>81.9%</strong></td>
+<td>—</td>
+<td>53.2%</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Bottom-right — FIGURE:</strong> <code>figures/fig1_pareto.png</code>. This replaces the "Pareto's CHART" box.</p>
+<div><img src="docs/ppt/figures/fig1_pareto.png" style="width:100%"/>
+<p><i>FIGURE 1 — slide 2. Everything else trades the two objectives off against each other; only the learned scheduler moves up and to the left at the same time.</i></p></div>
+
+<hr />
+<h3>Slide 3 — TECHNICAL APPROACH</h3>
+<blockquote>
+<p><strong>Headline banner:</strong> <strong>Four layers, each validated before the next was built —
+so the scheduler's numbers mean something.</strong></p>
+</blockquote>
+<p><strong>Left column — methodology (numbered 01–04, matching the flowchart):</strong></p>
+<ul>
+<li><strong>01 Scenario</strong> — 2.2 GB of Turing recorded radar → <strong>3,443 reusable emitter contributions</strong>.
+  New scenarios are re-draws, so the agent never sees the same world twice.</li>
+<li><strong>02 Truth</strong> — a <strong>36 band × 600 slot</strong> grid of who is transmitting, whether or not we look.
+  Slots are 50 ms; the receiver's own geometry, read from the files, not assumed.</li>
+<li><strong>03 Receiver</strong> — declares a hit iff <strong>signal + noise ≥ threshold</strong>. <strong>Pd 0.84, Pfa 0.0013</strong>,
+  frozen — a scheduler cannot improve the detector, only aim it.</li>
+<li><strong>04 Scheduler</strong> — <strong>Recurrent PPO</strong>, 36 actions, a <strong>183-value observation built only from its
+  own scan history</strong> (hit rate, airtime share, staleness, hit streak per band). No truth leaks in.</li>
+</ul>
+<p><strong>Centre — FIGURE:</strong> <code>figures/flowB_arch.png</code> (the four-layer architecture).</p>
+<div><img src="docs/ppt/figures/flowB_arch.png" style="width:100%"/>
+<p><i>FLOWCHART B — slide 3, the “Central Flow Chart” box. Redraw in PowerPoint if you want it on-brand; keep the L0–L3 labels, the green priority input on the left and the dashed “acts on the world” return arrow.</i></p></div>
+
+<p><strong>Right column — why you can believe it (this is the strongest block on the slide):</strong></p>
+<ul>
+<li><strong>Validation gates ran before any scheduler was scored.</strong> Out-of-sample band occupancy predicted
+  at <strong>85.9% accuracy (MCC 0.685)</strong> on data the model never saw; per-band structure error
+  <strong>0.000 pp</strong>; matches Köksal's published intercept-time theory to <strong>±0.0000</strong>.</li>
+<li><strong>The environment was frozen</strong> — band geometry, slot clock, thresholds — before any result was
+  quoted. A bad result cannot move it.</li>
+<li><strong>Train/test split written before anyone looked:</strong> 35 train / 12 validation configs,
+  <strong>zero emitters shared.</strong></li>
+<li><strong>The winning checkpoint was chosen by a rule fixed in advance</strong>, on validation data only — and
+  it then scored best of all 24 on the full set. The rule never saw the data it was right about.</li>
+<li><strong>433 automated tests.</strong></li>
+</ul>
+<p><strong>Bottom strips:</strong> Python · NumPy · Gymnasium · Stable-Baselines3 · PyTorch · h5py.
+Reward: exploit what pays + explore what is overdue − a cost on hogging airtime. Screened against
+four known-good and known-bad policies <strong>before</strong> training, at 3.0σ separation.</p>
+<hr />
+<h3>Slide 4 — FEASIBILITY AND VIABILITY</h3>
+<blockquote>
+<p><strong>Headline banner:</strong> <strong>Already built and measured: 5,643 episodes, 57 scenarios, 3 seeds.</strong></p>
+</blockquote>
+<p>Use the template's four quadrants around the Feasibility/Viability/Risk/Mitigation wheel.</p>
+<p><strong>Feasibility — it exists now</strong></p>
+<ul>
+<li>Environment, 4 validation gates, a 9-rung baseline ladder and the trained agent: all built.</li>
+<li>Runs on <strong>one CPU</strong>; no GPU needed at inference. 600 decisions per 30 s episode.</li>
+<li>Uses the <strong>exact receiver geometry</strong> in the DRDO-named dataset — 36 bands, ±500 MHz, Turing's
+  own dwell schedule — so it drops onto that receiver without redesign.</li>
+</ul>
+<p><strong>Viability — it transfers</strong></p>
+<ul>
+<li>The scheduler only ever reads <strong>hit / no-hit</strong>, which every ES receiver already produces.</li>
+<li><code>p = uniform</code> is the plain PS objective, so adopting the priority input <strong>costs nothing</strong> to a
+  user who does not want it.</li>
+<li><strong>45 held-out recordings</strong> are sealed behind an explicit flag with an automatic use log, for a
+  final evaluation that has not been spent.</li>
+</ul>
+<p><strong>Risks (name them — this is what separates a real project)</strong></p>
+<ul>
+<li><strong>Optimising one metric produces a useless scheduler.</strong> Measured: a camper hits a 0.209 ratio and
+  abandons <strong>half the emitters</strong>.</li>
+<li><strong>The agent could memorise the training emitters.</strong> We found exactly this leak in our own work.</li>
+<li><strong>Seed variance can masquerade as a result.</strong> Our 24 checkpoints span 18.7–54.4% against the bar.</li>
+</ul>
+<p><strong>Mitigation</strong></p>
+<ul>
+<li><strong>Never report one metric.</strong> Every table carries ratio, intercept time and coverage together.</li>
+<li><strong>Leak closed</strong> — 35/12 split, pool rebuilt, zero shared emitters, asserted by a test.</li>
+<li><strong>Three seeds, pre-registered selection, a pre-registered reward screen.</strong> Four numbers have been
+  publicly withdrawn in this project when their measurement convention turned out to be undefined.</li>
+</ul>
+<p><strong>FIGURE (fits the lower half):</strong> <code>figures/fig2_discovery.png</code>.</p>
+<div><img src="docs/ppt/figures/fig2_discovery.png" style="width:100%"/>
+<p><i>FIGURE 2 — slide 4. The two camping strategies visibly stop finding anything at 38 of 72 emitters. This is the easiest figure in the deck for a non-technical judge to read.</i></p></div>
+
+<hr />
+<h3>Slide 5 — IMPACT AND BENEFITS</h3>
+<blockquote>
+<p><strong>Headline banner:</strong> <strong>Same receiver, same 30 seconds — finds more, finds it sooner,
+and can be told what matters.</strong></p>
+</blockquote>
+<p><strong>Left — impact vs what is in use today</strong> (keep the template's "Current ES" box):</p>
+<ul>
+<li><strong>2.2× the interception ratio of the open-loop sweep</strong> (0.130 vs 0.061) <strong>and</strong> intercept time
+  down from 4.18 s to <strong>3.04 s</strong>. Normally these trade against each other; here both improve.</li>
+<li><strong>Beats the open-loop floor on both objectives on 81.9% of episodes</strong>, and beats the best
+  published adaptive method on <strong>54.4%</strong>.</li>
+<li><strong>+4 percentage points of emitter coverage</strong> (0.902 vs 0.865) — fewer emitters missed entirely.</li>
+<li><strong>No hardware change.</strong> Same antenna, same receiver, same dwell schedule — only the choice of
+  which band to look at next.</li>
+</ul>
+<p><strong>Right — benefits (4 short headed items):</strong></p>
+<ul>
+<li><strong>Operational</strong> — time goes to new and threatening emitters instead of being spread evenly over
+  a weather radar and a fire-control radar alike. This is the failure DRDO names in paragraph one.</li>
+<li><strong>Supervised when it matters</strong> — one priority input, one code path, no mode switch. Autonomous
+  by default.</li>
+<li><strong>Auditable</strong> — every threshold, split and selection rule is fixed in code before the run that
+  uses it. That is what makes the result defensible to a customer.</li>
+<li><strong>Extensible</strong> — the same closed loop is the <em>"feedback based decision making mechanism"</em> a
+  cognitive EW system needs between its receiver and its processing unit.</li>
+</ul>
+<blockquote>
+<p><strong>Note on the old EA / EP boxes.</strong> Keep them only as a small, clearly-labelled <em>future work</em>
+strip. Our PS is the <strong>ES</strong> slice; claiming jamming (EA) or protection (EP) invites a scope
+question we would lose. One line — "the same interface extends to EA/EP tasking" — is enough.</p>
+</blockquote>
+<p><strong>FIGURE (small, bottom corner):</strong> <code>figures/fig4_threat.png</code>, or <code>figures/flowA_loop.png</code> if you
+prefer the open-loop-vs-closed-loop contrast here instead of on slide 2.</p>
+<div><img src="docs/ppt/figures/fig4_threat.png" style="width:100%"/>
+<p><i>FIGURE 4 — the threat block as a decision story: two wrong attempts and the one that worked. This is the version to use on a slide, because it shows judgement rather than asking a judge to trust a lift figure.</i></p></div>
+
+<div><img src="docs/ppt/figures/flowA_loop.png" style="width:100%"/>
+<p><i>FLOWCHART A — open loop vs closed loop. Use on slide 2 or 5, whichever needs a diagram more than a chart.</i></p></div>
+
+<hr />
+<h3>Slide 6 — RESEARCH AND REFERENCES</h3>
+<p><strong>Research</strong></p>
+<ul>
+<li><strong>Problem statement</strong> — SIH26055, DRDO, <code>sih.gov.in/sih2026PS</code>.</li>
+<li><strong>Dataset</strong> — Turing Synthetic Radar Dataset (named in the PS itself),
+  <code>huggingface.co/datasets/alan-turing-institute/turing-synthetic-radar-dataset</code>;
+  dataset paper arXiv:2602.03856. 184 files, 2.2 GB, 92 scan/stare pairs.</li>
+<li><strong>Our validation</strong> — 4 gates, criteria fixed in code before the first run.</li>
+</ul>
+<p><strong>References — we built on these and we beat these. Cite both honestly.</strong></p>
+<ul>
+<li><strong>Köksal</strong>, <em>Periodic Search Strategies for ECM Receivers</em> (METU) — our intercept-time theory
+  check (gate 3); ch. 6 is per-band priority, which is prior art for our interface.</li>
+<li><strong>Dutertre</strong>, <em>Dynamic Scan Scheduling</em>, RTSS 2002 — mission-varying emitter weights and a
+  uniform-weight control arm; prior art we extend to overlapping bands and a learned policy.</li>
+<li><strong>Apfeld et al.</strong> (SSPD) — adaptive scan scheduling; implemented as rungs 6 and 6a of our
+  ladder, and beaten on the joint objective.</li>
+<li><strong>Gul &amp; Erer</strong> — the per-illumination definition of interception ratio that we score against.</li>
+<li><strong>Clarkson</strong> — optimal periodic sensor scheduling.</li>
+</ul>
+<p><strong>YouTube video</strong> — keep the template's box. Record <strong>30 seconds of the waterfall running</strong>
+(<code>figures/fig3_waterfall.png</code> is a still of exactly this); it is worth more than any slide.</p>
+<div><img src="docs/ppt/figures/fig3_waterfall.png" style="width:100%"/>
+<p><i>FIGURE 3 — the waterfall. Grey = a band genuinely transmitting, red = where we pointed. Sawtooth sweep, flat camp, dense hunt. If only one image survives to the final round, make it this one.</i></p></div>
+
+<hr />
+<h2>C. Figures — what each one is for</h2>
+<table>
+<thead>
+<tr>
+<th>File</th>
+<th>Use on</th>
+<th>Why it earns its place</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>fig1_pareto.png</code></td>
+<td><strong>Slide 2</strong></td>
+<td>The core claim in one picture: everything else trades the two objectives off; we improve both. Marker size = coverage, so the camper's failure is visible too.</td>
+</tr>
+<tr>
+<td><code>fig2_discovery.png</code></td>
+<td><strong>Slide 4</strong></td>
+<td>The most intuitive figure we have. Camper and Apfeld visibly <strong>flatline at 38 of 72</strong> while we reach 65. Non-technical judges read this instantly.</td>
+</tr>
+<tr>
+<td><code>fig3_waterfall.png</code></td>
+<td><strong>Slide 6 / video still</strong></td>
+<td>Three panels: the sweep's sawtooth, the camper's flat line, our dense hunting pattern. This is the demo in one image.</td>
+</tr>
+<tr>
+<td><code>fig4_threat.png</code></td>
+<td><strong>Slide 2</strong></td>
+<td>Three attempts, two wrong. Shows how we corrected course — which is what the deck is actually judged on. Needs no number to land.</td>
+</tr>
+<tr>
+<td><code>flowA_loop.png</code></td>
+<td><strong>Slide 2</strong></td>
+<td>Open loop vs closed loop. Use if the slide needs a diagram more than a chart.</td>
+</tr>
+<tr>
+<td><code>flowB_arch.png</code></td>
+<td><strong>Slide 3</strong></td>
+<td>The four-layer architecture. This is the "Central Flow Chart" box.</td>
+</tr>
+</tbody>
+</table>
+<p><strong>If you redraw these in PowerPoint</strong> (better for consistency), keep: the left-is-better /
+up-is-better axis labels, the marker-size-is-coverage note, and the "off this chart" caption on
+fig 1 — the camper's absence from the zoomed view has to be explained or it looks like we hid it.</p>
+<hr />
+<h2>D. Numbers you may use, with what each one is</h2>
+<p>Everything below is from the run of <strong>2026-09-11</strong> — 33 schedulers × 57 scenarios × 3 seeds =
+<strong>5,643 episodes</strong> (<code>runs/final_2026-09-11/</code>). Do not round differently from this table.</p>
+<p><strong>Headline scheduler comparison (means over all episodes)</strong></p>
+<table>
+<thead>
+<tr>
+<th>Scheduler</th>
+<th>Interception ratio</th>
+<th>Intercept time (s)</th>
+<th>Coverage</th>
+<th>Intercept rate (/s)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>NARADA (Recurrent PPO)</strong></td>
+<td><strong>0.1304</strong></td>
+<td><strong>3.04</strong></td>
+<td><strong>0.9019</strong></td>
+<td><strong>1.191</strong></td>
+</tr>
+<tr>
+<td>Recency heuristic — our bar</td>
+<td>0.1105</td>
+<td>3.34</td>
+<td>0.8874</td>
+<td>1.153</td>
+</tr>
+<tr>
+<td>Apfeld "Active RFs" — best in literature</td>
+<td>0.1320</td>
+<td>4.32</td>
+<td>0.8602</td>
+<td>1.135</td>
+</tr>
+<tr>
+<td>Turing reference sweep</td>
+<td>0.0805</td>
+<td>3.74</td>
+<td>0.8643</td>
+<td>1.166</td>
+</tr>
+<tr>
+<td>Round-robin — the open-loop floor</td>
+<td>0.0605</td>
+<td>4.18</td>
+<td>0.8650</td>
+<td>1.118</td>
+</tr>
+<tr>
+<td>Random</td>
+<td>0.0669</td>
+<td>4.16</td>
+<td>0.8583</td>
+<td>1.117</td>
+</tr>
+<tr>
+<td>Camper (hit-rate-only trap)</td>
+<td>0.2088</td>
+<td>9.67</td>
+<td>0.4971</td>
+<td>0.660</td>
+</tr>
+<tr>
+<td>Apfeld (full)</td>
+<td>0.2455</td>
+<td>14.86</td>
+<td>0.3672</td>
+<td>0.350</td>
+</tr>
+<tr>
+<td><em>Truth-reading oracle (ceiling, not a competitor)</em></td>
+<td><em>0.6579</em></td>
+<td><em>8.01</em></td>
+<td><em>0.6912</em></td>
+<td><em>0.813</em></td>
+</tr>
+</tbody>
+</table>
+<p><strong>Paired, per episode — "wins on BOTH objectives"</strong></p>
+<table>
+<thead>
+<tr>
+<th></th>
+<th>vs the open-loop floor</th>
+<th>vs the recency bar</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>NARADA</strong></td>
+<td><strong>81.9%</strong></td>
+<td><strong>54.4%</strong></td>
+</tr>
+<tr>
+<td>Apfeld Active RFs</td>
+<td>53.2%</td>
+<td>23.4%</td>
+</tr>
+<tr>
+<td>Turing sweep</td>
+<td>51.5%</td>
+<td>9.9%</td>
+</tr>
+<tr>
+<td>Apfeld (full)</td>
+<td>4.1%</td>
+<td>2.9%</td>
+</tr>
+<tr>
+<td>Camper</td>
+<td>1.8%</td>
+<td>0.6%</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Environment validation</strong> — accuracy <strong>0.8585</strong>, MCC <strong>0.6854</strong>, precision 0.8819, recall 0.6932,
+correlation 0.935 (base rate 0.354) · per-band occupancy error <strong>0.000 pp</strong> (0.35403 replayed vs
+0.35403 recorded) · Köksal P12 agreement <strong>|Δ| 0.0000</strong> · 12/12 structural assertions.</p>
+<p><strong>Receiver operating point</strong> — γ = −111 dBm, σ = 3 dB, <strong>Pd 0.842</strong>, <strong>Pfa 0.00135</strong>,
+sensitivity −107.2 dBm.</p>
+<p><strong>Scale</strong> — 47 development scenario pairs (35 train / 12 validation, <strong>0 emitters shared</strong>),
+45 held out and unopened · 3,443 emitter contributions · 2,363 transmitters · 68 radar types ·
+<strong>433 tests</strong>.</p>
+<p><strong>Threat bias in our own schedulers</strong> — 47 replays × 3 seeds, censored intercept time by threat
+class. Round-robin HIGH 3.94 s / LOW 3.96 s (<strong>no bias — it sweeps blindly</strong>) · Recency
+2.84 s / 2.47 s (<strong>+0.37 s</strong>) · NARADA RL 2.53 s / 1.86 s (<strong>+0.66 s</strong>, coverage 0.92 vs 0.96).
+The bias grows as the scheduler improves. Uses our example threat library.</p>
+<p><strong>Threat priority</strong> — 772 occupied bands · naive max-rule priority flags <strong>77.8%</strong> of them
+(precision 0.452 against a 0.383 base rate) · max-rule lift <strong>1.17×</strong> at every airtime fraction, because it has only 3 distinct values
+and 77.8% of bands tie at the top one · share-weighted lift <strong>2.22×</strong> at 10–25% airtime, <strong>1.69×</strong>
+at 50%, from 334 distinct values. <strong>Always quote the lift with its airtime fraction.</strong></p>
+<hr />
+<h2>E. Things to keep off the slides</h2>
+<ul>
+<li><strong>"3 RL agents / phase sequencer."</strong> We ship <strong>one</strong> policy. The old layout's central claim is
+  no longer true and a judge who asks "which agent is running now?" gets a bad answer.</li>
+<li><strong>"We invented priority-driven scan scheduling."</strong> Köksal (2004) and Dutertre (2002) did it
+  first. Claim the <em>measurement</em> instead — it is stronger and it survives a reviewer who reads.</li>
+<li><strong>Any threat-priority result.</strong> It is <strong>designed and specified, not yet trained.</strong> On the deck it
+  is an architecture claim plus the 77.8% / 2.22× measurement. Nothing more.</li>
+<li><strong>EA / EP / jamming / geolocation</strong> as deliverables. Our PS is ES-only. One future-work line.</li>
+<li><strong>The oracle row as if we beat it.</strong> It reads the truth grid. It is a ceiling line, always
+  labelled as one.</li>
+<li><strong>Accumulated reward</strong> as a scheduler comparison. It is only comparable within one reward family.</li>
+<li><strong>Per-dwell hit rate.</strong> It flatters the camper to 85–90% while it misses half the emitters; the
+  per-illumination ratio is the honest number and the one the literature uses.</li>
+<li><strong>A wall of numbers.</strong> Every figure here is defensible, but a judge cannot check any of them in
+  the time they have. Numbers earn their place when they back a claim about <em>approach</em>; three good
+  ones beat a table. Put the rest in the notes and let them come up in questions.</li>
+</ul></body></html>
