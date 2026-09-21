@@ -4672,3 +4672,83 @@ tests, reported here in full with method and numbers rather than only a conclusi
 repository's own provenance rules. `runs/` is gitignored; the compare.py artefacts are reproducible
 from the commands in `scratch/TRAINING_JOURNEY.md` §18; the diagnostic scripts themselves were not
 saved to the repository.
+
+---
+
+## D79 — the "8.42 s" censored intercept-time error was two defects, not one; a published figure is withdrawn
+
+**Status:** `SETTLED` (2026-09-21) — found by re-deriving a transcribed number rather than quoting
+it. **A published figure is withdrawn**, so it is recorded rather than silently corrected. No
+*reported* number moves: 6.60 s and 87.3% are re-measured and confirmed. What moves is the
+counterfactual they were contrasted against, and the attribution drawn from it.
+
+**The finding.** `FIGURES_OF_MERIT.md` §7, `EVALUATION.md` §2, `validate.py` and the prose
+`compare.py` writes into `figures_of_merit.md` all stated that censoring missed detections into the
+mean intercept-time error reads **8.42 s** against **6.60 s** separated, and attributed the whole
+**~1.8 s** gap to missed detections. Re-measured 2026-09-21 over the 47 train pairs at seed 0, one
+defect at a time on one fixed 1,530-emitter matched population:
+
+| recorded side | misses | mean abs error | n |
+|---|---|---|---|
+| ungated (any pulse present) | censored to 30 s | **8.4246 s** | 1,530 |
+| gated (`peak_dbm ≥ γ`) | censored to 30 s | **8.0543 s** | 1,530 |
+| gated (`peak_dbm ≥ γ`) | excluded | **6.5970 s** | 1,295 |
+
+**8.42 s is the value with *both* of §7's named traps active** — an ungated recorded side *and*
+censoring — not the censored form alone, which is 8.05 s. The correct decomposition of the 8.42 s
+is therefore **1.46 s of missed detections plus 0.37 s of a mismatched detection rule**, not 1.8 s
+of missed detections. Both traps were already written down in §7; the worked example quietly
+tripped the one it was not illustrating.
+
+**Two smaller transcription errors fell out of the same check.** `FIGURES_OF_MERIT.md` §7 and
+`validate.py` carried **6.58 s / 87.0% / 1.84 s** where `EVALUATION.md` §2 and `compare.py` carried
+**6.60 s / 87.3% / 1.8 s** — the same measurement, two variants, because both were prose rather
+than computed. The live values are **6.5970 s** and **0.8725**, so the `EVALUATION.md` pair was the
+correct one. The distributional diagnostic was also stale: predicted mean **8.50 s** against
+recorded **8.57 s** (documented as 8.49 / 8.63), per-emitter **r = 0.066** (documented as 0.07),
+agreeing within 1.1 s at every decile p10–p90 over the 1,295 emitters detected on both sides. The
+qualitative conclusion — distributions match, individual emitters do not — is unchanged and is what
+licenses comparing schedulers over distributions (D24).
+
+**Why this happened, and it is the repository's own rule that catches it.** `FIGURES_OF_MERIT.md`
+§9.4 says *"Re-derive, never transcribe. Every figure comes from the code that computes it, in the
+run that prints it."* Every number corrected here was hardcoded prose in four places and satisfied
+nothing but itself: `intercept_time_error()` returns the separated form only, so the censored
+counterfactual it is contrasted against has never been computed by committed code and could not
+drift back into agreement. That is the mechanism, and it is the same one behind D32, D41 and D56 —
+a convention that was never recorded beside the number it produced.
+
+**Also clarified, on a teammate's reading of the same table (no number changes).** P<sub>d</sub> is
+**not** analytic and is not "a property of the threshold" in the sense P<sub>fa</sub> and
+sensitivity are. Measured over every cell population in this repository, P<sub>fa</sub> is
+identically `1.349898e-03` — exact, data-independent, as `receiver.operating_point`'s docstring
+says. P<sub>d</sub> is an empirical average over a chosen population and is scheduler-invariant
+only because **D33** pinned that population to one fixed reference sweep. Averaged instead over
+"the cells this scheduler looked at", at the same γ and σ on the same 47 stare grids, a camper
+parked on each grid's busiest band reports **P<sub>d</sub> = 0.9158** against the reference sweep's
+**0.8395**, and a camper on the quietest band reports no P<sub>d</sub> at all (empty denominator).
+`receiver.reference_sweep_cells`'s docstring already predicted exactly this; it had not been
+measured. The right answer for the wrong reason is the one that breaks on reimplementation, which
+is why it is recorded.
+
+**One presentation hazard named, not changed.** `compare.py` computes the operating point twice per
+run: `meta["operating_point"]` over every scenario the ladder ran (replays *and* sampled), which
+`comparison.md` and `metrics.json` print, and `model_level_figures()` over the stare replay grids
+only, which `figures_of_merit.md` prints. At `--sampled 10` those are **0.8421** and **0.8395** —
+two P<sub>d</sub> in one output directory, both correctly labelled, from one command. Deliberate
+(#6 and #7 are undefined on a sampled scenario, so its grids must not enter blocks A/B) and left
+as-is; documented in `FIGURES_OF_MERIT.md` §1 so neither is quoted as "our P_d".
+
+**Evidence.** Re-derivation scripts were scratch, not committed, and are reported here with method
+and numbers in full: `intercept_time_error`'s own loop re-run with the recorded-side gate and the
+censoring each varied independently (47 configs, `list_configs("stare")`, seed 0,
+`_g3_sweep_policy()`); `operating_point` over `reference_sweep`/`all_cells` on the stare and scan
+replay grids and over camper-visited cells built from `dwell_schedule()`; `gate1` over the same 47
+configs returning accuracy 0.8585 / MCC 0.6854 / precision 0.8819 / recall 0.6932 / base rate
+0.3540, all unchanged. Documents corrected in place: `FIGURES_OF_MERIT.md` §0, §1, §6, §7;
+`EVALUATION.md` §2; `rfenv/validate.py`; `rfenv/compare.py`.
+
+**Open, not taken here.** The durable fix is to have `intercept_time_error()` return the censored
+and ungated counterfactuals as fields so §7's table is computed rather than transcribed, and to
+delete the prose constants. That changes the metric's return surface, so it is proposed rather than
+built (`CLAUDE.md` §Working rules).

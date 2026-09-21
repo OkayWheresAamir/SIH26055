@@ -791,16 +791,20 @@ def figures_of_merit_md(summary: dict[str, dict], meta: dict, mf: dict) -> str:
         "**Why the timing error is reported in three parts.** A single censored number "
         "conflates *\"predicted the wrong time\"* with *\"predicted the wrong "
         "outcome\"*, and the two cannot be separated afterwards. Measured on this "
-        "dataset, censoring misses into the mean reads 8.42 s where the separated form "
-        "reads 6.60 s of timing error plus 87% outcome agreement — 1.8 s of that 8.42 "
-        "is missed detections, not mistimed ones (FIGURES_OF_MERIT.md §7).",
+        "dataset one defect at a time, over one fixed 1,530-emitter population: "
+        "**8.42 s** with an ungated recorded side *and* misses censored to 30 s, "
+        "**8.05 s** with the censoring alone, **6.60 s** with neither, plus 87.3% "
+        "outcome agreement. 1.46 s of that 8.42 s is missed detections and 0.37 s is "
+        "the mismatched detection rule — the two traps compound, so 8.42 s is not "
+        "\"the censored figure\" (FIGURES_OF_MERIT.md §7).",
         "",
         "**Read the timing error together with the distributions before calling it a "
         "defect.** scan and stare are independent simulation runs (D24), so the same "
         "emitter has different activity in each. Measured, the environment reproduces "
-        "the *distribution* of intercept time closely (predicted mean 8.49 s against "
-        "recorded 8.63 s, matching at every percentile) while per-emitter agreement is "
-        "only r = 0.07. That is the expected behaviour for this problem, and it is what "
+        "the *distribution* of intercept time closely (predicted mean 8.50 s against "
+        "recorded 8.57 s, agreeing within 1.1 s at every decile from p10 to p90) while "
+        "per-emitter agreement is only r = 0.066. That is the expected behaviour for "
+        "this problem, and it is what "
         "licenses comparing schedulers over distributions rather than per emitter.",
         "",
         f"Known limitation, stated not patched: band 0 (250 MHz) is "

@@ -934,9 +934,13 @@ def gate4(out_dir: Path, seed: int) -> GateResult:
 #   2. **Misses are never censored into the mean.** Setting `predicted = 30 s` for
 #      an emitter the sweep never caught mixes "predicted the wrong time" with
 #      "predicted the wrong outcome", and the two cannot be separated afterwards.
-#      Measured over the 47 train pairs: censoring reads 8.42 s against 6.58 s of
-#      real timing error plus 87.0% outcome agreement -- 1.84 s of the 8.42 is
-#      missed detections, not mistimed ones.
+#      Re-measured 2026-09-21 over the 47 train pairs at seed 0, one defect at a
+#      time on one fixed 1,530-emitter population: 8.42 s with BOTH defects
+#      (ungated recorded side and misses censored to 30 s), 8.05 s with the
+#      censoring alone, 6.60 s with neither, plus 87.3% outcome agreement. So
+#      1.46 s of the 8.42 is missed detections and 0.37 s is the mismatched
+#      detection rule. The two traps compound: 8.42 is not "the censored figure",
+#      and until 2026-09-21 this comment said it was and gave 6.58 / 87.0%.
 
 INTERCEPT_TIME_ERROR_POPULATION = "detectable_in_stare_and_scan"
 
@@ -967,8 +971,9 @@ def intercept_time_error(configs: list[str], seed: int,
       rather than a modelling defect -- but an out-of-sample prediction is exposed
       to exactly it, so it belongs in the number. The diagnostic that separates the
       two is whether the *distributions* agree while individual emitters do not;
-      measured, they do (predicted mean 8.49 s against recorded 8.63 s, matching at
-      every percentile, per-emitter r = 0.07).
+      re-measured 2026-09-21, they do (predicted mean 8.50 s against recorded
+      8.57 s over the 1,295 emitters detected on both sides, agreeing within 1.1 s
+      at every decile from p10 to p90, per-emitter r = 0.066).
     * band 0 (250 MHz) is invisible to stare (D10), so its emitters are predicted as
       never-intercepted wherever scan caught them.
     """
