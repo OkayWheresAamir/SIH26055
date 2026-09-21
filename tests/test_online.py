@@ -309,6 +309,59 @@ def test_checkpoint_freq_saves_manifested_snapshots_along_the_way(base_checkpoin
     assert out.exists()
 
 
+def test_animate_checkpoints_renders_a_gif_beside_every_snapshot_by_default(base_checkpoint, tmp_path):
+    out = tmp_path / "adapted.zip"
+    fine_tune(
+        checkpoint=base_checkpoint, out_checkpoint=out, total_timesteps=300,
+        episode_slots=2 * N_SLOTS, obs_version="v3", view="off", device="cpu",
+        hyperparameters={"n_steps": 64, "batch_size": 16},
+        env_kwargs={"band_priority": True}, checkpoint_freq=64, animate_slots=100,
+    )
+    snapshots = sorted(tmp_path.glob("adapted_s*.zip"))
+    gifs = sorted(tmp_path.glob("adapted_s*.gif"))
+    assert len(gifs) == len(snapshots)
+    for snap, gif in zip(snapshots, gifs):
+        assert gif.stem == snap.stem  # <run>_s<n>.zip <-> <run>_s<n>.gif, paired 1:1
+        assert gif.stat().st_size > 0
+
+
+def test_animate_checkpoints_false_skips_rendering(base_checkpoint, tmp_path):
+    out = tmp_path / "adapted.zip"
+    fine_tune(
+        checkpoint=base_checkpoint, out_checkpoint=out, total_timesteps=300,
+        episode_slots=2 * N_SLOTS, obs_version="v3", view="off", device="cpu",
+        hyperparameters={"n_steps": 64, "batch_size": 16},
+        env_kwargs={"band_priority": True}, checkpoint_freq=64,
+        animate_checkpoints=False,
+    )
+    snapshots = sorted(tmp_path.glob("adapted_s*.zip"))
+    assert len(snapshots) >= 3  # checkpointing itself is unaffected
+    assert list(tmp_path.glob("adapted_s*.gif")) == []
+
+
+def test_a_failed_animation_does_not_kill_the_training_run(base_checkpoint, tmp_path, monkeypatch):
+    """The one thing this must never do is take down a real training run
+    over a rendering problem."""
+    import rfenv.render
+
+    def _boom(*a, **k):
+        raise RuntimeError("simulated rendering failure")
+
+    monkeypatch.setattr(rfenv.render, "compare_animation", _boom)
+
+    out = tmp_path / "adapted.zip"
+    fine_tune(
+        checkpoint=base_checkpoint, out_checkpoint=out, total_timesteps=300,
+        episode_slots=2 * N_SLOTS, obs_version="v3", view="off", device="cpu",
+        hyperparameters={"n_steps": 64, "batch_size": 16},
+        env_kwargs={"band_priority": True}, checkpoint_freq=64,
+    )
+    # Training completed and checkpointed despite every animation attempt failing.
+    assert out.exists()
+    assert len(list(tmp_path.glob("adapted_s*.zip"))) >= 3
+    assert list(tmp_path.glob("adapted_s*.gif")) == []
+
+
 def test_checkpoint_freq_none_disables_periodic_snapshots(base_checkpoint, tmp_path):
     out = tmp_path / "adapted.zip"
     fine_tune(
