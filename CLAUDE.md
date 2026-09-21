@@ -294,13 +294,22 @@ trap alongside D14's two): report dead-band airtime alongside a ratio gain befor
 **D81's online fine-tuning was run for the first time and produced a real result (D85, 2026-09-20).**
 Built a synthetic test world (not from any real recording): traffic only on the 10 bands 23a gives
 zero airtime to on real data (D84), nothing on the other 26, signal strength set high enough that a
-miss is essentially impossible ("easy mode"), `band_priority` held uninformative throughout. **The
-frozen model (no training at all) already adapts *within one mission* in under 90 seconds** — 0 new
-emitters found in the first 30s, 2 in the next 30s, 18–20 every 30s segment from 90s onward — the
-LSTM's own hidden state integrating evidence with no gradient step, exactly as D79 predicted, and free.
+miss is essentially impossible ("easy mode"), `band_priority` held uninformative throughout. ~~**The frozen model (no training at all) already adapts *within one mission* in under 90
+seconds**~~ — 0 new emitters found in the first 30s, 2 in the next 30s, 18–20 every 30s segment
+from 90s onward. **Withdrawn by D87 (2026-09-22): this does not reproduce off "easy mode" and must
+not go in the deck.** Re-measured on real signal statistics with the emitter population relocated
+in band, the frozen model shows *no* in-context recovery at all — the per-segment discovery curve
+is uniformly depressed for all 20 segments of a ten-minute mission and never converges. The
+90-second figure is an artifact of a world where a miss was essentially impossible by construction
+(−80 dBm, ~10σ, 95% duty cycle, 2 emitters per band), where any exploratory policy finds everything
+quickly.
 **Then real online fine-tuning ran**: two sessions (resumed cleanly across a Ctrl-C stop), 163,840
-steps beyond 23a's base 802,816, ≈26 minutes of real wall-clock time, ≈72 minutes of simulated mission
-time. **Tested cold, on a brand-new episode it had never seen, the fine-tuned checkpoint scored 314/600
+steps beyond 23a's base 802,816, ≈26 minutes of real wall-clock time, and — **corrected by D87, the
+original "≈72 minutes" is wrong by ~2.6×** — **≈185 minutes of simulated mission time** (hard floor
+136.5 min by arithmetic alone: a step is one dwell, the shortest dwell is one slot, `SLOT_S = 0.05`).
+The operational figure is **9.2 minutes of mission time per gradient update** at `n_steps=8192`.
+Wall clock is simulator throughput, not adaptation speed; the two are not interchangeable and
+quoting them together is how the claim gets overstated. **Tested cold, on a brand-new episode it had never seen, the fine-tuned checkpoint scored 314/600
 hits (52.3%) immediately, no warm-up** — the two numbers are easy to conflate and are not the same
 thing: the frozen model's 90-second ramp-up is fast, free, and per-mission (it resets on every new
 episode); the ≈26 minutes of fine-tuning is what made that same strong performance available
@@ -311,7 +320,54 @@ by default, unlike offline `train()` where it's opt-in), and `compare_animation`
 with false alarms under one red marker (caught by checking rendered pixel data directly after a
 printout had mislabeled a real false alarm as a hit) — now draws all four outcomes distinctly (hit
 red, miss green, false alarm blue, correct silence yellow). One synthetic world, one seed for the
-cold-start test, no claim this generalises beyond what was actually run. Full account: D85.
+cold-start test, no claim this generalises beyond what was actually run. Full account: D85, **as
+amended above by D87** — and note D85 is **not reproducible from this repository**: its cited
+segment log (`runs/baselines/inverted_world_online_finetune/segments.jsonl`) is absent because
+`runs/*` is gitignored, and the synthetic-pool builder was a scratch script, never committed. The
+checkpoints exist; the world they trained on cannot be rebuilt.
+
+**A published figure was withdrawn on 2026-09-21 (D86).** The censored intercept-time error
+"8.42 s" — quoted in `FIGURES_OF_MERIT.md` §7, `EVALUATION.md` §2, `validate.py` and the prose
+`compare.py` writes — is the value with **both** of §7's named traps active (an ungated recorded
+side *and* censoring), not the censored form alone, which is 8.05 s. The correct decomposition is
+**1.46 s of missed detections plus 0.37 s of a mismatched detection rule**, not 1.8 s of missed
+detections. No *reported* number moves (6.60 s and 87.3% are re-measured and confirmed); what moves
+is the counterfactual they were contrasted against. Every corrected number was hardcoded prose in
+four places satisfying nothing but itself — the same mechanism as D32, D41 and D56. Also clarified
+there, on a teammate's reading: **P<sub>d</sub> is not analytic and is not "a property of the
+threshold"** the way P<sub>fa</sub> is; it is an empirical average over a chosen population, and is
+scheduler-invariant only because D33 pinned that population. Full account: D86.
+
+**The RL scheduler's edge over the bar is a learned dead-band map, and it inverts under a
+band-allocation shift (D87, `MEASURED` 2026-09-22).** D84 named the risk and said this project
+could not tell "these bands are really empty" from "this library happens to be empty there" using
+training and comparison data alone. D87 tells them apart synthetically, without spending D8's
+held-out split: every contribution in `split.training_pool()` had its band cyclically relocated,
+`band -> (band + k) % 36` for `k = 0, 9, 18` — same emitters, same amplitudes, widths, AoA and
+timing, moved elsewhere in the spectrum. Scored on a 10-minute D80 continuous grid, 2 seeds, rung
+23a against rung 5 `recency`:
+
+| shift | 23a coverage | `recency` | delta | 23a airtime on the *currently* dead bands | `recency` |
+|---|---|---|---|---|---|
+| +0 | 0.816 / 0.784 | 0.782 / 0.751 | **+3.4 / +3.2 pp** | **6.8% / 11.7%** | 17.9% / 19.7% |
+| +9 | 0.613 / 0.632 | 0.760 / 0.741 | **−14.7 / −10.9 pp** | **41.0% / 40.2%** | 25.3% / 27.5% |
+| +18 | 0.702 / 0.668 | 0.789 / 0.767 | **−8.7 / −9.8 pp** | **28.7% / 29.8%** | 21.7% / 23.7% |
+
+**`recency` is flat across the shift and that is the control** — a memoryless index policy with no
+learned band prior sees the same problem in every relocated world, so the shifted worlds are not
+harder and the loss is 23a's own. In-distribution 23a's entire margin over the bar *is* its
+dead-band map; relocate the population and the map inverts, and the same prior that was worth
++3.4 pp costs 8.7–14.7 pp. **There is no in-context recovery** over ten simulated minutes, which is
+what withdraws D85's 90-second claim above. Two silent defects in `rfenv/rl/online.py` were found
+while checking this and are **not fixed**: `fine_tune(reward=...)` never reaches the gradient (all
+three reward keys hand the learner identical values), and fine-tuning a priority-trained checkpoint
+silently drops the priority terms, so D85 switched 23a's objective mid-flight rather than continuing
+its training. **Nothing was adopted, demoted or removed; `rfenv/` is unchanged.** The open thread
+that decides whether D81's online lane earns its place is the three-way comparison D85 never ran:
+`recency` against frozen 23a against an online-fine-tuned 23a, one shifted world, same episodes and
+seeds — because `recency` already scores 0.74–0.79 there from the first slot, free, with no gradient
+step, and online fine-tuning starts 9–15 pp behind it. Full account: D87; rule updated in
+`EVALUATION.md` §4.
 
 **The four validation gates ran for the first time on 2026-09-04** (`python -m rfenv.validate`,
 47 train configs, seed 0, artefacts in `runs/validation/`): **gates 2, 3 and 4 PASS; gate 1 is
