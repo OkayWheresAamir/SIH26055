@@ -183,6 +183,31 @@ def test_train_produces_a_loadable_checkpoint(tmp_path):
     assert 0 <= int(action) < 36
 
 
+def test_recurrent_ppo_train_threads_a_custom_pool_through(tmp_path):
+    """`pool=` lets a caller train entirely on something other than the real
+    training pool -- `online.py`'s `fine_tune` already supports this for
+    adapting an *existing* checkpoint; this is the same idea for training a
+    fresh one. `None` (the default) must still fall through to
+    `make_train_env`'s own default (`split.training_pool()`), unchanged."""
+    from rfenv.scenario import EmitterContribution, EmitterPool
+
+    cells = np.array([[5, s] for s in range(500)], dtype=np.int16)
+    contrib = EmitterContribution(
+        config_id="t", source="synthetic", label=0, cells=cells,
+        peak_dbm=np.full(500, -80.0, dtype=np.float32),
+        n_pulses=np.full(500, 4, dtype=np.int32), total_pulses=2000,
+    )
+    pool = EmitterPool(contributions=[contrib], emitter_counts=np.array([1]))
+
+    model = recurrent_ppo.train(
+        reward=DEFAULT_REWARD, pool=pool, total_timesteps=200, seed=0,
+        checkpoint=tmp_path / "m.zip", verbose=0,
+        hyperparameters={"n_steps": 64, "batch_size": 16},
+    )
+    inner = model.env.envs[0].unwrapped
+    assert inner._pool is pool
+
+
 def test_print_episode_metrics_prints_a_real_episode(tmp_path, capsys):
     """`print_episode_metrics=True` prints something -- and specifically the
     episode that finished, not a fresh, all-zero one (the exact bug

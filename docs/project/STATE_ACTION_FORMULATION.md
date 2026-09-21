@@ -115,6 +115,55 @@
 > Verdict unchanged: not adopted, not promoted, code not removed. Same `DECISIONS.md` D78 entry,
 > extended, not a new decision number.
 >
+> **AMENDED 2026-09-19 — (15)** A fourth layout, **"v3"** (436 wide), and with it two changes to the
+> episode itself. `ScanEnv(obs_version="v3")` is "v2p" plus `prev_action` (36, one-hot of the last
+> band, all-zero before the first step), `prev_reward` (1) and `prev_hit` (1) — the RL² interface,
+> so a recurrent policy can adapt inside the episode with no gradient step (D75). **36 of those 38
+> columns duplicate blocks that already existed**: `prev_action` is bit-identical to `current_band`
+> after any step and `prev_hit` is `current_hit_streak > 0`, so `prev_reward` is the only new
+> information and any claim about "v3" should say so. `prev_reward` carries `reward_balance_obs`,
+> which is `reward_balance` with `Y` for `Z` — the training reward would leak `Z` into the
+> observation, since the agent already holds the other three terms and could solve for it. **D29 is
+> unchanged**: the reward still reads truth and still scores every arm.
+>
+> `ScanEnv(episode_slots=...)` lets one episode run longer than a recording, with the world stitched
+> from independent 30 s draws (D76). `constants.py` is untouched — D42's freeze holds and every
+> default-length episode is bit-identical, pinned by golden digests taken before the change. Two
+> blocks are now bounded rather than unbounded (`clock` divides by this episode's length,
+> `staleness` is clipped to its declared ceiling at both the observation and the reward site), and
+> `episode_metrics()` censors a missed emitter at its own segment end rather than at the whole
+> mission — a correctness fix at length that evaluates to exactly 600 slots at the default.
+>
+> `rfenv/rl/online.py` fine-tunes a checkpoint while it scans, on a continuous grid, with the
+> gradient fed `reward_balance_obs` rather than `step()`'s truth-fed return (D77). Per-mission
+> updates are deliberately not offered: 300-600 decisions cannot fill an `n_steps=8192` rollout.
+>
+> **AMENDED 2026-09-20 — (16)** Amendment (15)'s `prev_action` block, above, was removed from "v3"
+> the next day, narrowing it 436 → 400 wide **in place** (the same class of width change D49/D55/D67/
+> D72 made — `lstm_v3_seed0`/`lstm_v3_seed1`, both complete 800k-step checkpoints, are now
+> permanently unloadable). Asked directly why the observation needed `prev_action` when an LSTM's
+> hidden state already carries information forward: it can only carry forward what appeared in its
+> *input*, and `current_band` — in every layout since "v1" — already put the last action there at
+> every step, so `prev_action` was duplicating a channel the network already had, not adding one.
+> `prev_reward` is unaffected and remains "v3"'s one genuinely new column; `prev_hit` stays too,
+> lacking the same direct duplicate. Same `DECISIONS.md` D75 entry, extended.
+>
+> **AMENDED 2026-09-20 — (17)** Asked directly whether offline training is still available after D77
+> (online fine-tuning): yes, completely unaffected, and it stays the default. Everything this
+> document describes — the observation, the action space, every layout including "v3" — is built by
+> the ordinary `rfenv.rl.{ppo,recurrent_ppo,dqn}.train()` path exactly as before; `rfenv/rl/online.py`
+> only ever loads an already-trained checkpoint from that path and keeps adapting it.
+>
+> **AMENDED 2026-09-20 — (18)** Amendment (15)'s `prev_hit` block, above, was removed from "v3" too,
+> the same day as (16), narrowing it 400 → 399 wide **in place** — requested directly, ahead of the
+> layout's first training run, to isolate `prev_reward`'s own effect rather than test two additions
+> at once. `prev_hit` was already on record (amendment (15)) as "pre-existing information" with no
+> companion block making the redundancy as directly provable as `prev_action`'s, but had been kept
+> anyway; asked plainly whether that was a reason to keep it or just a weaker excuse, it was removed.
+> **`prev_reward` is now the only block "v3" carries beyond "v2p"** — no checkpoint cost this time,
+> since nothing was ever successfully trained on the intermediate 400-wide shape. Same `DECISIONS.md`
+> D75 entry, extended a second time.
+>
 > The PDF beside this file is older still and does not carry any of these amendments.
 
 

@@ -82,7 +82,29 @@ that primary is not in this repository.
   Until then, treat them as different quantities that share a name.
 
 **Resolved since the 2026-08-28 list:**
-- **A band-priority reward, "v2p" (D78, `MEASURED` 2026-09-19).** A fourth observation layout
+- **An online agent, in three pieces (D75/D76/D77, all `BUILT` 2026-09-19/20, none measured).** A
+  fourth observation layout, "v3" (399-wide = "v2p" + `prev_reward`, narrowed twice the same day —
+  `prev_action` and then `prev_hit` both removed once shown redundant/requested off), so a recurrent
+  policy sees what its last decision returned and can adapt inside a mission with no gradient step —
+  the RL² construction, and the most literal reading of the PS's *"absence of prior reliable
+  intelligence"* / *"trained based on hits and misses"*. `episode_slots` lets a mission outrun the
+  30 s recording, stitched from independent draws (`constants.py` untouched, D42's freeze intact).
+  `rfenv/rl/online.py` keeps taking gradient steps while it scans, fed the `Y`-based reward a real
+  receiver could compute rather than the truth-fed one it is scored on. `rfenv/live.py` draws the
+  running episode as a terminal heat strip, truth included (colour and glyph per cell — where an
+  emitter is, whether a declaration there was a true hit, a false alarm or a missed detection).
+  **"v3" originally carried a third block, `prev_action`, removed the next day** once asked directly
+  why the observation needed it when an LSTM's hidden state already carries the last action forward
+  on its own (`current_band` has held it since "v1") — `prev_action` was duplicating a channel the
+  network already had, and OBS_LAYOUTS["v3"] narrowed 436→400 in place, the same class of width
+  change D49/D55/D67/D72 made; `lstm_v3_seed0`/`lstm_v3_seed1`, both complete 800k-step checkpoints,
+  are now permanently unloadable. `prev_reward` is unaffected and remains "v3"'s only genuinely new
+  signal — no layout before it ever exposed the raw per-step reward, only running aggregates
+  (`hit_rate`/`hit_streak`/`staleness`). Nothing has been trained on the current shape yet: the
+  matched pair and a four-arm ablation — including a `hit_rate` positive control, because D74
+  showed twice that a null tells you nothing unless you know the instrument can detect a positive —
+  are pre-registered in D75 and not yet run.
+- **A band-priority reward, "v2p" (D74, `MEASURED` 2026-09-19).** A fourth observation layout
   (398-wide, "v2" + `band_priority`) and an additive, discovery-gated reward term in
   `ScanEnv.step()`, on a direct, fully-specified request — not the same thing as `DECISIONS.md` D70
   ("the scheduler takes a threat priority from outside; it does not compute one"), which took a

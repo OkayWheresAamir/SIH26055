@@ -608,6 +608,101 @@ LADDER: tuple[Rung, ...] = (
             priority_coef=2.0, priority_n_bands=(3, 6), priority_high=5.0,
             occupancy_coef=0.3, occupancy_decay_cap=6.0),
 
+    # D75 matched pair: "v3" (treatment -- prev_reward) vs "v2p"
+    # (control, the extra block absent). Neither arm's --band-priority flag
+    # was set during training, so `_band_priority` stays at its reset()
+    # default (all ones) in both -- no confound with D74's own mechanism,
+    # which is off here. Same base hyperparameters as 23a/23b (512-wide LSTM,
+    # n_steps=8192, 800k steps), trained strictly sequentially so the two arms
+    # of a seed never compete for the GPU with each other.
+    #
+    # **Rung 24a's own checkpoint is dead, twice over now.** "v3" was 436-wide
+    # (a third block, `prev_action`) when this checkpoint trained; `prev_action`
+    # was removed from "v3" the next day once confirmed bit-identical to
+    # `current_band` (D75's amendment), narrowing "v3" to 400-wide, then
+    # `prev_hit` was removed too, the same day, narrowing it again to 399-wide
+    # (D75's second amendment) -- the same class of width change D49/D55/D67/
+    # D72 made before it. `require_loadable` now refuses this file by name,
+    # correctly and loudly. Left registered rather than deleted, matching how
+    # every other width casualty in this file stays registered as a record of
+    # what was measured, not pruned. No checkpoint was ever successfully
+    # trained on the 400-wide shape in between -- the second amendment costs
+    # nothing additional. Retraining on the current 399-wide "v3" would need a
+    # fresh checkpoint at this path.
+    Rung("lstm_v3_seed0", "24a", "Recurrent PPO (reward_balance, D75 v3 obs, seed 0, 800k)",
+            "Ours. Treatment arm, D75: obs_version='v3' -- prev_reward "
+            "appended to v2p. Paired against lstm_v2p_ctrl_seed0 (rung 24b), "
+            "identical except obs_version. Needs ScanEnv(obs_version='v3'). "
+            "DEAD as of D75's amendments (2026-09-20): trained on the 436-wide "
+            "'v3' that existed before prev_action and prev_hit were removed; "
+            "unloadable now.",
+            _recurrent_ppo_rung_factory(Path("runs/checkpoints/v3/lstm_v3_seed0/lstm_v3_seed0.zip")),
+            obs_version="v3"),
+
+    Rung("lstm_v2p_ctrl_seed0", "24b", "Recurrent PPO (reward_balance, v2p obs, D75 control, seed 0, 800k)",
+            "Ours. Control arm, paired against rung 24a: identical except "
+            "obs_version='v2p' (no prev_reward block). Needs "
+            "ScanEnv(obs_version='v2p'). Unaffected by the 'v3' width changes "
+            "-- this checkpoint is on 'v2p', still loadable.",
+            _recurrent_ppo_rung_factory(Path("runs/checkpoints/v2p/lstm_v2p_ctrl_seed0/lstm_v2p_ctrl_seed0.zip")),
+            obs_version="v2p"),
+
+
+    # D78 matched pair: architecture, not observation. Identical to rung 24b
+    # in every training input (reward_balance, obs_version='v2p', seed 0,
+    # ent_coef=0.01, gamma=0.997, n_steps=8192, 512-wide LSTM, 800k steps) --
+    # differs only in --policy. Reuses 24b as the control arm rather than
+    # retraining a duplicate baseline.
+    Rung("lstm_v2p_mlpfeature_seed0", "25a", "Recurrent PPO (reward_balance, v2p obs, MlpFeatureLstmPolicy, seed 0, 800k)",
+         "Ours. Treatment arm, D78: --policy MlpFeatureLstmPolicy (obs -> 2-layer "
+         "LayerNorm MLP -> LSTM -> actor/critic, rfenv/rl/policies.py) in place of "
+         "the library-default MlpLstmPolicy (obs -> LSTM -> actor/critic). Paired "
+         "against lstm_v2p_ctrl_seed0 (rung 24b), identical except --policy. Needs "
+         "ScanEnv(obs_version='v2p'); RecurrentPPO.load() reconstructs the policy "
+         "class from the checkpoint's own saved data, nothing extra to declare here.",
+         _recurrent_ppo_rung_factory(Path("runs/checkpoints/v2p/lstm_v2p_mlpfeature_seed0/lstm_v2p_mlpfeature_seed0.zip")),
+         obs_version="v2p"),
+
+    # D78 convergence check: the 600k-step checkpoint-freq snapshot of rung 25a,
+    # not the final 800k one. A quick 12-scenario probe across the run's own
+    # snapshots (s4/s8/s12/s16 = 200k/400k/600k/800k) found no clean upward
+    # trend late in training -- s12 scored marginally best of the four on that
+    # small sample. Registered so it can be scored properly (full development
+    # set, matched seeds) rather than trusted off 12 scenarios.
+    Rung("lstm_v2p_mlpfeature_seed0_s12", "25b", "Recurrent PPO (reward_balance, v2p obs, MlpFeatureLstmPolicy, seed 0, 600k snapshot)",
+         "Ours. Same run as rung 25a, checkpoint-freq snapshot at 600k steps "
+         "instead of the final 800k -- see D78's convergence-check note: training "
+         "reward flattened by ~80k steps and stayed flat, and evaluation metrics "
+         "across snapshots do not climb steadily toward 800k, so this is a check "
+         "on whether an earlier snapshot happens to score better, not a claim "
+         "that it should.",
+         _recurrent_ppo_rung_factory(Path("runs/checkpoints/v2p/lstm_v2p_mlpfeature_seed0/lstm_v2p_mlpfeature_seed0_s12.zip")),
+         obs_version="v2p"),
+
+    # D79 x D75's second amendment: BandEncoderLstmPolicy on the narrowed "v3"
+    # (399-wide, prev_reward only), band_priority off (reset default, all-ones,
+    # no real signal -- not a matched pair with rung 23a, which has real
+    # priority active; this isolates architecture+prev_reward from priority
+    # entirely). Otherwise mirrors 23a's own scale exactly: 512-wide LSTM,
+    # n_steps=8192, 800k steps, reward_balance, seed 2.
+    Rung("lstm_v3_bandenc_noprior_seed2", "26a", "Recurrent PPO (reward_balance, D75-narrowed v3 obs, BandEncoderLstmPolicy, no priority, seed 2, 800k)",
+         "Ours. D79's BandEncoderLstmPolicy (obs -> shared per-band encoder -> mean "
+         "pool -> concat global -> LSTM -> actor/critic) trained on 'v3' after its "
+         "second narrowing (prev_reward only, no prev_hit -- D75's amendment), "
+         "band_priority left at its uninformative reset default. First pass: does "
+         "prev_reward, read through a per-band-structured encoder, train well "
+         "before real priority is added back in. Needs ScanEnv(obs_version='v3').",
+         _recurrent_ppo_rung_factory(Path("runs/checkpoints/v3/lstm_v3_bandenc_noprior_seed2/lstm_v3_bandenc_noprior_seed2.zip")),
+         obs_version="v3"),
+
+    # Second seed of 26a -- identical config, seed 0 instead of 2. Confirming
+    # whether 26a's result (66.7% beats-recency-both) holds across seeds
+    # before building real band_priority on top of it.
+    Rung("lstm_v3_bandenc_noprior_seed0", "26b", "Recurrent PPO (reward_balance, D75-narrowed v3 obs, BandEncoderLstmPolicy, no priority, seed 0, 800k)",
+         "Ours. Same as rung 26a in every respect except seed (0, not 2). "
+         "Needs ScanEnv(obs_version='v3').",
+         _recurrent_ppo_rung_factory(Path("runs/checkpoints/v3/lstm_v3_bandenc_noprior_seed0/lstm_v3_bandenc_noprior_seed0.zip")),
+         obs_version="v3"),
 
     Rung("camper_oracle", "—", "Greedy static, truth-fed (D14's camper)",
          "Reference line: D14's camper, which knew where the pulses were.",
@@ -659,7 +754,10 @@ def _key_entropy(key: str) -> int:
 
 def band_at_slot_from_log(log: list[dict]) -> np.ndarray:
     """The band tuned at each slot, from an episode log. Used by the renders."""
-    out = np.full(N_SLOTS, -1, dtype=np.int64)
+    # Sized from the log itself, not the constant, so a stitched mission (D76)
+    # renders too. Identical for a 600-slot episode, which covers every slot.
+    n_slots = max((row["slot"] for row in log), default=N_SLOTS - 1) + 1
+    out = np.full(max(n_slots, N_SLOTS), -1, dtype=np.int64)
     for row in log:
         out[row["slot"]] = row["band"]
     return out

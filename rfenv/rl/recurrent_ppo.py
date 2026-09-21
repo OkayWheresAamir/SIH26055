@@ -46,8 +46,25 @@ from rfenv.rl.common import (
     add_manifest_arguments, finish_training, make_train_env,
     parse_hyperparameters, require_loadable, training_callbacks,
 )
+from rfenv.rl.policies import POLICY_ALIASES
 
 DEFAULT_CHECKPOINT = Path("runs/checkpoints/v1/recurrent_ppo/recurrent_ppo.zip")
+
+
+def _resolve_policy(policy: str):
+    """`"MlpFeatureLstmPolicy"` -> the class; anything else passes through.
+
+    `RecurrentPPO`'s own `policy_aliases` only knows its three library
+    policies (`MlpLstmPolicy`/`CnnLstmPolicy`/`MultiInputLstmPolicy`) --
+    `rfenv/rl/policies.py` deliberately does not mutate that class-level dict
+    (it is shared by every `RecurrentPPO` instance in the process, library
+    code, not ours to patch). Passing the class object itself instead of a
+    string bypasses that lookup entirely; SB3 accepts either
+    (`policy: str | type[RecurrentActorCriticPolicy]`) and records whichever
+    was given, so a checkpoint trained this way still round-trips through
+    `RecurrentPPO.load()` with no special casing there.
+    """
+    return POLICY_ALIASES.get(policy, policy)
 
 
 def train(
@@ -72,6 +89,7 @@ def train(
     occupancy_coef: float = 0.0,
     occupancy_decay_cap: float = 2.0,
     device: str = "auto",
+    pool=None,
 ) -> RecurrentPPO:
     """Build sb3-contrib's RecurrentPPO with library defaults and train it.
 
@@ -97,15 +115,27 @@ def train(
     lets a policy sharpen onto a single band and stay there -- pass
     `--hyperparam ent_coef=0.01` to try otherwise, and the manifest will say
     which of the two any given checkpoint was.
+
+    `pool` defaults to `None`, which is `make_train_env`'s own default --
+    `split.training_pool()`, the real train-split emitters (D60). Passing an
+    `EmitterPool` here trains entirely on it instead, real data or a
+    hand-built synthetic one (`online.py`'s `fine_tune` already supports this
+    for adapting an *existing* checkpoint via `env_kwargs={"pool": ...}`;
+    this is the same idea for training a policy *from scratch* on a custom
+    distribution rather than fine-tuning a pretrained one onto it). A
+    checkpoint trained this way is otherwise ordinary -- same manifest, same
+    `load_checkpoint()`, same deployable contract -- only the distribution of
+    scenarios it ever saw during training differs from every other rung's.
     """
     started_at = time.time()
     hyperparameters = dict(hyperparameters or {})
-    env = make_train_env(reward=reward, obs_version=obs_version,
+    env = make_train_env(reward=reward, obs_version=obs_version, pool=pool,
                           band_priority=band_priority, priority_coef=priority_coef,
                           priority_n_bands=priority_n_bands, priority_uniform=priority_uniform,
                           priority_high=priority_high, occupancy_coef=occupancy_coef,
                           occupancy_decay_cap=occupancy_decay_cap)
-    model = RecurrentPPO(policy, env, seed=seed, verbose=verbose, device=device, **hyperparameters)
+    model = RecurrentPPO(_resolve_policy(policy), env, seed=seed, verbose=verbose,
+                          device=device, **hyperparameters)
     manifest_kwargs = {"reward": reward, "hyperparameters": hyperparameters,
                        "started_at": started_at, "description": description}
     callbacks = training_callbacks(
@@ -146,8 +176,18 @@ def main(argv: list[str] | None = None) -> int:
                      "Day-1 pass: library defaults, nothing tuned.",
     )
     ap.add_argument("--policy", default="MlpLstmPolicy",
-                     choices=["MlpLstmPolicy", "CnnLstmPolicy", "MultiInputLstmPolicy"],
-                     help="sb3-contrib recurrent policy type (default: MlpLstmPolicy)")
+                     choices=["MlpLstmPolicy", "CnnLstmPolicy", "MultiInputLstmPolicy",
+                              "MlpFeatureLstmPolicy", "BandEncoderLstmPolicy"],
+                     help="sb3-contrib recurrent policy type (default: MlpLstmPolicy, "
+                          "obs -> LSTM -> actor/critic). rfenv/rl/policies.py adds two "
+                          "opt-in alternatives, each a matched-pair architecture "
+                          "comparison against the baseline, not a replacement: "
+                          "MlpFeatureLstmPolicy (D78, obs -> 2-layer LayerNorm MLP -> "
+                          "LSTM -> actor/critic) and BandEncoderLstmPolicy (D79, obs -> "
+                          "per-band encoder, shared across all 36 bands, mean-pooled, "
+                          "concatenated with an encoded global-feature vector -> LSTM -> "
+                          "actor/critic). LSTM hidden size and actor/critic heads are "
+                          "unchanged by either.")
     ap.add_argument("--reward", default=DEFAULT_REWARD, choices=sorted(REWARDS),
                      help="reward candidate, passed to ScanEnv(reward=...) (D29)")
     ap.add_argument("--timesteps", type=int, default=20_000,
