@@ -1,0 +1,84 @@
+{
+  "run": "lstm_v3_seed1",
+  "description": "D75 matched pair, v3 arm, seed 1: reward_balance, 512 LSTM, 800k. Differs from its partner only in --obs-version.",
+  "checkpoint": "lstm_v3_seed1_s5.zip",
+  "sha256": "15973000c684d9b018fc6b54c090a897135f161bbeeaf9a011a9b822ee722646",
+  "algorithm": "RecurrentPPO",
+  "policy": "RecurrentActorCriticPolicy",
+  "reward": "reward_balance",
+  "observation_width": 436,
+  "action_space": "Discrete(36)",
+  "seed": 1,
+  "total_timesteps": 250000,
+  "hyperparameters": {
+    "ent_coef": 0.01,
+    "gamma": 0.997,
+    "n_steps": 8192,
+    "policy_kwargs": {
+      "lstm_hidden_size": 512
+    }
+  },
+  "resolved": {
+    "learning_rate": 0.0003,
+    "gamma": 0.997,
+    "n_steps": 8192,
+    "batch_size": 128,
+    "n_epochs": 10,
+    "ent_coef": 0.01,
+    "gae_lambda": 0.95,
+    "vf_coef": 0.5,
+    "max_grad_norm": 0.5,
+    "device": "device(type='cuda')"
+  },
+  "argv": [
+    "C:\\Code\\sih\\SIH26055\\rfenv\\rl\\recurrent_ppo.py",
+    "--reward",
+    "reward_balance",
+    "--obs-version",
+    "v3",
+    "--timesteps",
+    "800000",
+    "--seed",
+    "1",
+    "--checkpoint-freq",
+    "50000",
+    "--hyperparam",
+    "ent_coef=0.01",
+    "--hyperparam",
+    "gamma=0.997",
+    "--hyperparam",
+    "n_steps=8192",
+    "--hyperparam",
+    "policy_kwargs={\"lstm_hidden_size\": 512}",
+    "--checkpoint",
+    "runs/checkpoints/v3/lstm_v3_seed1/lstm_v3_seed1.zip",
+    "--run-name",
+    "lstm_v3_seed1",
+    "--device",
+    "auto",
+    "--description",
+    "D75 matched pair, v3 arm, seed 1: reward_balance, 512 LSTM, 800k. Differs from its partner only in --obs-version."
+  ],
+  "command": "C:\\Code\\sih\\SIH26055\\venv\\Scripts\\python.exe -m rfenv.rl.recurrent_ppo --reward reward_balance --obs-version v3 --timesteps 800000 --seed 1 --checkpoint-freq 50000 --hyperparam ent_coef=0.01 --hyperparam gamma=0.997 --hyperparam n_steps=8192 --hyperparam \"policy_kwargs={\\\"lstm_hidden_size\\\": 512}\" --checkpoint runs/checkpoints/v3/lstm_v3_seed1/lstm_v3_seed1.zip --run-name lstm_v3_seed1 --device auto --description \"D75 matched pair, v3 arm, seed 1: reward_balance, 512 LSTM, 800k. Differs from its partner only in --obs-version.\"",
+  "git": {
+    "commit": "d2ce3ec2a196a87687e939f6486eb144862fd980",
+    "dirty": true
+  },
+  "started_at": "2026-09-20T02:18:13Z",
+  "wall_clock_s": 2379.6,
+  "versions": {
+    "python": "3.12.10",
+    "stable_baselines3": "2.9.0",
+    "torch": "2.14.0+cu126",
+    "gymnasium": "1.3.0",
+    "numpy": "2.5.3",
+    "sb3_contrib": "2.9.0"
+  },
+  "hardware": {
+    "os": "Windows-11-10.0.26200-SP0",
+    "machine": "AMD64",
+    "processor": "Intel64 Family 6 Model 165 Stepping 2, GenuineIntel",
+    "cpu_count": 12,
+    "cuda": "NVIDIA GeForce GTX 1650"
+  }
+}

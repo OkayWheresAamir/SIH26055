@@ -109,13 +109,21 @@ class Apfeld:
         *,
         use_period_estimation: bool = True,
         params: ApfeldParams = ApfeldParams(),
+        n_slots: int = N_SLOTS,
     ):
         self.rng = rng
         self.p = params
         self.use_period_estimation = bool(use_period_estimation)
         self.key = "apfeld" if use_period_estimation else "apfeld_active_rfs"
 
-        self.series = np.zeros((N_BANDS, N_SLOTS), dtype=np.float64)
+        # `n_slots` is the episode this instance will run in (D76). It is the
+        # constant for every 30 s episode, and longer only for a stitched
+        # mission -- but it cannot be left as the constant, because `series` is
+        # indexed by *absolute* slot below and a long episode would run off the
+        # end of it. This rung is rung 6, the serious bar, so it has to survive
+        # any episode the rungs it is compared against survive.
+        self.n_slots = int(n_slots)
+        self.series = np.zeros((N_BANDS, self.n_slots), dtype=np.float64)
         self.tentative: set[int] = set()
         self.stable: dict[int, float] = {}      # band -> period estimate, in slots
         self.estimates: dict[int, list[float]] = {}
@@ -178,7 +186,7 @@ class Apfeld:
     def _reschedule(self, band: int, now: int) -> None:
         period = max(1, int(round(self.stable[band])))
         anchor = self.last_detection.get(band, now)
-        visits = list(range(anchor + period, N_SLOTS, period))
+        visits = list(range(anchor + period, self.n_slots, period))
         self.scheduled[band] = [v for v in visits if v >= now]
 
     def _forget(self, band: int) -> None:

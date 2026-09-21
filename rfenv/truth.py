@@ -28,7 +28,7 @@ Scenario always yields exactly the same grid.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 import numpy as np
 
@@ -105,7 +105,97 @@ class TruthGrid:
         return cls(scenario=scenario, S=S, C=C, Z=Z, PW=PW, AOA=AOA,
                    _cell_id=cell_id, _owner=owner, _owner_peak=owner_peak)
 
+    @classmethod
+    def stitch(cls, grids: list["TruthGrid"], *, name: str) -> "TruthGrid":
+        """Lay grids end to end into one longer world (D76).
+
+        This is how an episode runs longer than 30 s. A recording *is* 30 s, so
+        there is no such thing as a one-hour scenario to load; a long mission is
+        built by concatenating independent draws along the time axis.
+
+        **Emitter identity is per segment, deliberately.** Each segment is its own
+        pool draw, so the same physical emitter may appear in two of them with a
+        different realisation, position and beam phase. Merging those into one
+        identity would mean an emitter found in segment 0 could never be found
+        again for the rest of the mission, which would silently destroy coverage.
+        Two segments are two emitters and two opportunities; `config_id` is
+        suffixed so `uid` stays unique and the emitter table stays readable.
+
+        The honest limitation, stated rather than hidden: **there is no temporal
+        continuity across a seam.** At each boundary the whole world is replaced
+        at once. Nothing in the environment pretends otherwise, and a dwell that
+        straddles a seam simply reads two cells from two different worlds -- which
+        needs no special case, but is not physics.
+
+        `stitch([g])` reproduces `g` exactly, index included, which is what makes
+        the single-segment path testable against the multi-segment one.
+        """
+        if not grids:
+            raise ValueError("stitch needs at least one grid")
+
+        widths = [int(g.S.shape[1]) for g in grids]
+        offsets = np.concatenate([[0], np.cumsum(widths[:-1])]).astype(np.int64)
+        total = int(sum(widths))
+
+        # `contributions` is rebuilt first, because the cell index below must
+        # point into *this* list, not into any segment's own.
+        contributions: list[EmitterContribution] = []
+        for k, (grid, offset) in enumerate(zip(grids, offsets)):
+            for c in grid.contributions:
+                # int32, not the declared int16: a slot index past 32767 is only
+                # 54 segments away (27 simulated minutes), and int16 would wrap
+                # there silently rather than fail.
+                cells = c.cells.astype(np.int32, copy=True)
+                if len(cells):
+                    cells[:, 1] += int(offset)
+                contributions.append(
+                    replace(c, cells=cells, config_id=f"{c.config_id}@s{k}")
+                )
+
+        ids, owners, peaks = [], [], []
+        for i, c in enumerate(contributions):
+            # Empty contributions keep their slot in the list -- `_owner` indexes
+            # into it -- but contribute no cells, exactly as `from_scenario` does.
+            if not len(c):
+                continue
+            b = c.cells[:, 0].astype(np.int64)
+            t = c.cells[:, 1].astype(np.int64)
+            ids.append(b * total + t)      # the stride is the *stitched* length
+            owners.append(np.full(len(c), i, dtype=np.int32))
+            peaks.append(c.peak_dbm)
+
+        if ids:
+            cell_id = np.concatenate(ids)
+            owner = np.concatenate(owners)
+            owner_peak = np.concatenate(peaks)
+            order = np.argsort(cell_id, kind="stable")
+            cell_id, owner, owner_peak = cell_id[order], owner[order], owner_peak[order]
+        else:
+            cell_id = np.zeros(0, np.int64)
+            owner = np.zeros(0, np.int32)
+            owner_peak = np.zeros(0, np.float32)
+
+        return cls(
+            scenario=Scenario(name=name, contributions=contributions),
+            S=np.concatenate([g.S for g in grids], axis=1),
+            C=np.concatenate([g.C for g in grids], axis=1),
+            Z=np.concatenate([g.Z for g in grids], axis=1),
+            PW=np.concatenate([g.PW for g in grids], axis=1),
+            AOA=np.concatenate([g.AOA for g in grids], axis=1),
+            _cell_id=cell_id, _owner=owner, _owner_peak=owner_peak,
+        )
+
     # ------------------------------------------------------------- properties --
+
+    @property
+    def n_slots(self) -> int:
+        """This grid's length in slots -- `N_SLOTS` for a recording, longer if stitched.
+
+        A property rather than a field because the field list is positional in
+        `from_scenario`'s own `cls(...)` call and in every test that builds a grid
+        by hand; adding a field would break all of them for no gain.
+        """
+        return int(self.S.shape[1])
 
     @property
     def contributions(self) -> list[EmitterContribution]:
@@ -146,7 +236,9 @@ class TruthGrid:
         Evaluator-side only. Neither array ever reaches the agent: the scheduler
         runs cold, with no emitter knowledge beyond its own scan history (D19, D20).
         """
-        key = int(band) * N_SLOTS + int(slot)
+        # The stride is this grid's own length, not the constant: a stitched grid
+        # (`stitch`) is longer than 600 and indexes with its own width.
+        key = int(band) * self.n_slots + int(slot)
         lo, hi = np.searchsorted(self._cell_id, [key, key + 1])
         return self._owner[lo:hi], self._owner_peak[lo:hi]
 

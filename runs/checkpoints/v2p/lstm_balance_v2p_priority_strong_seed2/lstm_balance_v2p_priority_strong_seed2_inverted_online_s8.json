@@ -1,0 +1,58 @@
+{
+  "run": "lstm_balance_v2p_priority_strong_seed2_inverted_online",
+  "description": "D77 online fine-tune of 23a on a synthetic inverted world: traffic only on bands 12,14,24,27,28,30,32,33,34,35, nothing on the other 26. band_priority=False (uninformative constant 1.0). Resumed from an interrupted first pass that had already completed one full 1-hour mission (97% coverage) plus 30% of a second; periodic checkpointing on this time.",
+  "checkpoint": "lstm_balance_v2p_priority_strong_seed2_inverted_online_s8.zip",
+  "sha256": "1522b74354802d80178e786a7bf7b35eae1d29659367aa99aced77746a40288e",
+  "algorithm": "RecurrentPPO",
+  "policy": "RecurrentActorCriticPolicy",
+  "reward": "reward_balance",
+  "observation_width": 398,
+  "action_space": "Discrete(36)",
+  "seed": 2,
+  "total_timesteps": 950272,
+  "hyperparameters": {
+    "n_steps": 8192,
+    "batch_size": 128,
+    "learning_rate": 1e-05,
+    "clip_range": 0.1,
+    "target_kl": 0.02,
+    "ent_coef": 0.01
+  },
+  "resolved": {
+    "learning_rate": 1e-05,
+    "gamma": 0.997,
+    "n_steps": 8192,
+    "batch_size": 128,
+    "n_epochs": 10,
+    "ent_coef": 0.01,
+    "gae_lambda": 0.95,
+    "vf_coef": 0.5,
+    "max_grad_norm": 0.5,
+    "device": "device(type='cuda')"
+  },
+  "argv": [
+    "C:\\Users\\DELL\\AppData\\Local\\Temp\\claude\\c--Code-sih-SIH26055\\6f201d88-5009-480d-93d5-dd7e2f0f7f60\\scratchpad\\resume_online_finetune_inverted.py"
+  ],
+  "command": "C:\\Code\\sih\\SIH26055\\venv\\Scripts\\python.exe C:\\Users\\DELL\\AppData\\Local\\Temp\\claude\\c--Code-sih-SIH26055\\6f201d88-5009-480d-93d5-dd7e2f0f7f60\\scratchpad\\resume_online_finetune_inverted.py",
+  "git": {
+    "commit": "417d1cf8dc049a2b5b0e7725e9b65cb7bb3b91d8",
+    "dirty": true
+  },
+  "started_at": "2026-09-20T21:11:11Z",
+  "wall_clock_s": 471.8,
+  "versions": {
+    "python": "3.12.10",
+    "stable_baselines3": "2.9.0",
+    "torch": "2.14.0+cu126",
+    "gymnasium": "1.3.0",
+    "numpy": "2.5.3",
+    "sb3_contrib": "2.9.0"
+  },
+  "hardware": {
+    "os": "Windows-11-10.0.26200-SP0",
+    "machine": "AMD64",
+    "processor": "Intel64 Family 6 Model 165 Stepping 2, GenuineIntel",
+    "cpu_count": 12,
+    "cuda": "NVIDIA GeForce GTX 1650"
+  }
+}
