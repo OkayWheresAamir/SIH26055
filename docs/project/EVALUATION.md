@@ -185,7 +185,7 @@ pick's +25.0%). Re-applying D47 on the new pair: `reward_balance` **81.9%** both
 **17.6 pp apart, decisively outside the margin — `reward_balance` is selected.** Full accounting
 in D68.
 
-### Three traps, all measured on real data (D14, D84)
+### Three traps, all measured on real data (D14, D84, D87)
 
 1. **Per-dwell hit rate is misleading.** A camper that parks on the busiest band scores 85–90%
    per-dwell and looks near-optimal, while capturing only 30% of emitters. The per-illumination
@@ -200,11 +200,19 @@ in D68.
    wastes on exactly those twelve bands (23a: 1.73% airtime, 73.8% both-score; rung 25a: 12.53%
    airtime, 46.8% both-score — the full table is in D84). This is not a deployability violation (the
    policy learns it from its own scan history, same as anything else), but it is a distribution-shift
-   risk this project cannot currently rule out: whether "these bands are empty" is a fact worth
-   learning about the real operating environment, or an artifact of this one finite synthetic
-   emitter library, is only checkable against the 45-config held-out split (D8), which has not been
-   touched. Reporting dead-band airtime alongside a ratio gain is the cheap way to tell the two
-   apart until that check is run.
+   risk — and **D87 (2026-09-22) measured it happening.** Relocating the emitter population in
+   band (a synthetic cyclic shift of the training pool, `band -> (band + k) % 36`, real signal
+   statistics otherwise untouched) turns rung 23a's dead-band airtime from 6.8–11.7% — *better*
+   than `recency`'s 17.9–19.7% — into **28.7–41.0%**, *worse* than `recency`'s 21.7–27.5%; its
+   margin over the bar goes from **+3.4 pp to −8.7/−14.7 pp** across two shifts and two seeds.
+   `recency` is flat across the same shifts (0.78 → 0.79), which is the control establishing that
+   the relocated worlds are not harder. **The learned prior is the asset in-distribution and the
+   liability out of it, and it is the same prior both times.** Whether this dataset's dead spectrum
+   is a real fact about the operating environment or an artifact of one finite synthetic emitter
+   library is still only *settleable* against the 45-config held-out split (D8), which has not been
+   touched — what D87 adds is the cost if the answer turns out to be "artifact." Reporting
+   dead-band airtime alongside a ratio gain is the cheap way to tell the two apart until that check
+   is run.
 
 **Rule: never publish interception ratio without coverage and censored intercept time beside
 it — and without dead-band airtime when comparing checkpoints that could plausibly differ in how
