@@ -74,6 +74,105 @@ split and none of them is clean.</strong></p>
 <code>P(dominates rung 5) - P(dominated by rung 5)</code> on the validation half, fixed in
 <code>rfenv/selection.py</code> before the run that uses it -- not picked by eye from a compare table.</p>
 <p><strong>(10)</strong> <code>measured_dbm</code> is ratified (D59) and stays in the observation.</p>
+<p><strong>AMENDED 2026-09-14 — (11)</strong> The 183-wide observation described in this document is now called
+<strong>"v1"</strong>, and it is still the default (<code>ScanEnv(obs_version="v1")</code>, implicit) — every checkpoint
+this document describes stays exactly as loadable as it was. A second, opt-in <strong>"v2"</strong> layout
+also exists now (D30 resolved as D75): 326 wide, adding PulseWidth and AoA (<code>sin θ, cos θ</code>, gated
+on a declared hit) plus an upgrade of <code>measured_dbm</code> from one global last-dwell scalar to a
+per-band block. §4's <code>109 → 146 → 183</code> progression does <strong>not</strong> gain a fourth entry in the same
+line — 326 is a sibling of 183, not its successor. No checkpoint has trained on "v2" long enough
+to report a result as this is written.</p>
+<p><strong>AMENDED 2026-09-14 — (12)</strong> "v2" widened again the same day, on a direct request: <strong>362 wide</strong>,
+not 326. <code>pulse_count</code> (D76) is a sixth "v2"-only block, <code>Y</code>-gated the same way PulseWidth/AoA
+are — the illumination count <code>C</code> (<code>truth.py</code>) at the loudest slot of the band's last declared hit,
+<code>log1p</code>-normalised against the same reference <code>reward_balance_improved</code> already uses for <code>C</code> on
+the reward side, clipped to <code>[0, 1]</code>. This reopens D29/D34's own exclusion of pulse count from the
+observation; the reasoning for reopening it, and the one gap gating narrows but does not close
+(<code>C</code> itself carries no gamma gate, so a hit's count can still include sub-threshold co-located
+emitters), is recorded in <code>DECISIONS.md</code> D76. <code>known_observation_widths()</code> now returns
+<code>{183, 362}</code>, not <code>{183, 326}</code>. The three "v2" checkpoint snapshots D75's own retrain had already
+produced at 326 wide are now permanently unloadable — the same cost every past observation change
+has carried, this time paid by "v2" rather than "v1".</p>
+<p><strong>AMENDED 2026-09-18 — (13)</strong> A third, opt-in layout, <strong>"v2p"</strong>, now exists: "v2" (362 wide) plus
+one more 36-wide block, <code>band_priority</code> — <strong>398 wide total</strong>. Unlike every block above, it is not
+derived from anything the receiver measures: it is a per-episode input, <code>1.0</code> = ordinary band,
+<code>3.0</code> = elevated, either sampled fresh each episode (3–6 of the 36 bands elevated) or held at all-
+<code>1.0</code> for a control arm (<code>priority_uniform=True</code>). Paired with it, <code>ScanEnv.step()</code> adds a reward
+term directly (<code>reward += priority_coef * band_priority[dwell.band] * len(newly)</code>) on top of
+whichever <code>REWARDS</code> candidate is selected — additive, gated on <strong>discovering something new</strong>
+rather than on occupying the band, which is what keeps it clear of D53's per-slot camping exploit.
+This is <strong>not</strong> a new <code>REWARDS</code> entry and does not touch <code>reward_gate.py</code>'s D62 screen. Two
+RecurrentPPO checkpoints (ladder rungs 22a treatment / 22b control) were trained and compared
+2026-09-18 to test whether a policy actually conditions on <code>band_priority</code> rather than merely
+benefiting from the reward-scale increase it adds uniformly. <strong>The result runs the wrong way</strong>:
+the control (no real signal) beat the treatment on every headline column, 61.4% vs 44.4%
+beats-recency-both. Camping was ruled out directly (~7% more airtime on elevated bands,
+inconsistent across episodes); treatment was measurably more diffuse than control across the
+whole spectrum (entropy 3.255 vs 3.051, 24.95 vs 18.95 of 36 bands touched); and a <strong>permutation
+ablation settled it 2026-09-19</strong>: the treatment checkpoint's airtime correlates with true
+priority equally poorly whether fed the real vector or one shuffled across bands (+0.018 vs
++0.019), so <strong>the agent never learned to use <code>band_priority</code></strong> — the underperformance is a
+training-difficulty story (control's input is constant, an easier problem), not a
+misused-signal one. Single seed, not read as settled beyond this configuration.
+<strong><code>DECISIONS.md</code> D78, <code>MEASURED</code></strong> — unlike (11)/(12) above, written up as <code>SETTLED</code> the day
+they were built, this write-up was deliberately held until both the comparison and the ablation
+existed. Not adopted, not promoted, code not removed. Full mechanism: <code>OBSERVATION_SPACE.md</code>
+§2.4; numbers: <code>MODEL_COMPARISON.md</code> Width 398.</p>
+<p><strong>AMENDED 2026-09-19 — (14)</strong> Same-day follow-up to (13): a new decaying per-slot occupancy term
+(<code>priority_reward_bonus</code>, <code>env.py</code>, anchored to <code>visit_density</code> rather than a resettable streak to
+stay clear of D53), <code>priority_coef</code> 0.5→2.0, the elevated value now configurable (<code>priority_high</code>,
+was hardcoded) raised 3.0→5.0, LSTM hidden size doubled 256→512, timesteps doubled 400k→800k
+(rungs 23a/23b). Result: treatment <strong>73.1%</strong> beats-recency-both, the highest figure measured in
+this project — but a second permutation ablation found the same thing as the first: airtime
+correlates with true priority identically whether fed real or shuffled values (+0.031 both ways).
+<strong>Still never learned</strong>, at roughly 4x the incentive and double the capacity/budget; 23a's lead
+over its control (45.6%) is read as training-run variance, not the mechanism, since the one thing
+actually measured — whether the signal is read — stayed "no" both times the question was asked.
+Verdict unchanged: not adopted, not promoted, code not removed. Same <code>DECISIONS.md</code> D78 entry,
+extended, not a new decision number.</p>
+<p><strong>AMENDED 2026-09-19 — (15)</strong> A fourth layout, <strong>"v3"</strong> (436 wide), and with it two changes to the
+episode itself. <code>ScanEnv(obs_version="v3")</code> is "v2p" plus <code>prev_action</code> (36, one-hot of the last
+band, all-zero before the first step), <code>prev_reward</code> (1) and <code>prev_hit</code> (1) — the RL² interface,
+so a recurrent policy can adapt inside the episode with no gradient step (D79). <strong>36 of those 38
+columns duplicate blocks that already existed</strong>: <code>prev_action</code> is bit-identical to <code>current_band</code>
+after any step and <code>prev_hit</code> is <code>current_hit_streak &gt; 0</code>, so <code>prev_reward</code> is the only new
+information and any claim about "v3" should say so. <code>prev_reward</code> carries <code>reward_balance_obs</code>,
+which is <code>reward_balance</code> with <code>Y</code> for <code>Z</code> — the training reward would leak <code>Z</code> into the
+observation, since the agent already holds the other three terms and could solve for it. <strong>D29 is
+unchanged</strong>: the reward still reads truth and still scores every arm.</p>
+<p><code>ScanEnv(episode_slots=...)</code> lets one episode run longer than a recording, with the world stitched
+from independent 30 s draws (D80). <code>constants.py</code> is untouched — D42's freeze holds and every
+default-length episode is bit-identical, pinned by golden digests taken before the change. Two
+blocks are now bounded rather than unbounded (<code>clock</code> divides by this episode's length,
+<code>staleness</code> is clipped to its declared ceiling at both the observation and the reward site), and
+<code>episode_metrics()</code> censors a missed emitter at its own segment end rather than at the whole
+mission — a correctness fix at length that evaluates to exactly 600 slots at the default.</p>
+<p><code>rfenv/rl/online.py</code> fine-tunes a checkpoint while it scans, on a continuous grid, with the
+gradient fed <code>reward_balance_obs</code> rather than <code>step()</code>'s truth-fed return (D81). Per-mission
+updates are deliberately not offered: 300-600 decisions cannot fill an <code>n_steps=8192</code> rollout.</p>
+<p><strong>AMENDED 2026-09-20 — (16)</strong> Amendment (15)'s <code>prev_action</code> block, above, was removed from "v3"
+the next day, narrowing it 436 → 400 wide <strong>in place</strong> (the same class of width change D49/D55/D67/
+D76 made — <code>lstm_v3_seed0</code>/<code>lstm_v3_seed1</code>, both complete 800k-step checkpoints, are now
+permanently unloadable). Asked directly why the observation needed <code>prev_action</code> when an LSTM's
+hidden state already carries information forward: it can only carry forward what appeared in its
+<em>input</em>, and <code>current_band</code> — in every layout since "v1" — already put the last action there at
+every step, so <code>prev_action</code> was duplicating a channel the network already had, not adding one.
+<code>prev_reward</code> is unaffected and remains "v3"'s one genuinely new column; <code>prev_hit</code> stays too,
+lacking the same direct duplicate. Same <code>DECISIONS.md</code> D79 entry, extended.</p>
+<p><strong>AMENDED 2026-09-20 — (17)</strong> Asked directly whether offline training is still available after D81
+(online fine-tuning): yes, completely unaffected, and it stays the default. Everything this
+document describes — the observation, the action space, every layout including "v3" — is built by
+the ordinary <code>rfenv.rl.{ppo,recurrent_ppo,dqn}.train()</code> path exactly as before; <code>rfenv/rl/online.py</code>
+only ever loads an already-trained checkpoint from that path and keeps adapting it.</p>
+<p><strong>AMENDED 2026-09-20 — (18)</strong> Amendment (15)'s <code>prev_hit</code> block, above, was removed from "v3" too,
+the same day as (16), narrowing it 400 → 399 wide <strong>in place</strong> — requested directly, ahead of the
+layout's first training run, to isolate <code>prev_reward</code>'s own effect rather than test two additions
+at once. <code>prev_hit</code> was already on record (amendment (15)) as "pre-existing information" with no
+companion block making the redundancy as directly provable as <code>prev_action</code>'s, but had been kept
+anyway; asked plainly whether that was a reason to keep it or just a weaker excuse, it was removed.
+<strong><code>prev_reward</code> is now the only block "v3" carries beyond "v2p"</strong> — no checkpoint cost this time,
+since nothing was ever successfully trained on the intermediate 400-wide shape. Same <code>DECISIONS.md</code>
+D79 entry, extended a second time.</p>
 <p>The PDF beside this file is older still and does not carry any of these amendments.</p>
 <p><strong>Read this before designing anything against it.</strong> This document is <strong>not a proposal</strong>. The
 state and action spaces described here are <strong>already built, tested and running</strong> — they are what

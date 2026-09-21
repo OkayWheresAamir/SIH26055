@@ -1,0 +1,86 @@
+{
+  "run": "lstm_v3_bandenc_noprior_seed2",
+  "description": "D79 x D75-narrowed-v3: BandEncoderLstmPolicy on v3 (399-wide, prev_reward only, no prev_hit), band_priority off (reset default, all-ones, no real signal). Mirrors rung 23a's scale (512-wide LSTM, n_steps=8192, 800k, reward_balance, seed 2) with everything about band_priority stripped out and --policy/--obs-version swapped. First pass: does prev_reward alone, read through a per-band-structured encoder, train well before adding real priority back in.",
+  "checkpoint": "lstm_v3_bandenc_noprior_seed2_s8.zip",
+  "sha256": "29610a4952cf04bc53eb5f5a9b257d78eb1aa1fefc2f1b9e80a9d6ab441c82c1",
+  "algorithm": "RecurrentPPO",
+  "policy": "BandEncoderLstmPolicy",
+  "reward": "reward_balance",
+  "observation_width": 399,
+  "action_space": "Discrete(36)",
+  "seed": 2,
+  "total_timesteps": 400000,
+  "hyperparameters": {
+    "ent_coef": 0.01,
+    "gamma": 0.997,
+    "n_steps": 8192,
+    "policy_kwargs": {
+      "lstm_hidden_size": 512
+    }
+  },
+  "resolved": {
+    "learning_rate": 0.0003,
+    "gamma": 0.997,
+    "n_steps": 8192,
+    "batch_size": 128,
+    "n_epochs": 10,
+    "ent_coef": 0.01,
+    "gae_lambda": 0.95,
+    "vf_coef": 0.5,
+    "max_grad_norm": 0.5,
+    "device": "device(type='cuda')"
+  },
+  "argv": [
+    "C:\\Code\\sih\\SIH26055\\rfenv\\rl\\recurrent_ppo.py",
+    "--policy",
+    "BandEncoderLstmPolicy",
+    "--reward",
+    "reward_balance",
+    "--obs-version",
+    "v3",
+    "--timesteps",
+    "800000",
+    "--seed",
+    "2",
+    "--checkpoint-freq",
+    "50000",
+    "--hyperparam",
+    "ent_coef=0.01",
+    "--hyperparam",
+    "gamma=0.997",
+    "--hyperparam",
+    "n_steps=8192",
+    "--hyperparam",
+    "policy_kwargs={\"lstm_hidden_size\": 512}",
+    "--checkpoint",
+    "runs/checkpoints/v3/lstm_v3_bandenc_noprior_seed2/lstm_v3_bandenc_noprior_seed2.zip",
+    "--run-name",
+    "lstm_v3_bandenc_noprior_seed2",
+    "--device",
+    "auto",
+    "--description",
+    "D79 x D75-narrowed-v3: BandEncoderLstmPolicy on v3 (399-wide, prev_reward only, no prev_hit), band_priority off (reset default, all-ones, no real signal). Mirrors rung 23a's scale (512-wide LSTM, n_steps=8192, 800k, reward_balance, seed 2) with everything about band_priority stripped out and --policy/--obs-version swapped. First pass: does prev_reward alone, read through a per-band-structured encoder, train well before adding real priority back in."
+  ],
+  "command": "C:\\Code\\sih\\SIH26055\\venv\\Scripts\\python.exe -m rfenv.rl.recurrent_ppo --policy BandEncoderLstmPolicy --reward reward_balance --obs-version v3 --timesteps 800000 --seed 2 --checkpoint-freq 50000 --hyperparam ent_coef=0.01 --hyperparam gamma=0.997 --hyperparam n_steps=8192 --hyperparam \"policy_kwargs={\\\"lstm_hidden_size\\\": 512}\" --checkpoint runs/checkpoints/v3/lstm_v3_bandenc_noprior_seed2/lstm_v3_bandenc_noprior_seed2.zip --run-name lstm_v3_bandenc_noprior_seed2 --device auto --description \"D79 x D75-narrowed-v3: BandEncoderLstmPolicy on v3 (399-wide, prev_reward only, no prev_hit), band_priority off (reset default, all-ones, no real signal). Mirrors rung 23a's scale (512-wide LSTM, n_steps=8192, 800k, reward_balance, seed 2) with everything about band_priority stripped out and --policy/--obs-version swapped. First pass: does prev_reward alone, read through a per-band-structured encoder, train well before adding real priority back in.\"",
+  "git": {
+    "commit": "47cd7493fc832161940cfff341d628c34e0f2903",
+    "dirty": true
+  },
+  "started_at": "2026-09-20T14:03:52Z",
+  "wall_clock_s": 4375.3,
+  "versions": {
+    "python": "3.12.10",
+    "stable_baselines3": "2.9.0",
+    "torch": "2.14.0+cu126",
+    "gymnasium": "1.3.0",
+    "numpy": "2.5.3",
+    "sb3_contrib": "2.9.0"
+  },
+  "hardware": {
+    "os": "Windows-11-10.0.26200-SP0",
+    "machine": "AMD64",
+    "processor": "Intel64 Family 6 Model 165 Stepping 2, GenuineIntel",
+    "cpu_count": 12,
+    "cuda": "NVIDIA GeForce GTX 1650"
+  }
+}

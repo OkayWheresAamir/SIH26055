@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
-from rfenv.constants import EPISODE_S, N_BANDS, N_SLOTS
+from rfenv.constants import N_BANDS, N_SLOTS, SLOT_S
 from rfenv.metrics._serialize import (
     _EMITTER_TYPES,
     _LOG_TYPES,
@@ -72,6 +72,19 @@ def write_run(
     directory = Path(directory)
     directory.mkdir(parents=True, exist_ok=True)
 
+    # `read_run` checks the log covers every slot exactly once, so a windowed
+    # log (D80, for long missions) cannot be written as if it were an episode.
+    # Refusing is the honest outcome: the alternative is a header that claims a
+    # length the rows do not have, which is exactly the class of silently-wrong
+    # artefact the cross-checks below exist to catch.
+    if getattr(env, "log_window_slots", None) is not None:
+        raise ValueError(
+            "this env keeps a windowed log (log_window_slots="
+            f"{env.log_window_slots}), so its rows are not a whole episode and "
+            "cannot be written as run artefacts. Use the per-segment metrics "
+            "stream instead, or run with log_window_slots=None."
+        )
+
     log = list(env.log)
     if log and tuple(log[0]) != LOG_FIELDS:
         raise ValueError(
@@ -87,8 +100,11 @@ def write_run(
         "reward": env.reward_name,
         "gamma_dbm": env.gamma,
         "sigma_db": env.sigma,
-        "episode_s": EPISODE_S,
-        "n_slots": N_SLOTS,
+        # This episode's own length, not the constant: identical at the default,
+        # and the only thing that keeps `read_run`'s slot-count cross-check
+        # meaningful on a stitched mission (D80).
+        "episode_s": getattr(env, "episode_slots", N_SLOTS) * SLOT_S,
+        "n_slots": getattr(env, "episode_slots", N_SLOTS),
         "n_bands": N_BANDS,
         # The two quantities §4 needs and artefacts 1 and 2 do not carry (D38).
         "total_pulses": env.grid.total_pulses,

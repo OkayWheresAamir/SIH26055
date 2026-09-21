@@ -143,10 +143,14 @@ class Receiver:
         band, slot0 = int(band), int(slot0)
         if not 0 <= band < len(DWELL_SLOTS):
             raise ValueError(f"band {band} outside 0..{len(DWELL_SLOTS) - 1}")
-        if not 0 <= slot0 < N_SLOTS:
-            raise ValueError(f"slot {slot0} outside 0..{N_SLOTS - 1}")
+        # Bounds come from the grid, not the constant: a stitched grid (D80) is
+        # longer than one recording, and only its own end clips a dwell. A seam
+        # inside it is not a boundary -- a wide band straddling slot 599 reads
+        # across it, which is correct, because the clock does not stop there.
+        if not 0 <= slot0 < grid.n_slots:
+            raise ValueError(f"slot {slot0} outside 0..{grid.n_slots - 1}")
 
-        n = min(int(DWELL_SLOTS[band]), N_SLOTS - slot0)
+        n = min(int(DWELL_SLOTS[band]), grid.n_slots - slot0)
         sl = slice(slot0, slot0 + n)
 
         S = grid.S[band, sl].astype(np.float64)

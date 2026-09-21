@@ -1,0 +1,86 @@
+{
+  "run": "lstm_v2p_mlpfeature_seed0",
+  "description": "D78 matched pair vs lstm_v2p_ctrl_seed0: reward_balance, v2p, 512 LSTM, 800k, n_steps=8192 -- differs from its baseline only in --policy (MlpFeatureLstmPolicy vs MlpLstmPolicy).",
+  "checkpoint": "lstm_v2p_mlpfeature_seed0_s5.zip",
+  "sha256": "94f276b8cd7716717aa3f52b488f1e401847959171fb741c370ab2c5fd3cefac",
+  "algorithm": "RecurrentPPO",
+  "policy": "MlpFeatureLstmPolicy",
+  "reward": "reward_balance",
+  "observation_width": 398,
+  "action_space": "Discrete(36)",
+  "seed": 0,
+  "total_timesteps": 250000,
+  "hyperparameters": {
+    "ent_coef": 0.01,
+    "gamma": 0.997,
+    "n_steps": 8192,
+    "policy_kwargs": {
+      "lstm_hidden_size": 512
+    }
+  },
+  "resolved": {
+    "learning_rate": 0.0003,
+    "gamma": 0.997,
+    "n_steps": 8192,
+    "batch_size": 128,
+    "n_epochs": 10,
+    "ent_coef": 0.01,
+    "gae_lambda": 0.95,
+    "vf_coef": 0.5,
+    "max_grad_norm": 0.5,
+    "device": "device(type='cuda')"
+  },
+  "argv": [
+    "C:\\Code\\sih\\SIH26055\\rfenv\\rl\\recurrent_ppo.py",
+    "--policy",
+    "MlpFeatureLstmPolicy",
+    "--reward",
+    "reward_balance",
+    "--obs-version",
+    "v2p",
+    "--timesteps",
+    "800000",
+    "--seed",
+    "0",
+    "--checkpoint-freq",
+    "50000",
+    "--hyperparam",
+    "ent_coef=0.01",
+    "--hyperparam",
+    "gamma=0.997",
+    "--hyperparam",
+    "n_steps=8192",
+    "--hyperparam",
+    "policy_kwargs={\"lstm_hidden_size\": 512}",
+    "--checkpoint",
+    "runs/checkpoints/v2p/lstm_v2p_mlpfeature_seed0/lstm_v2p_mlpfeature_seed0.zip",
+    "--run-name",
+    "lstm_v2p_mlpfeature_seed0",
+    "--device",
+    "auto",
+    "--description",
+    "D78 matched pair vs lstm_v2p_ctrl_seed0: reward_balance, v2p, 512 LSTM, 800k, n_steps=8192 -- differs from its baseline only in --policy (MlpFeatureLstmPolicy vs MlpLstmPolicy)."
+  ],
+  "command": "C:\\Code\\sih\\SIH26055\\venv\\Scripts\\python.exe -m rfenv.rl.recurrent_ppo --policy MlpFeatureLstmPolicy --reward reward_balance --obs-version v2p --timesteps 800000 --seed 0 --checkpoint-freq 50000 --hyperparam ent_coef=0.01 --hyperparam gamma=0.997 --hyperparam n_steps=8192 --hyperparam \"policy_kwargs={\\\"lstm_hidden_size\\\": 512}\" --checkpoint runs/checkpoints/v2p/lstm_v2p_mlpfeature_seed0/lstm_v2p_mlpfeature_seed0.zip --run-name lstm_v2p_mlpfeature_seed0 --device auto --description \"D78 matched pair vs lstm_v2p_ctrl_seed0: reward_balance, v2p, 512 LSTM, 800k, n_steps=8192 -- differs from its baseline only in --policy (MlpFeatureLstmPolicy vs MlpLstmPolicy).\"",
+  "git": {
+    "commit": "146020e4968d88b724a674d6a83b7b19ff44e499",
+    "dirty": true
+  },
+  "started_at": "2026-09-20T10:08:51Z",
+  "wall_clock_s": 2581.7,
+  "versions": {
+    "python": "3.12.10",
+    "stable_baselines3": "2.9.0",
+    "torch": "2.14.0+cu126",
+    "gymnasium": "1.3.0",
+    "numpy": "2.5.3",
+    "sb3_contrib": "2.9.0"
+  },
+  "hardware": {
+    "os": "Windows-11-10.0.26200-SP0",
+    "machine": "AMD64",
+    "processor": "Intel64 Family 6 Model 165 Stepping 2, GenuineIntel",
+    "cpu_count": 12,
+    "cuda": "NVIDIA GeForce GTX 1650"
+  }
+}
