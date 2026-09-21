@@ -5583,3 +5583,158 @@ configs returning accuracy 0.8585 / MCC 0.6854 / precision 0.8819 / recall 0.693
 and ungated counterfactuals as fields so §7's table is computed rather than transcribed, and to
 delete the prose constants. That changes the metric's return surface, so it is proposed rather than
 built (`CLAUDE.md` §Working rules).
+
+---
+
+## D87 — the RL scheduler's edge over the bar is a learned dead-band map, and it inverts under a band-allocation shift
+
+**Status:** `MEASURED` (2026-09-22). Not a decision to adopt or remove anything — a measurement that
+answers a question D84 explicitly said this project could not answer from training and comparison
+data alone, and that reframes what the online lane (D81, D85) is for. Nothing in `rfenv/` changed.
+
+**The question.** D84 found that every checkpoint's score tracks how little airtime it wastes on the
+twelve bands that are structurally empty in all 47 comparison scenarios, and named the risk
+precisely: `reward_balance`'s airtime terms and interception ratio reward avoiding those bands
+*identically* whether the emptiness is a general fact about the operating environment or an artifact
+of one finite synthetic emitter library — "and this project cannot tell those apart from
+training/comparison data alone, since both draw from the same population." This entry tells them
+apart, synthetically, without spending D8's held-out split.
+
+**Method.** Every contribution in `split.training_pool()` (2,600 contributions, 1,431 emitters) had
+its band index cyclically relocated, `band -> (band + k) % 36`, for `k = 0, 9, 18`. Nothing else was
+touched: the same emitters, the same pulse amplitudes, widths, AoA and per-slot timing, moved
+elsewhere in the spectrum. This is the "the deployment band plan does not match TSRD's" case, built
+out of real signal statistics rather than a hand-constructed world. The relocation is real and
+verified by counting cells per band: the zero-occupancy set moves from
+`{13,14,25,26,27,28,29,30,33,34,35}` at `k=0` to `{0,1,2,3,6,7,8,22,23,34,35}` at `k=9` and
+`{7,8,9,10,11,12,15,16,17,31,32}` at `k=18`, and the five busiest bands move from
+`{6,5,18,19,7}` to `{24,23,0,1,25}`.
+
+Scored on one continuous D80 grid of `episode_slots = 20 * N_SLOTS` (10 simulated minutes, 909
+detectable emitters), seeds 0 and 1, rung 23a (`lstm_balance_v2p_priority_strong_seed2`, the
+strongest checkpoint this project has measured) against rung 5 `recency` — THE BAR — on identical
+worlds. 23a was run through `RecurrentRLScheduler` at its own ladder env settings (`obs_version=
+"v2p"`, `band_priority=True`, `priority_coef=2.0`, `priority_high=5.0`, `occupancy_coef=0.3`,
+`occupancy_decay_cap=6.0`). Airtime is charged in slots via `DWELL_SLOTS`, not in decisions, so a
+wide band costs what it actually costs.
+
+| shift | seed | 23a coverage | `recency` | delta (pp) | 23a airtime on the *currently* dead bands | `recency` |
+|---|---|---|---|---|---|---|
+| +0 | 0 | **0.8163** | 0.7822 | **+3.41** | **6.81%** | 17.90% |
+| +0 | 1 | **0.7837** | 0.7513 | **+3.24** | **11.67%** | 19.70% |
+| +9 | 0 | 0.6128 | 0.7602 | **−14.74** | **40.97%** | 25.33% |
+| +9 | 1 | 0.6321 | 0.7409 | **−10.88** | **40.16%** | 27.49% |
+| +18 | 0 | 0.7019 | 0.7888 | **−8.69** | **28.68%** | 21.72% |
+| +18 | 1 | 0.6684 | 0.7668 | **−9.84** | **29.78%** | 23.72% |
+
+**`recency` is the control, and it is flat: 0.7822 -> 0.7888 at `k=18`, 0.7602 at `k=9`.** A
+memoryless index policy with no learned band prior sees essentially the same problem in every
+relocated world, which is what establishes that the shifted worlds are not harder. Whatever 23a
+loses, it loses because of what 23a carries into them.
+
+**The finding, and the mechanism is the same one D84 named.** In-distribution, 23a's entire margin
+over the bar *is* its dead-band map: it wastes 6.8–11.7% of airtime on empty bands where `recency`
+wastes 17.9–19.7%, and it beats the bar by +3.2/+3.4 pp. Relocate the population and the map
+inverts — 23a now wastes **28.7–41.0%**, *more* than `recency`'s 21.7–27.5% — and the +3.4 pp lead
+becomes a −8.7 to −14.7 pp deficit. **The learned prior is the asset in-distribution and the
+liability out of it, and it is the same prior both times.** The direction is consistent across both
+shifts and both seeds, six runs, with no overlap between the in-distribution and shifted groups.
+
+**There is no in-context recovery.** Per-segment new discoveries at `k=18`, seed 0 (23a
+in-distribution / 23a shifted / `recency` shifted), one row per 30 s segment:
+
+```
+23a  in-dist : 24 31 72 31 40 48 47 46 42 61 61 23 2 6 9 54 28 18 40 59
+23a  shifted : 19 20 62 22 39 42 35 36 47 51 58 19 2 6 7 53 26 14 38 52
+recency shft : 22 31 71 28 39 50 47 37 46 59 54 22 2 5 9 54 25 18 38 60
+```
+
+The shifted curve is uniformly depressed across all 20 segments and never converges on either of the
+others. The shared dips at segments 12–14 are the stitched world's own emitter availability (D80 —
+each 30 s segment is an independent draw), not policy behaviour. **Ten simulated minutes of hidden
+state does not recover the deficit**, which is the claim D85 would need and does not have on
+realistic signal statistics.
+
+**What this means for D81/D85, the online lane.** It is the strongest existing argument *for* it:
+the failure mode online adaptation is meant to address is now demonstrated rather than hypothesised,
+and it is severe enough to cost the project its entire margin over the bar. But it also names the
+control that D85 never ran. D85 compares a frozen checkpoint against its own fine-tuned self; the
+comparison that decides whether the lane is worth anything is **against `recency`**, which scores
+0.74–0.79 on every shifted world from the first slot, for free, with no gradient step, no GPU and no
+adaptation period. Online fine-tuning does not have to beat its own degraded self — it has to beat
+the zero-cost fallback, starting from 9–15 pp behind it. **That experiment is not run**, and until it
+is, "the model adapts when deployed" is not a claim this repository can make.
+
+**Three corrections to D85 that fell out of checking it.** Recorded here rather than edited into D85,
+which stands as the record of what was run.
+
+1. **The simulated-mission-time figure is wrong by ~2.6×.** D85 reports 163,840 steps as "≈72 minutes
+   of simulated mission time". A step is one dwell and the shortest dwell is one slot
+   (`DWELL_SLOTS.min() == 1`) at `SLOT_S = 0.05`, so 163,840 steps is **≥136.5 minutes** by
+   arithmetic alone, with no measurement needed. At 23a's own measured rate — 4,432 decisions over
+   6,000 slots, mean dwell **1.354 slots** — it is **≈185 minutes**. The corresponding per-update
+   figure, which is the one that matters operationally, is **9.2 minutes of mission time per gradient
+   update** at `n_steps=8192`. The ≈26 minutes of wall clock D85 also reports is real but is
+   simulator throughput, not adaptation speed; the two must not be quoted interchangeably.
+2. **D85's "the frozen model adapts in-context in under 90 seconds, for free" does not reproduce on
+   realistic signal statistics.** That result came from a world D85 itself describes as "easy mode" —
+   `-80 dBm`, ~10σ above threshold, 95% duty cycle, two emitters per band, traffic on ten bands and
+   literally nothing on the other 26 — where a miss is essentially impossible by construction and any
+   exploratory policy finds everything quickly. The per-segment table above is the same question
+   asked with real amplitudes and real duty cycles, and the answer is no recovery at all. The
+   in-context half of D85 should not be carried forward.
+3. **D85 is not reproducible from the repository.** Its cited segment log
+   (`runs/baselines/inverted_world_online_finetune/segments.jsonl`) is absent — `runs/*` is
+   gitignored except checkpoints — and the synthetic-pool builder was a scratch script, deliberately
+   not committed. The checkpoints exist; the world they were trained on cannot be rebuilt. Same
+   failure mode as D56 and D86: a number that satisfies nothing but itself.
+
+**Two implementation defects in `rfenv/rl/online.py`, found while checking the above.** Neither is
+fixed here; both are reported so they are not discovered in a demo.
+
+1. **`fine_tune(reward=...)` never reaches the gradient.** `ObservableRewardWrapper.step` returns
+   `env.unwrapped.last_reward_obs`, which is always `reward_balance_obs` regardless of which key the
+   env was built with. Measured: `reward_balance`, `explore` and `greedy` each hand the learner
+   identical values (`1.5, 1.5, 1.5, 1.5, 1.5` on the first five steps of a seed-0 episode). The
+   argument and its `--reward` CLI flag change only `env.reward_name` and what `total_reward` and
+   `episode_metrics()` report. This is arguably the right default — it is what keeps the gradient
+   deployable — but it is silent, and an inert flag that looks live is how a wrong claim gets made.
+2. **Fine-tuning a priority-trained checkpoint silently drops the priority terms.**
+   `priority_reward_bonus` is added to `reward` in `ScanEnv.step()` *after* `_prev_reward_obs` is
+   computed, so with the bonus enabled the scored reward and the gradient's reward diverge:
+   measured `2.1, 2.1, 1.8, 1.8, 1.8` against `1.5, 1.5, 1.5, 1.5, 1.5`. D85 fine-tuned rung 23a,
+   whose whole training objective included that bonus, so that run **switched 23a's objective
+   mid-flight** rather than continuing its training. Not materially damaging — D78 measured the
+   priority mechanism null twice — but "we fine-tuned 23a" is imprecise as stated.
+
+**What this does not show.** The shift is synthetic: a cyclic relocation is a clean way to hold the
+emitter population fixed while moving where it sits, but it is not a real second operating
+environment, and D84's own caution applies unchanged — **the only test that settles whether the
+twelve dead bands are a general fact or a library artifact is the 45 held-out pairs (D8), spent
+once, on a final system.** Beyond that: one checkpoint (23a), two seeds, two shifts, coverage only —
+censored intercept time and interception ratio were not scored, and the headline ladder metric
+(paired beats-recency-on-both) was not computed, so these numbers are not directly comparable to
+`EVALUATION.md` §5's. The recurrent policy samples its actions (D54), so repeated runs of one
+configuration vary by roughly a point of coverage; the effect measured here is 9–15 points and sits
+far outside that.
+
+**Evidence.** Measured 2026-09-22 on this machine. Scripts were scratch, not committed, and the
+method is stated above in full so it can be rebuilt: `dataclasses.replace` over every
+`EmitterContribution` in `split.training_pool()` rewriting `cells[:, 0]`; `ScanEnv(pool=...,
+episode_slots=20*N_SLOTS, **rung-23a env kwargs)`; `RecurrentPPO.load(
+"runs/checkpoints/v2p/lstm_balance_v2p_priority_strong_seed2/lstm_balance_v2p_priority_strong_seed2.zip",
+device="cpu")` driven by `rl.common.RecurrentRLScheduler`; `baselines.recency.RecencyActivity` on the
+identical pool and seed; coverage read as `len(env.tracks) / len(env.detectable)`; airtime
+accumulated as `DWELL_SLOTS[action]` and normalised; dead-band sets recomputed per shift by counting
+cells per band rather than assumed. Mean dwell from a 6,000-slot run of the same checkpoint. The two
+`online.py` defects were confirmed by constructing `make_online_env` at three reward keys and with
+the priority bonus on and off, and comparing the wrapper's returned reward against `step()`'s
+directly. `python scripts/doctor.py` clean at the time of writing (2 pre-existing doc-sync warnings,
+unrelated).
+
+**Consequence.** `EVALUATION.md` §4's third trap (D84) now has a measured failure behind it rather
+than a correlation: report dead-band airtime beside a ratio gain, and treat a checkpoint's margin
+over the bar as partly a bet that the band population is stable. No rung is promoted, demoted or
+removed. The open thread is the three-way comparison named above — `recency` against frozen 23a
+against an online-fine-tuned 23a, on one shifted world, same episodes and seeds, coverage against
+mission time — which is what would decide whether D81's lane earns its place.
