@@ -78,11 +78,17 @@ moved; the text did.
   score unfalsifiable by construction.
 - **Average intercept-time error excludes misses from its mean.** Censoring an emitter the sweep
   never caught to the 30 s horizon and averaging that in conflates *"predicted the wrong time"*
-  with *"predicted the wrong outcome"*, and the two cannot be separated afterwards. Measured over
-  the 47 train pairs: the censored form reads **8.42 s**, the separated form **6.60 s of timing
-  error plus 87.3% outcome agreement** — 1.8 s of that 8.42 s is missed detections, not mistimed
-  ones. Both sides must also apply the same detection rule, or an ungated recorded side fires on
-  sub-threshold pulses while the predicted side waits for a declaration.
+  with *"predicted the wrong outcome"*, and the two cannot be separated afterwards. Both sides must
+  also apply the same detection rule, or an ungated recorded side fires on sub-threshold pulses
+  while the predicted side waits for a declaration. Re-measured 2026-09-21 over the 47 train pairs
+  at seed 0, one defect at a time on one fixed 1,530-emitter population: **8.42 s** with both
+  (ungated recorded side *and* misses censored to 30 s), **8.05 s** with the censoring alone,
+  **6.60 s** with neither, plus **87.3%** outcome agreement. So 1.46 s of that 8.42 s is missed
+  detections and 0.37 s is the mismatched detection rule.
+- **Corrected 2026-09-21: the 8.42 s described above as "the censored form" was both defects at
+  once**, and the whole gap was attributed to missed detections. The censored-only figure is
+  8.05 s. Neither reported number moved — **6.60 s and 87.3% are unchanged and confirmed** — only
+  the counterfactual they are contrasted against. `FIGURES_OF_MERIT.md` §7 carries the table.
 
 Formulas, populations and the traps behind each: **`FIGURES_OF_MERIT.md`**, which specifies all
 seven of the PS's figures of merit. Produced by `python -m rfenv.compare --figures-of-merit`.
