@@ -32,6 +32,8 @@ explore/exploit tension real: with a prior, camping would be defensible.
 
 from __future__ import annotations
 
+import dataclasses
+
 import gymnasium as gym
 import numpy as np
 from gymnasium import spaces
@@ -131,6 +133,9 @@ _BLOCK_SPECS: dict[str, tuple[int, float, float]] = {
     "aoa_cos":            (N_BANDS, 0.0, 1.0),    # D30, (cos+1)/2
     "pulse_count":        (N_BANDS, 0.0, 1.0),    # D76, log1p(C)/log1p(ref), Y-gated
     "band_priority":      (N_BANDS, 1.0, _PRIORITY_HIGH),   # this task, externally sampled/supplied, not computed
+    "prev_action":        (N_BANDS, 0.0, 1.0),    # D79, one-hot of the last band chosen
+    "prev_reward":        (1, 0.0, 1.0),          # D79, `reward_balance_obs` rescaled
+    "prev_hit":           (1, 0.0, 1.0),          # D79, did the last dwell declare anything
 }
 
 # "v1" is the frozen 183-wide vector (D34, D49, D55, D67) -- every checkpoint in
@@ -159,14 +164,161 @@ OBS_LAYOUTS: dict[str, tuple[str, ...]] = {
     "v2p": ("hit_rate", "visit_density", "staleness", "current_band", "clock",
             "measured_dbm_band", "hit_streak", "current_hit_streak",
             "pulse_width", "aoa_sin", "aoa_cos", "pulse_count", "band_priority"),
+    # D79: "v2p" plus two in-context blocks, appended last so every "v2p"
+    # offset holds. 398 + 2 = 400 wide. This is the RL^2 interface -- a
+    # recurrent policy that is shown what its last action returned can run an
+    # adaptation rule inside the episode, in its hidden state, with no
+    # gradient step. That is what makes it "online" in the sense the PS asks
+    # for: no prior library, learning from hits and misses.
+    #
+    # **`prev_action` was here too, originally, and was removed the next day
+    # (2026-09-20) on a direct question: doesn't the LSTM already carry the
+    # previous action forward on its own?** For this one block, yes --
+    # `current_band` (every layout since "v1") is bit-identical to `prev_action`
+    # at every step after the first, since `step()` assigns `_current_band =
+    # action` and `_prev_action = action` from the same value. Recorded as a
+    # known redundancy when "v3" first shipped, then actually removed once
+    # asked rather than kept for the RL^2 interface's own sake. `prev_hit`
+    # stays -- it is `current_hit_streak > 0`, also pre-existing information,
+    # but there is no companion block making that one redundant in the same
+    # direct way, and it costs one column. `prev_reward` is, and remains, the
+    # only block here carrying information nothing else in the vector does:
+    # an LSTM's hidden state can only carry forward what appeared in its
+    # *input* at some point, and no layout before "v3" ever exposed the raw
+    # per-step reward -- `hit_rate`/`hit_streak`/`staleness` are running
+    # aggregate statistics, not the scalar the policy is actually optimised
+    # against. Whether this agent actually reads it is untested; see D79's
+    # ablation.
+    #
+    # **This is an in-place width change** (436 -> 400), the same class of
+    # change D49/D55/D67/D76 made before it: every checkpoint trained on the
+    # 436-wide shape (`lstm_v3_seed0`, `lstm_v3_seed1`) is now permanently
+    # unloadable. Not free, paid on purpose -- see D79's amendment.
+    #
+    # **Second amendment, same day (2026-09-20): `prev_hit` removed too,
+    # requested directly, on a first-pass "does prev_reward alone train well"
+    # question.** 400 -> 399. `prev_hit` was already flagged as the weaker of
+    # the two additions when "v3" first shipped -- pre-existing information
+    # (`current_hit_streak > 0`), just with no companion block making the
+    # redundancy as mechanically provable as `prev_action`'s was. Unlike that
+    # first amendment, this one has no real cost to pay: no checkpoint has
+    # ever been successfully trained on the 400-wide shape (every file under
+    # `runs/checkpoints/v3/` still predates it, at 436), so nothing loadable
+    # is lost -- this narrows the *target* before anything was built against
+    # it, not after. `prev_reward` is now the only in-context block "v3"
+    # carries, isolating D79's own central claim (the raw per-step reward is
+    # genuinely new information an LSTM's hidden state could not otherwise
+    # reconstruct) from a second, weaker one in the same layout.
+    "v3": ("hit_rate", "visit_density", "staleness", "current_band", "clock",
+           "measured_dbm_band", "hit_streak", "current_hit_streak",
+           "pulse_width", "aoa_sin", "aoa_cos", "pulse_count", "band_priority",
+           "prev_reward"),
 }
 
 
 def obs_width(version: str) -> int:
-    """Flat vector width for one layout -- 183 for "v1", 362 for "v2", 398 for "v2p"."""
+    """Flat width for one layout: 183 "v1", 362 "v2", 398 "v2p", 399 "v3"."""
     if version not in OBS_LAYOUTS:
         raise ValueError(f"obs_version must be one of {sorted(OBS_LAYOUTS)}, got {version!r}")
     return sum(_BLOCK_SPECS[name][0] for name in OBS_LAYOUTS[version])
+
+
+def obs_version_for_width(width: int) -> str:
+    """The layout whose `obs_width()` is `width` -- the reverse of `obs_width()`.
+
+    For a policy that needs to know its own layout but is only ever handed a
+    `gymnasium.spaces.Box` (D83's `BandEncoderFeaturesExtractor`, built by SB3
+    from nothing but `observation_space`): every registered width is unique
+    today (183/362/398/399), so this is unambiguous, but raises rather than
+    guessing if that ever stops being true, and raises if `width` matches no
+    registered layout at all -- both cheaper to catch here than as a bad
+    gather three layers down.
+    """
+    matches = [v for v in OBS_LAYOUTS if obs_width(v) == width]
+    if len(matches) == 1:
+        return matches[0]
+    if not matches:
+        raise ValueError(
+            f"no registered obs_version builds a {width}-wide observation "
+            f"(known: {sorted(obs_width(v) for v in OBS_LAYOUTS)})"
+        )
+    raise ValueError(
+        f"{width}-wide is ambiguous between {sorted(matches)} -- pass obs_version explicitly"
+    )
+
+
+@dataclasses.dataclass(frozen=True)
+class BandLayout:
+    """How one `obs_version`'s flat vector splits into per-band and global parts.
+
+    `band_index[i, j]` is the flat-vector column holding per-band block
+    `per_band_blocks[j]`'s value for band `i` -- shape `(N_BANDS,
+    len(per_band_blocks))`. `global_index[k]` is the flat-vector column for
+    the `k`-th scalar among `global_blocks`, in block order -- shape
+    `(sum(width of global_blocks),)`. Both are plain `int64` arrays so a
+    caller can gather with them directly (`flat[:, band_index]` ->
+    `(rows, N_BANDS, len(per_band_blocks))` in both numpy and torch).
+    """
+
+    version: str
+    per_band_blocks: tuple[str, ...]
+    global_blocks: tuple[str, ...]
+    band_index: np.ndarray
+    global_index: np.ndarray
+
+
+def band_layout(version: str) -> BandLayout:
+    """Split `version`'s flat observation into its per-band and global parts.
+
+    Purely from `_BLOCK_SPECS`'s declared widths and `OBS_LAYOUTS`' block
+    order -- nothing about which *named* block is per-band or global is
+    hardcoded here. A block is per-band exactly when `_BLOCK_SPECS` declares
+    it `N_BANDS` wide (today: `hit_rate`, `visit_density`, `staleness`,
+    `current_band`, `measured_dbm_band`, `hit_streak`, `pulse_width`,
+    `aoa_sin`, `aoa_cos`, `pulse_count`, `band_priority`, `prev_action`) and
+    global otherwise (`clock`, `measured_dbm`, `current_hit_streak`,
+    `prev_reward`, `prev_hit`). This is what lets `prev_action` be handled
+    correctly with no special case at all: no `OBS_LAYOUTS` entry uses it
+    today (D79 shipped it in "v3", then removed it the next day once
+    `current_band` was shown to already carry the same information -- see
+    "v3"'s own comment), but it is still `N_BANDS` wide in `_BLOCK_SPECS`, so
+    a layout that *did* include it would have it fall into the per-band
+    bucket automatically, exactly like any other `N_BANDS`-wide block --
+    never silently dropped into "global" or left out of the gather.
+
+    Built for `rfenv/rl/policies.py`'s `BandEncoderFeaturesExtractor` (D83),
+    which needs to turn the flat vector into `(N_BANDS, n_band_features)` +
+    `(n_global_features,)` without ever hardcoding which columns are which --
+    the flat vector interleaves blocks (`hit_rate[0:36]`, `visit_density[0:36]`,
+    ...), not bands (`band_0`'s full feature vector, then `band_1`'s, ...), so
+    this is a strided gather, not a reshape.
+    """
+    if version not in OBS_LAYOUTS:
+        raise ValueError(f"obs_version must be one of {sorted(OBS_LAYOUTS)}, got {version!r}")
+
+    per_band_blocks: list[str] = []
+    global_blocks: list[str] = []
+    band_offsets: list[int] = []
+    global_columns: list[int] = []
+
+    offset = 0
+    for name in OBS_LAYOUTS[version]:
+        width = _BLOCK_SPECS[name][0]
+        if width == N_BANDS:
+            per_band_blocks.append(name)
+            band_offsets.append(offset)
+        else:
+            global_blocks.append(name)
+            global_columns.extend(range(offset, offset + width))
+        offset += width
+
+    band_index = (np.asarray(band_offsets, dtype=np.int64)[np.newaxis, :]
+                  + np.arange(N_BANDS, dtype=np.int64)[:, np.newaxis])
+    global_index = np.asarray(global_columns, dtype=np.int64)
+
+    return BandLayout(version=version, per_band_blocks=tuple(per_band_blocks),
+                       global_blocks=tuple(global_blocks),
+                       band_index=band_index, global_index=global_index)
 
 
 # --------------------------------------------------------------------------- #
@@ -795,6 +947,97 @@ def priority_reward_bonus(
     return discovery + occupancy
 
 
+# The widest `reward_balance_obs` can be, by construction rather than by
+# measurement -- each term is separately bounded:
+#
+#     +0.5 * hit_rate[a]        hit_rate in [0, 1]             ->  [0.0, +0.5]
+#     +1.0 * (1.5 - vd) * st    vd, st in [0, 1]               ->  [0.0, +1.5]
+#     +0.5 * Y.sum()            Y.sum() <= n_slots <= 2        ->  [0.0, +1.0]
+#     -3.0 * vd * n_slots       vd in [0, 1], n_slots <= 2     ->  [-6.0,  0.0]
+#                                                      total   ->  [-6.0, +3.0]
+#
+# Checked against the code rather than trusted: over 23,025 steps of
+# round_robin/recency/camper x 3 seeds x 5 stare replays the realised range was
+# [-4.5053, +2.5000] (p1 -3.3578, p99 +1.5000, mean -0.0065, median +0.0392),
+# and a deliberate camper pinned to a wide 2-slot band -- the worst case the
+# negative term admits -- reached -5.9992, approaching the analytic -6.0 without
+# crossing it. Both measured 2026-09-19.
+#
+# Symmetric on purpose: it puts exactly-zero reward at exactly 0.5 after
+# rescaling, which is what makes the first-step sentinel in `_observation_blocks`
+# honest rather than an arbitrary fill value. Set from the analytic bound, not
+# the measured percentiles, so the clip is mathematically incapable of binding.
+_REWARD_OBS_CLAMP = 6.0
+
+# How many past values of a corrupted block the ablation resamples from. Long
+# enough that the pool is a fair sample of the block's distribution across the
+# episode, short enough that it stays bounded on an hour-long mission.
+_CORRUPT_HISTORY_CAP = 256
+
+
+def reward_balance_obs(
+    dwell: DwellResult,
+    newly: set[int],
+    camp_slots: int,
+    hit_rate_array: np.ndarray,
+    visit_density_array: np.ndarray,
+    staleness_array: np.ndarray,
+    action: int,
+) -> float:
+    """`reward_balance`, with `Y` in place of `Z` -- what the dwell *came back with*.
+
+    This is not a reward candidate and is deliberately **not** in `REWARDS`:
+    nothing trains on it, `reward_gate.py` does not screen it, and D29's
+    truth-may-be-read rule is untouched. It exists only to be shown to the policy
+    as the "v3" layout's `prev_reward` block (D79).
+
+    **Why a separate function at all.** `reward_balance`'s third term is
+    `0.5 * dwell.Z.sum()`, and `Z` is threshold-free truth -- whether an emitter
+    was transmitting, whether or not the receiver could hear it. A deployed
+    receiver never learns that. Feeding the training reward into the observation
+    would therefore hand the agent a channel no real instrument has: it already
+    holds `hit_rate`, `visit_density`, `staleness` and `n_slots` in its input, so
+    given the reward it could solve the remaining term for `Z.sum()` -- including
+    emitters it never detected. Substituting `Y`, what the detector actually
+    declared, closes that: the two differ by exactly the receiver's own Pd and
+    Pfa (0.8421 and 1.35e-3 at the frozen operating point), which is the
+    sensitivity limit rather than a missing oracle.
+
+    This is ordinary asymmetric actor-critic, the two halves kept apart:
+    `reward_balance` (privileged, reads `Z`) is what the gradient optimises;
+    this (deployable, reads `Y`) is what the policy *sees*. Because of that
+    split, a "v3" rung stays `deployable=True` and its numbers stay directly
+    comparable to every other rung in the ladder.
+
+    Implemented by substitution rather than by copying the formula, so the two
+    can never drift apart and `reward_balance`'s own source is untouched -- a
+    fact about the file, not an intention. `DwellResult` is frozen, so `replace`
+    shares every array by reference and copies nothing.
+
+    Pure: no RNG, no state, no side effects. It is called on every step
+    regardless of the layout in use, so that had better remain true -- a single
+    draw from `self.np_random` here would shift the receiver's noise stream and
+    silently break every seeded comparison in the repository.
+    """
+    return reward_balance(
+        dataclasses.replace(dwell, Z=dwell.Y),
+        newly, camp_slots, hit_rate_array, visit_density_array,
+        staleness_array, action,
+    )
+
+
+def _normalise_prev_reward(reward_obs: float) -> float:
+    """`reward_balance_obs` -> [0, 1], for the observation's `prev_reward` slot.
+
+    Clip then affine -- the same recipe `measured_dbm` already uses to fold an
+    open-ended dBm reading into the unit interval. Zero maps to exactly 0.5
+    because the clamp is symmetric, which is what lets `reset()` fill this slot
+    with "nothing earned yet" truthfully instead of inventing a value.
+    """
+    clipped = max(-_REWARD_OBS_CLAMP, min(_REWARD_OBS_CLAMP, float(reward_obs)))
+    return (clipped + _REWARD_OBS_CLAMP) / (2.0 * _REWARD_OBS_CLAMP)
+
+
 # --------------------------------------------------------------------------- #
 
 class ScanEnv(gym.Env):
@@ -832,6 +1075,9 @@ class ScanEnv(gym.Env):
         priority_high: float = _PRIORITY_HIGH,
         occupancy_coef: float = 0.0,
         occupancy_decay_cap: float = 2.0,
+        episode_slots: int | None = None,
+        log_window_slots: int | None = None,
+        corrupt_obs_blocks: tuple[str, ...] = (),
     ):
         super().__init__()
         if scenario is None and pool is None:
@@ -885,6 +1131,73 @@ class ScanEnv(gym.Env):
         self._priority_high = float(priority_high)
         self._occupancy_coef = float(occupancy_coef)
         self._occupancy_decay_cap = float(occupancy_decay_cap)
+        # D80: how long one episode runs. `None` means `N_SLOTS`, and every
+        # existing call site takes that path unchanged -- `constants.py` is
+        # frozen (D42) and nothing here moves it; this is a per-env length, not
+        # a new constant. Above 600 the world is stitched from whole recordings
+        # (`TruthGrid.stitch`), so the length has to be a multiple of one.
+        self.episode_slots = N_SLOTS if episode_slots is None else int(episode_slots)
+        if self.episode_slots < 1:
+            raise ValueError(f"episode_slots must be >= 1, got {self.episode_slots}")
+        if self.episode_slots > N_SLOTS and self.episode_slots % N_SLOTS:
+            raise ValueError(
+                f"episode_slots above {N_SLOTS} must be a whole number of "
+                f"{N_SLOTS}-slot recordings, got {self.episode_slots}"
+            )
+        # A fixed scenario is one 30 s recording. There is no honest way to
+        # stretch it over an hour -- tiling it would hand the agent an exactly
+        # periodic world to memorise -- so refuse rather than invent one.
+        if self.episode_slots > N_SLOTS and self._pool is None:
+            raise ValueError(
+                "episode_slots > N_SLOTS needs a `pool` to draw segments from; a "
+                "single fixed `scenario` is one 30 s recording and tiling it "
+                "would make the world exactly periodic"
+            )
+        # The per-slot log is the dominant memory term over a long mission
+        # (measured: ~20 MB/simulated hour of dict overhead alone, against ~80 MB
+        # for the grid). A window bounds it, at the cost of the artefact writer,
+        # which needs the whole episode -- `metrics.artefacts.write_run` refuses
+        # a windowed env rather than writing a log that silently isn't one.
+        self.log_window_slots = None if log_window_slots is None else int(log_window_slots)
+        if self.log_window_slots is not None and self.log_window_slots < 1:
+            raise ValueError(
+                f"log_window_slots must be >= 1 or None, got {self.log_window_slots}"
+            )
+        # Ablation support (D79): named blocks are replaced, per step, by a draw
+        # from their own recent history before the vector is assembled. This is
+        # a property of the *environment a checkpoint is scored in*, not of the
+        # checkpoint, which is why it lives here and not on a rung -- the same
+        # trained weights are run clean and corrupted, and only this differs.
+        #
+        # "Corrupted", not "permuted": permuting a width-1 block is the identity,
+        # so it would silently test nothing. Resampling from the block's own
+        # recent values preserves its marginal distribution while destroying the
+        # correspondence between the value and the state that produced it, which
+        # is the thing under test, and it means the same rule applies to a
+        # one-hot and to a scalar.
+        self._corrupt_obs_blocks = tuple(corrupt_obs_blocks)
+        unknown = [b for b in self._corrupt_obs_blocks if b not in _BLOCK_SPECS]
+        if unknown:
+            raise ValueError(
+                f"corrupt_obs_blocks names no such block(s): {unknown}; "
+                f"choose from {sorted(_BLOCK_SPECS)}"
+            )
+        not_in_layout = [
+            b for b in self._corrupt_obs_blocks if b not in OBS_LAYOUTS[obs_version]
+        ]
+        if not_in_layout:
+            raise ValueError(
+                f"corrupt_obs_blocks names {not_in_layout}, which obs_version="
+                f"{obs_version!r} does not carry -- corrupting a block the policy "
+                f"never sees would measure nothing"
+            )
+        self._corrupt_history: dict[str, list[np.ndarray]] = {}
+        # A separate stream, never `self.np_random`. Drawing the corruption from
+        # the env's own generator would shift the receiver's noise draws, so the
+        # clean and corrupted runs would no longer be the same episode and the
+        # paired comparison would stop being paired -- the exact failure mode
+        # `_seed_torch`'s docstring in `ladder.py` exists to prevent.
+        self._corrupt_rng = np.random.default_rng(0)
 
         self.action_space = spaces.Discrete(N_BANDS)   # one of the 36 bands, chosen every step()
         # Built from `_BLOCK_SPECS`/`OBS_LAYOUTS` (D30), not a literal shape --
@@ -929,6 +1242,39 @@ class ScanEnv(gym.Env):
 
     # ----------------------------------------------------------------- reset --
 
+    @property
+    def last_reward_obs(self) -> float:
+        """The most recent step's `reward_balance_obs` -- the deployable reward.
+
+        Exposed because online fine-tuning (D81) optimises *this*, not `step()`'s
+        return value: a gradient taken against a reward that reads `Z` describes
+        a simulator, not a receiver. `rfenv.rl.online.ObservableRewardWrapper`
+        is the only consumer.
+        """
+        return self._prev_reward_obs
+
+    def _build_grid(self, scenario: Scenario) -> TruthGrid:
+        """This episode's world: one recording, or several laid end to end (D80).
+
+        At the default length this is `TruthGrid.from_scenario(scenario)` and
+        nothing else -- the same call, consuming the RNG the same way -- so every
+        existing episode is bit-identical. The first segment is always the
+        scenario already chosen by `reset()`, so a seeded run's opening 30 s does
+        not depend on whether the mission is long.
+        """
+        if self.episode_slots <= N_SLOTS:
+            return TruthGrid.from_scenario(scenario)
+
+        n_segments = self.episode_slots // N_SLOTS
+        grids = [TruthGrid.from_scenario(scenario)]
+        for _ in range(n_segments - 1):
+            grids.append(
+                TruthGrid.from_scenario(Scenario.sample(self._pool, self.np_random))
+            )
+        return TruthGrid.stitch(
+            grids, name=f"mission:{n_segments}x{N_SLOTS}:{scenario.name}"
+        )
+
     def reset(self, seed=None, options=None):
         """Start an episode. `options={"scenario": ...}` overrides for this one.
 
@@ -939,11 +1285,22 @@ class ScanEnv(gym.Env):
         """
         super().reset(seed=seed)
 
+        # The ablation's own stream, reseeded per episode from the episode seed
+        # but drawn from a separate generator (D79). Derived from `seed` rather
+        # than from `self.np_random` so that not one bit of the receiver's noise
+        # sequence moves between a clean run and a corrupted one -- that is what
+        # makes the pair a paired comparison.
+        self._corrupt_history = {}
+        if seed is not None:
+            self._corrupt_rng = np.random.default_rng(
+                np.random.SeedSequence(entropy=int(seed), spawn_key=(0xC0BB1E,))
+            )
+
         scenario = (options or {}).get("scenario") or self._scenario
         if scenario is None:
             scenario = Scenario.sample(self._pool, self.np_random)
-        self.scenario = scenario
-        self.grid = TruthGrid.from_scenario(scenario)
+        self.grid = self._build_grid(scenario)
+        self.scenario = self.grid.scenario
         self.receiver = Receiver(self.gamma, self.sigma, rng=self.np_random)
         # -------------------------------------------------- observation-facing --
         # Every array below is per-band (length N_BANDS); _observation() reads
@@ -955,6 +1312,13 @@ class ScanEnv(gym.Env):
         self._last_slot = np.full(N_BANDS, -1, dtype=np.int64)     # slot of the last dwell per band, -1 = never -> staleness
         self._last_hit_slot = np.full(N_BANDS, -1, dtype=np.int64)  # slot of the last declared hit per band, -1 = never (episode log only, not in the observation)
         self._prev_action = -1        # last action taken; -1 sentinel so step() 1 always starts a fresh streak
+        # D79, the "v3" in-context blocks. Cold-start values, consistent with
+        # every other array here (D20): nothing has been earned and nothing has
+        # been declared, so 0.0 and False are the literal truth rather than a
+        # fill. `_prev_reward_obs` reaches the observation through
+        # `_normalise_prev_reward`, where 0.0 maps to exactly 0.5.
+        self._prev_reward_obs = 0.0
+        self._prev_hit = False
         self._camp_slots = 0          # length of the current same-band streak, in slots (reward arg only since D55)
         self._hit_streak = np.zeros(N_BANDS, dtype=np.int64)   # consecutive declared hits per band, across visits -> hit_streak (D67)
         # Never-measured reads as the noise floor -- quietest possible, not the
@@ -1015,7 +1379,7 @@ class ScanEnv(gym.Env):
   
         if not self.action_space.contains(action):
             raise ValueError(f"action {action} outside 0..{N_BANDS - 1}")
-        if self.t >= N_SLOTS:
+        if self.t >= self.episode_slots:
             raise RuntimeError("episode is over; call reset()")
         # The three arrays below are read by the reward, at `action` only, and
         # every one of them is measured BEFORE this dwell is applied -- so a
@@ -1062,7 +1426,16 @@ class ScanEnv(gym.Env):
             ) / SWEEP_SLOTS
         else:
             staleness = _SWEEPS_PER_EPISODE
-        self._staleness_array[action] = staleness
+        # D80: clipped to the declared ceiling, which is what keeps the matching
+        # observation block inside its Box on a mission longer than one recording
+        # -- a band untouched for a simulated hour would otherwise read 1674
+        # against a declared 13.95. At the default length the clip provably never
+        # binds (the most stale a band can be is (N_SLOTS-1)/SWEEP_SLOTS = 13.930,
+        # below the 13.953 ceiling), so this is bit-identical for every episode
+        # that ever ran. It has to be applied here *and* in `_observation_blocks`
+        # identically, or the reward stops pricing the number the agent sees,
+        # which is the promise D52 exists to keep.
+        self._staleness_array[action] = min(staleness, _SWEEPS_PER_EPISODE)
         dwell = self.receiver.dwell(self.grid, action, self.t)
 
         # This dwell's mean measured level -- S + noise, what the receiver's
@@ -1177,6 +1550,30 @@ class ScanEnv(gym.Env):
                         )
                     )
 
+        # D79: the observable twin of the reward, for the "v3" layout's
+        # `prev_reward` block. Computed from *this same* pre-dwell snapshot --
+        # the three arrays were written at `action` above and nothing touches
+        # them again this step, so the two values price the identical state and
+        # differ only in `Z` versus `Y`. Computed unconditionally, for every
+        # layout, matching `_observation_blocks`'s own rule of building
+        # everything and letting the layout select; it is pure, so doing so
+        # cannot perturb a run that never reads it.
+        #
+        # It is never added to `reward` and never reaches `total_reward`: this
+        # is what the policy *sees*, not what it is *paid*. A test pins that.
+        self._prev_reward_obs = float(
+            reward_balance_obs(
+                dwell,
+                newly,
+                self._camp_slots,
+                self._hit_rate_array,
+                self._visit_density_array,
+                self._staleness_array,
+                self._current_band,
+            )
+        )
+        self._prev_hit = bool(dwell.Y.any())
+
         # This task, extended by D78's follow-up (`priority_reward_bonus`):
         # band-priority reward, additive on top of whatever `self._reward_fn`
         # produced -- it does not touch `REWARDS` or `reward_gate.py`'s
@@ -1204,7 +1601,7 @@ class ScanEnv(gym.Env):
         # definition -- Turing's own `collection_time_s`, and the extent of the
         # world the grid describes -- not an artificial cap on an ongoing task.
         # There is no state beyond slot 600 to bootstrap a value from.
-        terminated = self.t >= N_SLOTS
+        terminated = self.t >= self.episode_slots
         return self._observation(), reward, terminated, False, self._info(dwell, newly)
 
     @property
@@ -1245,7 +1642,39 @@ class ScanEnv(gym.Env):
         two can never disagree.
         """
         blocks = self._observation_blocks()
+        if self._corrupt_obs_blocks:
+            blocks = self._corrupt(blocks)
         return np.concatenate([blocks[name] for name in self._obs_layout]).astype(np.float32)
+
+    def _corrupt(self, blocks: dict[str, np.ndarray]) -> dict[str, np.ndarray]:
+        """Replace the named blocks with a draw from their own recent history.
+
+        The ablation (D79). Each corrupted block keeps its own marginal -- the
+        values are ones this block really did take, in this episode -- but loses
+        any correspondence with the state that produced them. A policy that
+        conditions on the block degrades; a policy that ignores it does not
+        notice, which is the whole measurement.
+
+        Draws from `self._corrupt_rng`, never `self.np_random`, so the receiver's
+        noise sequence is bit-identical between the clean and corrupted runs of
+        the same seed. Without that the two are different episodes and the paired
+        test is meaningless.
+
+        The first observation of an episode has no history to draw from, so it
+        passes through uncorrupted -- one step out of several hundred, and the
+        alternative is inventing values from outside the block's own support.
+        """
+        out = dict(blocks)
+        for name in self._corrupt_obs_blocks:
+            history = self._corrupt_history.setdefault(name, [])
+            if history:
+                out[name] = history[self._corrupt_rng.integers(len(history))]
+            # Record the *true* value, so the pool stays the block's real
+            # distribution rather than a resampling of its own resamplings.
+            history.append(np.array(blocks[name], copy=True))
+            if len(history) > _CORRUPT_HISTORY_CAP:
+                del history[0]
+        return out
 
     def _observation_blocks(self) -> dict[str, np.ndarray]:
         """Every named block this environment knows how to build, keyed by name
@@ -1422,9 +1851,16 @@ class ScanEnv(gym.Env):
         # 1.0 now means "one full pass overdue". Never-visited reads the ceiling,
         # _SWEEPS_PER_EPISODE -- maximally stale, as before, and still at least
         # as attractive as any band last seen at t=0.
-        staleness = np.where(
-            self._last_slot >= 0,
-            (self.t - self._last_slot) / SWEEP_SLOTS,
+        # Clipped to that same ceiling (D80) so a mission longer than one
+        # recording cannot leave the declared Box; never binds at the default
+        # length. The identical clip is applied in `step()` where the reward's
+        # copy of this array is written -- the two must agree (D52).
+        staleness = np.minimum(
+            np.where(
+                self._last_slot >= 0,
+                (self.t - self._last_slot) / SWEEP_SLOTS,
+                _SWEEPS_PER_EPISODE,
+            ),
             _SWEEPS_PER_EPISODE,
         )
 
@@ -1487,12 +1923,26 @@ class ScanEnv(gym.Env):
             0.0, 1.0,
         )
 
+        # D79, the three in-context blocks. `prev_action` is all zeros before the
+        # first step -- deliberately *not* a one-hot at band 0, which is what
+        # `current_band` reads there and is a small untruth it inherited (it
+        # claims a dwell that never happened). The zero vector sits off the
+        # one-hot simplex, so no real action can produce it and the cold start is
+        # unambiguous without a magic value; the same argument the AoA blocks
+        # make for their (0.5, 0.5) centre decoding to a point off the unit
+        # circle. Thereafter this block equals `current_band` exactly -- see
+        # OBS_LAYOUTS["v3"] for why that redundancy is accepted rather than
+        # removed.
+        prev_action = np.zeros(N_BANDS, dtype=np.float64)
+        if self._prev_action >= 0:
+            prev_action[self._prev_action] = 1.0
+
         return {
             "hit_rate": hit_rate.astype(np.float32),
             "visit_density": visit_density.astype(np.float32),
             "staleness": staleness.astype(np.float32),
             "current_band": current_band.astype(np.float32),
-            "clock": np.array([self.t / N_SLOTS], dtype=np.float32),
+            "clock": np.array([self.t / self.episode_slots], dtype=np.float32),
             "measured_dbm": np.array([measured_dbm], dtype=np.float32),
             "hit_streak": hit_streak.astype(np.float32),
             "current_hit_streak": np.array([current_hit_streak], dtype=np.float32),
@@ -1502,6 +1952,11 @@ class ScanEnv(gym.Env):
             "aoa_cos": aoa_cos.astype(np.float32),
             "pulse_count": pulse_count.astype(np.float32),
             "band_priority": self._band_priority.astype(np.float32),
+            "prev_action": prev_action.astype(np.float32),
+            "prev_reward": np.array(
+                [_normalise_prev_reward(self._prev_reward_obs)], dtype=np.float32
+            ),
+            "prev_hit": np.array([float(self._prev_hit)], dtype=np.float32),
         }
 
     # ------------------------------------------------------------------ info --
@@ -1532,7 +1987,7 @@ class ScanEnv(gym.Env):
                 "pulses": dwell.pulses,
                 "newly_intercepted": sorted(newly or ()),
             })
-        if self.t >= N_SLOTS:
+        if self.t >= self.episode_slots:
             info["first_intercept"] = self.first_intercept
             info["detectable"] = dict(self.detectable)
             info["emitter_table"] = self.emitter_table()
@@ -1578,6 +2033,13 @@ class ScanEnv(gym.Env):
         render. The env accumulates rows and writes nothing; serialising them is
         `metrics.py`'s job.
         """
+        # D80: a bounded log for long missions. `None` (the default) keeps every
+        # row, which every existing caller relies on -- `metrics.artefacts` reads
+        # the whole episode back off it and checks its length.
+        if self.log_window_slots is not None:
+            overflow = len(self.log) + dwell.n_slots - self.log_window_slots
+            if overflow > 0:
+                del self.log[:overflow]
         for i in range(dwell.n_slots):
             slot = dwell.slot0 + i
             self.log.append({
@@ -1601,9 +2063,13 @@ class ScanEnv(gym.Env):
         Interception ratio, censored mean intercept time and coverage are printed
         together, never one alone -- a single scalar hides the entire problem, and
         both traps in §4 were measured on real data. Censoring is the part that is
-        easy to get wrong: an emitter never found counts at the **full episode
-        length**, not dropped from the average, because averaging over only the
-        emitters you did find rewards not looking.
+        easy to get wrong: an emitter never found counts at the **end of the 30 s
+        segment it lives in**, not dropped from the average, because averaging
+        over only the emitters you did find rewards not looking. On a single
+        recording -- every episode this repository has ever scored -- the segment
+        and the episode are the same 600 slots; they differ only on a stitched
+        mission (D80), where charging a segment-0 miss the whole hour would make
+        the figure incomparable with every other number here.
 
         The full comparison across schedulers, with distributions and repeated
         seeds, belongs to `metrics.py`. This is one episode's row of it.
@@ -1612,7 +2078,16 @@ class ScanEnv(gym.Env):
         delays = []
         for e, (on_e, _) in self.detectable.items():
             track = self.tracks.get(e)
-            delays.append((N_SLOTS if track is None else track["first"]) - on_e)
+            # An emitter never found is censored at the end of **its own 30 s
+            # segment**, not at the end of the mission (D80). On a single
+            # recording those are the same slot and this is bit-identical to the
+            # `N_SLOTS` it replaced. On a stitched one they are not: an emitter
+            # that only ever existed in segment 0 would otherwise be charged the
+            # whole hour, and the figure would stop being comparable with every
+            # 30 s number in this repository. A segment is the whole world an
+            # emitter can be found in, so it is the honest censoring horizon.
+            segment_end = ((on_e // N_SLOTS) + 1) * N_SLOTS
+            delays.append((segment_end if track is None else track["first"]) - on_e)
 
         return {
             "scenario": self.scenario.name,
@@ -1625,7 +2100,11 @@ class ScanEnv(gym.Env):
                 float(np.mean(delays)) * SLOT_S if delays else float("nan")
             ),
             "emitter_coverage": len(self.tracks) / n_e if n_e else float("nan"),
-            "avg_intercept_rate_per_s": len(self.tracks) / EPISODE_S,
+            # Per second of *this* episode, which is `EPISODE_S` at the default
+            # length and longer on a stitched mission (D80).
+            "avg_intercept_rate_per_s": (
+                len(self.tracks) / (self.episode_slots * SLOT_S)
+            ),
             "total_reward": self.total_reward,
             "n_detectable": n_e,
             "n_intercepted": len(self.tracks),

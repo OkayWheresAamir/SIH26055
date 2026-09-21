@@ -1,0 +1,86 @@
+4 rungs x 47 scenarios x 3 seeds = 564 episodes -> runs\d75_seed0_comparison
+  [  1/47] replay:train/stare/config_1073       11.6 s
+  [  2/47] replay:train/stare/config_1089       22.4 s
+  [  3/47] replay:train/stare/config_1144       31.7 s
+  [  4/47] replay:train/stare/config_1181       41.5 s
+  [  5/47] replay:train/stare/config_1366       52.8 s
+  [  6/47] replay:train/stare/config_1417       64.0 s
+  [  7/47] replay:train/stare/config_1431       75.4 s
+  [  8/47] replay:train/stare/config_1454       86.7 s
+  [  9/47] replay:train/stare/config_1521       97.8 s
+  [ 10/47] replay:train/stare/config_1534      110.1 s
+  [ 11/47] replay:train/stare/config_1631      121.4 s
+  [ 12/47] replay:train/stare/config_1635      130.8 s
+  [ 13/47] replay:train/stare/config_1710      140.1 s
+  [ 14/47] replay:train/stare/config_1776      149.9 s
+  [ 15/47] replay:train/stare/config_1864      165.3 s
+  [ 16/47] replay:train/stare/config_189       180.7 s
+  [ 17/47] replay:train/stare/config_1902      198.8 s
+  [ 18/47] replay:train/stare/config_1950      215.7 s
+  [ 19/47] replay:train/stare/config_1967      232.2 s
+  [ 20/47] replay:train/stare/config_2         246.4 s
+  [ 21/47] replay:train/stare/config_2027      260.1 s
+  [ 22/47] replay:train/stare/config_210       273.4 s
+  [ 23/47] replay:train/stare/config_2219      283.5 s
+  [ 24/47] replay:train/stare/config_2356      296.2 s
+  [ 25/47] replay:train/stare/config_2445      308.2 s
+  [ 26/47] replay:train/stare/config_252       320.2 s
+  [ 27/47] replay:train/stare/config_258       332.0 s
+  [ 28/47] replay:train/stare/config_269       343.5 s
+  [ 29/47] replay:train/stare/config_279       353.6 s
+  [ 30/47] replay:train/stare/config_384       363.5 s
+  [ 31/47] replay:train/stare/config_39        373.2 s
+  [ 32/47] replay:train/stare/config_391       383.1 s
+  [ 33/47] replay:train/stare/config_398       394.9 s
+  [ 34/47] replay:train/stare/config_418       406.4 s
+  [ 35/47] replay:train/stare/config_535       418.0 s
+  [ 36/47] replay:train/stare/config_59        431.2 s
+  [ 37/47] replay:train/stare/config_594       443.1 s
+  [ 38/47] replay:train/stare/config_610       454.2 s
+  [ 39/47] replay:train/stare/config_64        464.0 s
+  [ 40/47] replay:train/stare/config_658       473.7 s
+  [ 41/47] replay:train/stare/config_706       483.6 s
+  [ 42/47] replay:train/stare/config_719       495.3 s
+  [ 43/47] replay:train/stare/config_81        508.2 s
+  [ 44/47] replay:train/stare/config_92        520.7 s
+  [ 45/47] replay:train/stare/config_921       535.9 s
+  [ 46/47] replay:train/stare/config_940       552.9 s
+  [ 47/47] replay:train/stare/config_954       567.8 s
+  figure: runs\d75_seed0_comparison\pareto.png
+  figure: runs\d75_seed0_comparison\pareto_mean.png
+  figure: runs\d75_seed0_comparison\timeline_config_81.png
+  figure: runs\d75_seed0_comparison\discovery_config_81.png
+  figure: runs\d75_seed0_comparison\animation_config_81.gif
+  figure: runs\d75_seed0_comparison\timeline_config_2.png
+  figure: runs\d75_seed0_comparison\discovery_config_2.png
+  figure: runs\d75_seed0_comparison\animation_config_2.gif
+  figure: runs\d75_seed0_comparison\timeline_config_921.png
+  figure: runs\d75_seed0_comparison\discovery_config_921.png
+  figure: runs\d75_seed0_comparison\animation_config_921.gif
+
+rung  scheduler                     ratio          cTTI (s)          coverage   rate/s
+                           mean [p25 p75]    mean [p25 p75]    mean [p25 p75]     mean
+--------------------------------------------------------------------------------------------
+   2  round_robin        0.059 [0.054 0.059]  3.72 [2.94 4.73]  0.877 [0.828 0.920]    1.060
+   5  recency            0.112 [0.093 0.124]  2.73 [1.94 3.48]  0.911 [0.889 0.957]    1.109
+ 24a  lstm_v3_seed0      0.117 [0.090 0.137]  2.97 [2.06 3.62]  0.895 [0.882 0.946]    1.100
+ 24b  lstm_v2p_ctrl_seed0 0.118 [0.095 0.148]  2.25 [1.14 2.41]  0.910 [0.920 0.987]    1.152
+
+* reference line, not a scheduler: reads the truth grid (EVALUATION.md §5).
+
+paired against round_robin, per episode (same scenario, same seed, same grid)
+scheduler             ratio     cTTI     both
+----------------------------------------------
+recency              94.3%   75.9%   73.0%
+lstm_v3_seed0        95.7%   81.6%   79.4%
+lstm_v2p_ctrl_seed0    89.4%   88.7%   85.8%
+
+paired against recency, per episode (same scenario, same seed, same grid)   <- THE BAR
+scheduler             ratio     cTTI     both
+----------------------------------------------
+round_robin           5.7%   22.7%    2.1%
+lstm_v3_seed0        66.0%   47.5%   34.0%
+lstm_v2p_ctrl_seed0    70.9%   78.0%   62.4%
+
+
+artefacts: runs\d75_seed0_comparison

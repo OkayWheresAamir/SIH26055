@@ -1,0 +1,72 @@
+{
+  "run": "lstm_v3_seed0_online",
+  "description": "live training demo (interrupted by the user mid-rollout; the partial rollout was discarded)",
+  "checkpoint": "lstm_v3_seed0_online.zip",
+  "sha256": "71e3d43ba8a50d6362108151e9d345482b122c2aa91b3f8faff0e91cc096a688",
+  "algorithm": "RecurrentPPO",
+  "policy": "RecurrentActorCriticPolicy",
+  "reward": "reward_balance",
+  "observation_width": 436,
+  "action_space": "Discrete(36)",
+  "seed": 0,
+  "total_timesteps": 811008,
+  "hyperparameters": {
+    "n_steps": 8192,
+    "batch_size": 128,
+    "learning_rate": 1e-05,
+    "clip_range": 0.1,
+    "target_kl": 0.02,
+    "ent_coef": 0.01
+  },
+  "resolved": {
+    "learning_rate": 1e-05,
+    "gamma": 0.997,
+    "n_steps": 8192,
+    "batch_size": 128,
+    "n_epochs": 10,
+    "ent_coef": 0.01,
+    "gae_lambda": 0.95,
+    "vf_coef": 0.5,
+    "max_grad_norm": 0.5,
+    "device": "device(type='cuda')"
+  },
+  "argv": [
+    "C:\\Code\\sih\\SIH26055\\rfenv\\rl\\online.py",
+    "--checkpoint",
+    "runs/checkpoints/v3/lstm_v3_seed0/lstm_v3_seed0.zip",
+    "--episode-slots",
+    "72000",
+    "--timesteps",
+    "200000",
+    "--view",
+    "full",
+    "--device",
+    "auto",
+    "--run-name",
+    "lstm_v3_seed0_online",
+    "--description",
+    "live training demo"
+  ],
+  "command": "C:\\Code\\sih\\SIH26055\\venv\\Scripts\\python.exe -m rfenv.rl.online --checkpoint runs/checkpoints/v3/lstm_v3_seed0/lstm_v3_seed0.zip --episode-slots 72000 --timesteps 200000 --view full --device auto --run-name lstm_v3_seed0_online --description \"live training demo\"",
+  "git": {
+    "commit": "c78f70cd17395ce848c99a7a45f1bba1d8305061",
+    "dirty": true
+  },
+  "started_at": "2026-09-20T08:26:57Z",
+  "wall_clock_s": 66.4,
+  "versions": {
+    "python": "3.12.10",
+    "stable_baselines3": "2.9.0",
+    "torch": "2.14.0+cu126",
+    "gymnasium": "1.3.0",
+    "numpy": "2.5.3",
+    "sb3_contrib": "2.9.0"
+  },
+  "hardware": {
+    "os": "Windows-11-10.0.26200-SP0",
+    "machine": "AMD64",
+    "processor": "Intel64 Family 6 Model 165 Stepping 2, GenuineIntel",
+    "cpu_count": 12,
+    "cuda": "NVIDIA GeForce GTX 1650"
+  }
+}

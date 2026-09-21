@@ -1,0 +1,86 @@
+{
+  "run": "lstm_v3_bandenc_noprior_seed0",
+  "description": "D79 x D75-narrowed-v3, second seed: BandEncoderLstmPolicy on v3 (399-wide, prev_reward only), band_priority off (reset default, all-ones). Identical to lstm_v3_bandenc_noprior_seed2 (rung 26a) except seed -- confirming whether 26a's 66.7% beats-recency-both holds across seeds before building real priority on top of it.",
+  "checkpoint": "lstm_v3_bandenc_noprior_seed0_s12.zip",
+  "sha256": "80d31010fa9c283c8cfd436e0f8893a4411ac0d4c6efcccb179df8f3a1ccbd41",
+  "algorithm": "RecurrentPPO",
+  "policy": "BandEncoderLstmPolicy",
+  "reward": "reward_balance",
+  "observation_width": 399,
+  "action_space": "Discrete(36)",
+  "seed": 0,
+  "total_timesteps": 600000,
+  "hyperparameters": {
+    "ent_coef": 0.01,
+    "gamma": 0.997,
+    "n_steps": 8192,
+    "policy_kwargs": {
+      "lstm_hidden_size": 512
+    }
+  },
+  "resolved": {
+    "learning_rate": 0.0003,
+    "gamma": 0.997,
+    "n_steps": 8192,
+    "batch_size": 128,
+    "n_epochs": 10,
+    "ent_coef": 0.01,
+    "gae_lambda": 0.95,
+    "vf_coef": 0.5,
+    "max_grad_norm": 0.5,
+    "device": "device(type='cuda')"
+  },
+  "argv": [
+    "C:\\Code\\sih\\SIH26055\\rfenv\\rl\\recurrent_ppo.py",
+    "--policy",
+    "BandEncoderLstmPolicy",
+    "--reward",
+    "reward_balance",
+    "--obs-version",
+    "v3",
+    "--timesteps",
+    "800000",
+    "--seed",
+    "0",
+    "--checkpoint-freq",
+    "50000",
+    "--hyperparam",
+    "ent_coef=0.01",
+    "--hyperparam",
+    "gamma=0.997",
+    "--hyperparam",
+    "n_steps=8192",
+    "--hyperparam",
+    "policy_kwargs={\"lstm_hidden_size\": 512}",
+    "--checkpoint",
+    "runs/checkpoints/v3/lstm_v3_bandenc_noprior_seed0/lstm_v3_bandenc_noprior_seed0.zip",
+    "--run-name",
+    "lstm_v3_bandenc_noprior_seed0",
+    "--device",
+    "auto",
+    "--description",
+    "D79 x D75-narrowed-v3, second seed: BandEncoderLstmPolicy on v3 (399-wide, prev_reward only), band_priority off (reset default, all-ones). Identical to lstm_v3_bandenc_noprior_seed2 (rung 26a) except seed -- confirming whether 26a's 66.7% beats-recency-both holds across seeds before building real priority on top of it."
+  ],
+  "command": "C:\\Code\\sih\\SIH26055\\venv\\Scripts\\python.exe -m rfenv.rl.recurrent_ppo --policy BandEncoderLstmPolicy --reward reward_balance --obs-version v3 --timesteps 800000 --seed 0 --checkpoint-freq 50000 --hyperparam ent_coef=0.01 --hyperparam gamma=0.997 --hyperparam n_steps=8192 --hyperparam \"policy_kwargs={\\\"lstm_hidden_size\\\": 512}\" --checkpoint runs/checkpoints/v3/lstm_v3_bandenc_noprior_seed0/lstm_v3_bandenc_noprior_seed0.zip --run-name lstm_v3_bandenc_noprior_seed0 --device auto --description \"D79 x D75-narrowed-v3, second seed: BandEncoderLstmPolicy on v3 (399-wide, prev_reward only), band_priority off (reset default, all-ones). Identical to lstm_v3_bandenc_noprior_seed2 (rung 26a) except seed -- confirming whether 26a's 66.7% beats-recency-both holds across seeds before building real priority on top of it.\"",
+  "git": {
+    "commit": "47cd7493fc832161940cfff341d628c34e0f2903",
+    "dirty": true
+  },
+  "started_at": "2026-09-20T16:57:06Z",
+  "wall_clock_s": 7842.6,
+  "versions": {
+    "python": "3.12.10",
+    "stable_baselines3": "2.9.0",
+    "torch": "2.14.0+cu126",
+    "gymnasium": "1.3.0",
+    "numpy": "2.5.3",
+    "sb3_contrib": "2.9.0"
+  },
+  "hardware": {
+    "os": "Windows-11-10.0.26200-SP0",
+    "machine": "AMD64",
+    "processor": "Intel64 Family 6 Model 165 Stepping 2, GenuineIntel",
+    "cpu_count": 12,
+    "cuda": "NVIDIA GeForce GTX 1650"
+  }
+}
