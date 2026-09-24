@@ -4,9 +4,6 @@ An interactive RF environment for evaluating receiver scheduling strategies, gro
 Turing Synthetic Radar Dataset, working toward a learned (RL) scheduler that decides which
 frequency band a receiver should inspect next.
 
-This repository is a **fresh start**. See `CLAUDE.md` for why, and for the provenance rules
-that govern how anything gets added.
-
 ## Status
 
 Stage: **building the RF environment** (`docs/project/PROJECT_ARCHITECTURE.md` §10, build order
