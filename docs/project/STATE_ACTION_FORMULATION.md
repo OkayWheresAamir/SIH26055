@@ -58,21 +58,21 @@
 > **AMENDED 2026-09-14 — (11)** The 183-wide observation described in this document is now called
 > **"v1"**, and it is still the default (`ScanEnv(obs_version="v1")`, implicit) — every checkpoint
 > this document describes stays exactly as loadable as it was. A second, opt-in **"v2"** layout
-> also exists now (D30 resolved as D71): 326 wide, adding PulseWidth and AoA (`sin θ, cos θ`, gated
+> also exists now (D30 resolved as D75): 326 wide, adding PulseWidth and AoA (`sin θ, cos θ`, gated
 > on a declared hit) plus an upgrade of `measured_dbm` from one global last-dwell scalar to a
 > per-band block. §4's `109 → 146 → 183` progression does **not** gain a fourth entry in the same
 > line — 326 is a sibling of 183, not its successor. No checkpoint has trained on "v2" long enough
 > to report a result as this is written.
 >
 > **AMENDED 2026-09-14 — (12)** "v2" widened again the same day, on a direct request: **362 wide**,
-> not 326. `pulse_count` (D72) is a sixth "v2"-only block, `Y`-gated the same way PulseWidth/AoA
+> not 326. `pulse_count` (D76) is a sixth "v2"-only block, `Y`-gated the same way PulseWidth/AoA
 > are — the illumination count `C` (`truth.py`) at the loudest slot of the band's last declared hit,
 > `log1p`-normalised against the same reference `reward_balance_improved` already uses for `C` on
 > the reward side, clipped to `[0, 1]`. This reopens D29/D34's own exclusion of pulse count from the
 > observation; the reasoning for reopening it, and the one gap gating narrows but does not close
 > (`C` itself carries no gamma gate, so a hit's count can still include sub-threshold co-located
-> emitters), is recorded in `DECISIONS.md` D72. `known_observation_widths()` now returns
-> `{183, 362}`, not `{183, 326}`. The three "v2" checkpoint snapshots D71's own retrain had already
+> emitters), is recorded in `DECISIONS.md` D76. `known_observation_widths()` now returns
+> `{183, 362}`, not `{183, 326}`. The three "v2" checkpoint snapshots D75's own retrain had already
 > produced at 326 wide are now permanently unloadable — the same cost every past observation change
 > has carried, this time paid by "v2" rather than "v1".
 >
@@ -97,7 +97,7 @@
 > +0.019), so **the agent never learned to use `band_priority`** — the underperformance is a
 > training-difficulty story (control's input is constant, an easier problem), not a
 > misused-signal one. Single seed, not read as settled beyond this configuration.
-> **`DECISIONS.md` D74, `MEASURED`** — unlike (11)/(12) above, written up as `SETTLED` the day
+> **`DECISIONS.md` D78, `MEASURED`** — unlike (11)/(12) above, written up as `SETTLED` the day
 > they were built, this write-up was deliberately held until both the comparison and the ablation
 > existed. Not adopted, not promoted, code not removed. Full mechanism: `OBSERVATION_SPACE.md`
 > §2.4; numbers: `MODEL_COMPARISON.md` Width 398.
@@ -112,7 +112,7 @@
 > **Still never learned**, at roughly 4x the incentive and double the capacity/budget; 23a's lead
 > over its control (45.6%) is read as training-run variance, not the mechanism, since the one thing
 > actually measured — whether the signal is read — stayed "no" both times the question was asked.
-> Verdict unchanged: not adopted, not promoted, code not removed. Same `DECISIONS.md` D74 entry,
+> Verdict unchanged: not adopted, not promoted, code not removed. Same `DECISIONS.md` D78 entry,
 > extended, not a new decision number.
 >
 > **AMENDED 2026-09-19 — (15)** A fourth layout, **"v3"** (436 wide), and with it two changes to the

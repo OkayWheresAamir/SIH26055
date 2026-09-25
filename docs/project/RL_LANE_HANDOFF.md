@@ -60,17 +60,17 @@ six-rung ladder. **Delete them; this file is the source.**
 > **AMENDED 2026-09-14 — (11)** The 183-wide observation above is now called **"v1"**, and it is
 > still the default (`ScanEnv(obs_version="v1")`, implicit) — every checkpoint this document
 > describes stays exactly as loadable as it was. A second, opt-in **"v2"** layout also exists now
-> (D30 resolved as D71): 326 wide, adding PulseWidth and AoA (`sin θ, cos θ`, gated on a declared
+> (D30 resolved as D75): 326 wide, adding PulseWidth and AoA (`sin θ, cos θ`, gated on a declared
 > hit) plus an upgrade of `measured_dbm` from one global last-dwell scalar to a per-band block.
 > Pass `--obs-version v2` to any trainer to use it. `rfenv.rl.common.known_observation_widths()`
 > returns `{183, 326}` now, not a single number. No checkpoint has trained on "v2" long enough to
 > report a result as this is written.
 >
 > **AMENDED 2026-09-14 — (12)** "v2" widened again the same day: **362 wide**, not 326.
-> `pulse_count` (D72) — `C`, `Y`-gated, `log1p`-normalised, appended after `aoa_cos` — is a sixth
-> "v2"-only block, reopening D29/D34's exclusion of pulse count on a direct request; see D72 for the
+> `pulse_count` (D76) — `C`, `Y`-gated, `log1p`-normalised, appended after `aoa_cos` — is a sixth
+> "v2"-only block, reopening D29/D34's exclusion of pulse count on a direct request; see D76 for the
 > gap gating narrows but does not close. `known_observation_widths()` now returns `{183, 362}`. The
-> three "v2" snapshots D71's retrain had already produced (326-wide) are now permanently unloadable.
+> three "v2" snapshots D75's retrain had already produced (326-wide) are now permanently unloadable.
 >
 > **AMENDED 2026-09-18 — (13)** A third layout, **"v2p"**, now exists: "v2" plus one more 36-wide
 > block, `band_priority` (398 wide total) — a per-episode, exogenous priority signal (`1.0`
@@ -82,7 +82,7 @@ six-rung ladder. **Delete them; this file is the source.**
 > more diffuse overall (entropy 3.255 vs 3.051, 24.95 vs 18.95/36 bands touched); **a permutation
 > ablation (2026-09-19) settled it: the agent never learned to use `band_priority`** at all
 > (airtime correlates with true priority equally poorly real or shuffled, +0.018 vs +0.019) — a
-> training-difficulty story, not a misused-signal one. Single seed. **`DECISIONS.md` D74,
+> training-difficulty story, not a misused-signal one. Single seed. **`DECISIONS.md` D78,
 > `MEASURED`** — not adopted, not promoted, code not removed. Mechanism: `OBSERVATION_SPACE.md`
 > §2.4; numbers: `MODEL_COMPARISON.md` Width 398.
 >
@@ -91,7 +91,7 @@ six-rung ladder. **Delete them; this file is the source.**
 > **73.1%** beats-recency-both, the highest in this project — but a second permutation ablation found
 > the same "no": airtime correlates with true priority identically whether real or shuffled (+0.031
 > both ways). Still never learned; 23a's lead over its control read as training variance. Verdict
-> unchanged, same D74 entry.
+> unchanged, same D78 entry.
 >
 > **AMENDED 2026-09-19 — (15)** A fourth layout, **"v3"** (436 wide), plus two changes to the
 > episode itself. "v3" is "v2p" + `prev_action` (36, one-hot of the last band, all-zero before the

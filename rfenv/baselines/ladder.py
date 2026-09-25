@@ -35,7 +35,7 @@ class Rung:
     factory: Callable
     deployable: bool = True   # False = reads truth, reported as a reference line
     needs_grid: bool = False
-    obs_version: str = "v1"   # D30/D71: which ScanEnv(obs_version=...) this rung needs
+    obs_version: str = "v1"   # D30/D75: which ScanEnv(obs_version=...) this rung needs
     # This task: what this rung was itself trained/built with, so `compare.py` can
     # build its env correctly -- and, in `figures()`, decide whether to draw a
     # priority-marked animation -- without the caller having to pass matching
@@ -46,8 +46,8 @@ class Rung:
     priority_uniform: bool = False
     priority_coef: float = 0.5
     priority_n_bands: tuple[int, int] = (3, 6)
-    # D74 follow-up: the elevated value and the decaying per-slot occupancy
-    # term, both off/at-D74's-own-defaults unless a rung declares otherwise.
+    # D78 follow-up: the elevated value and the decaying per-slot occupancy
+    # term, both off/at-D78's-own-defaults unless a rung declares otherwise.
     priority_high: float = 3.0
     occupancy_coef: float = 0.0
     occupancy_decay_cap: float = 2.0
@@ -497,47 +497,47 @@ LADDER: tuple[Rung, ...] = (
             "400k out of 400k timesteps.",
             _recurrent_ppo_rung_factory(Path("runs/checkpoints/v1/lstm_balance_d67_treatment_seed2/lstm_balance_d67_treatment_seed2_s4.zip"))),
 
-    # D30/D71: first checkpoint trained on the 326-wide "v2" observation
+    # D30/D75: first checkpoint trained on the 326-wide "v2" observation
     # (PulseWidth/AoA/per-band amplitude). Otherwise mirrors
     # lstm_balance_d67_control_seed2 (rung 17) exactly -- same reward, split,
     # hyperparameters, seed -- so this is comparable to that run's own
     # snapshots. Only usable against a ScanEnv built with obs_version="v2";
     # require_loadable() (common.py) now accepts either known width, but the
     # env itself must still match or predict() raises mid-episode.
-    Rung("lstm_balance_v2_control_seed2_100k_400k", "20a", "Recurrent PPO (reward_balance, D71 v2 obs, seed 2, 100k)",
+    Rung("lstm_balance_v2_control_seed2_100k_400k", "20a", "Recurrent PPO (reward_balance, D75 v2 obs, seed 2, 100k)",
             "Ours. v2-observation control run, seed 2, 100k out of 400k timesteps. "
             "Needs ScanEnv(obs_version='v2').",
             _recurrent_ppo_rung_factory(Path("runs/checkpoints/v2/lstm_balance_v2_control_seed2/lstm_balance_v2_control_seed2_s1.zip")),
             obs_version="v2"),
 
-    Rung("lstm_balance_v2_control_seed2_200k_400k", "20b", "Recurrent PPO (reward_balance, D71 v2 obs, seed 2, 200k)",
+    Rung("lstm_balance_v2_control_seed2_200k_400k", "20b", "Recurrent PPO (reward_balance, D75 v2 obs, seed 2, 200k)",
             "Ours. v2-observation control run, seed 2, 200k out of 400k timesteps. "
             "Needs ScanEnv(obs_version='v2').",
             _recurrent_ppo_rung_factory(Path("runs/checkpoints/v2/lstm_balance_v2_control_seed2/lstm_balance_v2_control_seed2_s2.zip")),
             obs_version="v2"),
 
-    Rung("lstm_balance_v2_control_seed2_300k_400k", "20c", "Recurrent PPO (reward_balance, D71 v2 obs, seed 2, 300k)",
+    Rung("lstm_balance_v2_control_seed2_300k_400k", "20c", "Recurrent PPO (reward_balance, D75 v2 obs, seed 2, 300k)",
             "Ours. v2-observation control run, seed 2, 300k out of 400k timesteps. "
             "Needs ScanEnv(obs_version='v2').",
             _recurrent_ppo_rung_factory(Path("runs/checkpoints/v2/lstm_balance_v2_control_seed2/lstm_balance_v2_control_seed2_s3.zip")),
             obs_version="v2"),
 
-    # D72: the seed-2 control/treatment pair above (rung 20a-c) trained on the
+    # D76: the seed-2 control/treatment pair above (rung 20a-c) trained on the
     # 326-wide "v2" that predates pulse_count and never finished (385,024/400,000
-    # steps) -- D72's width bump to 362 made those three snapshots permanently
+    # steps) -- D76's width bump to 362 made those three snapshots permanently
     # unloadable (`known_observation_widths()` no longer contains 326 at all),
     # so this is not a continuation of that run, it is a fresh retrain on the
-    # widened layout. Mirrors D71's own pairing: same split, hyperparameters
+    # widened layout. Mirrors D75's own pairing: same split, hyperparameters
     # (ent_coef=0.01, gamma=0.997, n_steps=8192) and seed (2), only the reward
     # differs between the two rungs below, per D65's paired-comparison method.
-    Rung("lstm_balance_v2_d72_seed2_400k", "20d", "Recurrent PPO (reward_balance, D72 v2 obs, seed 2, 400k)",
-            "Ours. D72-observation (362-wide, pulse_count added) control run, seed 2, "
+    Rung("lstm_balance_v2_d72_seed2_400k", "20d", "Recurrent PPO (reward_balance, D76 v2 obs, seed 2, 400k)",
+            "Ours. D76-observation (362-wide, pulse_count added) control run, seed 2, "
             "401,408 out of 400k timesteps, completed in one uninterrupted run. "
             "Needs ScanEnv(obs_version='v2').",
             _recurrent_ppo_rung_factory(Path("runs/checkpoints/v2/lstm_balance_v2_d72_seed2/lstm_balance_v2_d72_seed2.zip")),
             obs_version="v2"),
 
-    Rung("lstm_balance_improved_v2_d72_seed2_400k", "21a", "Recurrent PPO (reward_balance_improved_v2, D72 v2 obs, seed 2, 400k)",
+    Rung("lstm_balance_improved_v2_d72_seed2_400k", "21a", "Recurrent PPO (reward_balance_improved_v2, D76 v2 obs, seed 2, 400k)",
             "Ours. Paired against lstm_balance_v2_d72_seed2_400k (rung 20d) -- same "
             "split, hyperparameters and seed, only the reward differs (D65's "
             "methodology). 404,800 out of 400k timesteps; interrupted by two laptop "
@@ -548,7 +548,7 @@ LADDER: tuple[Rung, ...] = (
             obs_version="v2"),
 
     # This task: band-priority reward, additive on top of reward_balance, not a
-    # new REWARDS candidate (env.py's step()). New "v2p" layout (398-wide, D71's
+    # new REWARDS candidate (env.py's step()). New "v2p" layout (398-wide, D75's
     # "v2" plus band_priority) -- both rungs need ScanEnv(obs_version="v2p").
     # `band_priority`/`priority_uniform`/`priority_coef`/`priority_n_bands` are
     # each set below, per rung (`Rung`'s own fields, added this task) -- so
@@ -562,7 +562,7 @@ LADDER: tuple[Rung, ...] = (
     Rung("lstm_balance_v2p_priority_seed2_400k", "22a", "Recurrent PPO (reward_balance, v2p+priority, seed 2, 400k)",
             "Ours. Treatment arm: band_priority=True, priority_uniform=False -- 3-6 of "
             "36 bands elevated to priority 3.0 each episode, real signal to condition "
-            "on. Same split/hyperparameters/seed as the D72 pair (rungs 20d/21a). "
+            "on. Same split/hyperparameters/seed as the D76 pair (rungs 20d/21a). "
             "Needs ScanEnv(obs_version='v2p', band_priority=True).",
             _recurrent_ppo_rung_factory(Path("runs/checkpoints/v2p/lstm_balance_v2p_priority_seed2/lstm_balance_v2p_priority_seed2.zip")),
             obs_version="v2p", band_priority=True, priority_uniform=False,
@@ -580,7 +580,7 @@ LADDER: tuple[Rung, ...] = (
             obs_version="v2p", band_priority=True, priority_uniform=True,
             priority_coef=0.5, priority_n_bands=(3, 6)),
 
-    # D74 follow-up: stronger discovery bonus (priority_coef 0.5->2.0,
+    # D78 follow-up: stronger discovery bonus (priority_coef 0.5->2.0,
     # priority_high 3.0->5.0), plus the new decaying occupancy term
     # (priority_reward_bonus, env.py) -- occupancy_coef/occupancy_decay_cap
     # are Rung fields too now, resolved by compare.py the same automatic way
@@ -588,9 +588,9 @@ LADDER: tuple[Rung, ...] = (
     # Rung field -- RecurrentPPO.load() reconstructs the policy architecture
     # from the checkpoint's own saved policy_kwargs, nothing to declare here.
     Rung("lstm_balance_v2p_priority_strong_seed2_800k", "23a", "Recurrent PPO (reward_balance, v2p+priority strengthened, seed 2, 800k)",
-            "Ours. Treatment arm, D74 follow-up: priority_coef=2.0, priority_high=5.0, "
+            "Ours. Treatment arm, D78 follow-up: priority_coef=2.0, priority_high=5.0, "
             "occupancy_coef=0.3, occupancy_decay_cap=6.0, 512-wide LSTM (doubled), "
-            "800k timesteps (doubled) -- testing whether D74's null result was a "
+            "800k timesteps (doubled) -- testing whether D78's null result was a "
             "signal-strength/capacity/budget limitation. Paired against "
             "lstm_balance_v2p_uniform_strong_seed2_800k (rung 23b). "
             "Needs ScanEnv(obs_version='v2p', band_priority=True).",

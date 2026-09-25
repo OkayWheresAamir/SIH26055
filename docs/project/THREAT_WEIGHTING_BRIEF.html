@@ -24,344 +24,293 @@ blockquote { border-left: 2.5pt solid #17181a; background-color: #f7f7f5;
              padding: 2.5mm 4mm; margin: 0 0 3.5mm; }
 hr { border-top: 0.5pt solid #d5d5cf; margin: 5mm 0; }
 a { color: #17181a; }
-</style></head><body><h1>Threat-Priority Scheduling — Brief</h1>
-<p><strong>For the RL lane. Written 2026-09-11.</strong> One change: the scheduler accepts a priority input and
-learns to use it. No environment change, nothing frozen moves.</p>
-<p><strong>Owner:</strong> Aamir. PDF: <code>python -m scripts.md2pdf docs/project/THREAT_WEIGHTING_BRIEF.md</code>.</p>
+</style></head><body><h1>Threat-Priority Scheduling — Implementation Brief</h1>
+<p><strong>For the RL lane. Rewritten 2026-09-11 after the §2 gate was run.</strong> One change to the
+scheduler: it accepts a priority input and learns to use it. Nothing frozen moves.</p>
+<p><strong>Owner:</strong> Aamir. Decision: <strong>D70</strong>. PDF: <code>python -m scripts.md2pdf docs/project/THREAT_WEIGHTING_BRIEF.md</code>.</p>
 <blockquote>
 <p>Outranked by <code>SIH26055_PROBLEM_STATEMENT.md</code>, <code>DECISIONS.md</code>, <code>ENVIRONMENT_SPEC.md</code>,
 <code>EVALUATION.md</code>. Where this and those disagree, those win.</p>
 </blockquote>
 <hr />
-<h2>0. What is ours and what is not</h2>
-<p><strong>Threat prioritisation is not our idea. It is in the problem statement.</strong> Any team that reads the
-Background will propose it. Stating it as our contribution invites the obvious question and we
-lose the slide.</p>
-<p>What is measurably ours is narrower and stronger. The word <em>threat</em> appears in the PS <strong>exactly
-once</strong> — in the Background, as the motivation. The <strong>Detailed Description</strong>, which is the actual
-specification, never says it again: its nine figures of merit have no threat term and its
-objective sentence is <em>"minimize intercept time and ensure a high interception rate."</em>
-<code>EVALUATION.md</code> has <strong>0 occurrences</strong> (both counted 2026-09-11 by <code>grep -c -i threat</code>).</p>
-<p><strong>DRDO names the failure in paragraph one and then measures you on something else.</strong> Every team
-will optimise the specified metrics and inherit the failure the Background describes. Three things
-close that loop, and all three are ours:</p>
+<h2>0. Status: the gate passed, and it changed the design</h2>
+<p>The two tests that could have killed this ran on 2026-09-11 against all 47 train configs.
+<strong>The idea survives. The version in the previous draft does not.</strong></p>
 <table>
 <thead>
 <tr>
 <th></th>
-<th>Ours</th>
-<th>Why it is not obvious</th>
+<th>Measured</th>
+<th>Consequence</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td><strong>The negative result</strong></td>
-<td>Threat <strong>cannot</strong> be computed at the scan-scheduler layer. Best band-level AUC <strong>0.617</strong>; "hard to intercept" <strong>0.514</strong>; "busiest bands" <strong>inverted</strong>. §2 has the mechanism.</td>
-<td>The default assumption — "the agent will learn which emitters matter" — is false here, and we are the only ones who will have measured it. It makes the architecture <em>forced</em>, not chosen.</td>
+<td>HIGH share of detectable emitters</td>
+<td><strong>653 / 1704 = 38.3%</strong></td>
+<td>Matches the 38.5% previously recorded (within 3 emitters).</td>
 </tr>
 <tr>
-<td><strong>The interface</strong></td>
-<td>One priority vector <code>p</code>, default uniform. An operator and a downstream categoriser drive <strong>the same code path</strong>.</td>
-<td>It is what makes autonomous-by-default and operator-steerable one system instead of a mode switch.</td>
+<td>Bands holding <strong>both</strong> a HIGH and a LOW emitter</td>
+<td><strong>29.1%</strong> of 772 occupied bands</td>
+<td>The stated kill condition ("most") <strong>does not fire</strong>.</td>
 </tr>
 <tr>
-<td><strong>The metric</strong></td>
-<td>The §4 scorecard reported <strong>split by threat class</strong>.</td>
-<td>Nobody's scorecard has this, including the PS's own. Without it the Background sentence is unmeasurable and the claim is decoration.</td>
+<td>Bands where <code>p</code> = HIGH under <strong>max over contributors</strong></td>
+<td><strong>77.8%</strong></td>
+<td><strong>This is the real failure.</strong> Median config: 14 of 18 occupied bands. <code>p</code> is near-uniform on the bands that matter.</td>
+</tr>
+<tr>
+<td>Band priority as an emitter classifier (max rule)</td>
+<td>precision <strong>0.452</strong> vs base rate <strong>0.383</strong></td>
+<td>A 7 pp lift. Not worth a retrain.</td>
+</tr>
+<tr>
+<td>Same, with <strong>share-weighted</strong> priority</td>
+<td>ρ <strong>0.92–0.97</strong> vs 0.54; threat-density lift <strong>2.22×</strong> at 10–25% airtime, <strong>1.69×</strong> at 50%, against a flat <strong>1.17×</strong> for the max rule</td>
+<td><strong>This is the design.</strong></td>
 </tr>
 </tbody>
 </table>
-<p><strong>On autonomy, precisely.</strong> The system is autonomous: the priority arrives without a human in the
-normal case, from the processing unit's threat library. That library is a <strong>lookup on a
-fingerprint, not an inference engine</strong> — analysts assign the ratings offline, the system matches
-PDWs against the table at runtime. It is why it works where §2 failed: it reads the full PDW
-stream, which we deliberately do not have (D12/D19 scoped deinterleaving out long before this idea
-existed).</p>
-<p><strong>We are not claiming to have built that categoriser, and we are not claiming the scheduler infers
-threat</strong> — §2 is us proving it cannot. Nobody building a scan scheduler builds the whole radar.
-The claim is that the scheduler is the one box nobody ever wired the library to, and that a human
-can step into the same input when they know something the library does not.</p>
-<p>The one-line version: <strong>the doctrine is supplied offline; the execution is autonomous.</strong></p>
-<h2>1. The gap</h2>
-<p>A modern ES system already knows which emitters are dangerous. The threat library sits in the
-processing unit; the operator has a mission brief. <strong>None of it reaches the scan scheduler.</strong> The
-scheduler sweeps a schedule computed before the mission and spends the same 50 ms on a weather
-radar as on a fire-control radar.</p>
-<p>The problem statement says exactly this:</p>
-<blockquote>
-<p><em>"Open loop strategies focus only on this requirement and may lose time to nonthreatening
-emitters by not giving time to new or threatening ones."</em></p>
-</blockquote>
-<p><strong>We build the scheduler that gets told.</strong></p>
-<h2>2. What we are and are not claiming</h2>
-<p><strong>We do not define threat, and we do not infer it.</strong> Threat is doctrine plus mission context — a
-fire-control radar is dangerous because of what it is attached to, not because of anything in its
-pulse train. It is supplied to us.</p>
-<p>That is not a hedge; it is measured. Two attempts and both failed:</p>
+<p><strong>So: <code>p</code> is a graded, share-weighted quantity per band. Not a 3-bucket max.</strong> That was
+listed as an optional refinement in the previous draft; it is now the specification.</p>
+<p><strong>Quote the lift with its airtime fraction.</strong> The 2.22× is partly arithmetic: 271 of 772 bands
+hold <em>only</em> HIGH emitters, so any top-25% cut is entirely pure-HIGH and scores 1.000 by
+construction. The claim that survives cleanly is <strong>a graded priority can rank bands and a
+three-bucket one cannot</strong> — 334 distinct values against 3, and a flat 1.17× for the max rule at
+every airtime fraction because 77.8% of bands tie at its top value.</p>
+<h3>Why it matters: the scheduler has a measured threat bias, and it grows</h3>
+<p>Scored on the 47 stare replays × 3 seeds, censored intercept time split by threat class
+(5,112 emitter observations per scheduler). <strong>This is brief step 2 — now done.</strong></p>
 <table>
 <thead>
 <tr>
-<th>Attempt</th>
-<th>Result</th>
+<th>Scheduler</th>
+<th>HIGH</th>
+<th>MEDIUM</th>
+<th>LOW</th>
+<th>HIGH penalty</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td>Infer threat from what the receiver observes</td>
-<td><strong>Best band-level AUC 0.617</strong> across hit rate, mean/max level, level std, intermittency (772 occupied band-pairs). Mechanism: <code>S = max</code> over contributors (D25) — a 0.3 kW fire-control radar sharing a band with a 750 kW weather radar never reaches that band's statistics.</td>
+<td>Round-robin (floor)</td>
+<td>3.94 s · cov 0.88</td>
+<td>4.12 s · cov 0.88</td>
+<td>3.96 s · cov 0.88</td>
+<td><strong>−0.01 s</strong></td>
 </tr>
 <tr>
-<td>Use "hard to intercept" as a proxy</td>
-<td><strong>AUC 0.514 for predicting HIGH threat.</strong> Difficulty is driven by transmit power (<code>r = +0.485</code>), not threat. Not by range (<code>r = −0.051</code>), which was the first alternative ruled out.</td>
+<td>Recency (the bar)</td>
+<td>2.84 s · cov 0.92</td>
+<td>2.93 s · cov 0.91</td>
+<td>2.47 s · cov 0.94</td>
+<td><strong>+0.37 s</strong></td>
 </tr>
 <tr>
-<td>"Threat = the busiest bands"</td>
-<td><strong>Inverted.</strong> Threat fraction by band-density quartile runs 0.379 / 0.227 / 0.116 / 0.091, sparsest to busiest.</td>
+<td><strong>NARADA RL (rung 17c)</strong></td>
+<td>2.53 s · cov 0.92</td>
+<td>2.34 s · cov 0.94</td>
+<td>1.86 s · cov 0.96</td>
+<td><strong>+0.66 s</strong></td>
 </tr>
 </tbody>
 </table>
-<p><strong>So threat weighting always comes from outside the scheduler.</strong> Claiming a self-categorising
-system would be false and a domain reviewer will find it in one question.</p>
-<p><strong>Where it comes from in a real system</strong> — ADITI 4.0's own decomposition (transcript p.2): <em>"the
-system basically consists of antenna, receiver, </em><em>processing unit, database</em><em>…"</em> Categorisation is
-a processing-unit function over the full PDW stream. We are a different box, and the thing ADITI
-asks for between them is the <em>"feedback based decision making mechanism"</em> — which is this.</p>
-<h2>3. What gets built</h2>
+<p><strong>Blind round-robin is fair; every adaptive scheduler is not, and ours is the worst offender.</strong>
+It reaches HIGH-threat emitters 0.66 s later than LOW ones and misses 4 pp more of them entirely.
+Mechanism, from two earlier measurements: adaptive schedulers chase activity, and threat here runs
+<em>inverse</em> to activity — threat fraction by band-density quartile 0.785 / 0.574 / 0.459 / 0.350
+sparsest-to-busiest, HIGH-class median power 12 kW against MEDIUM's 20 kW. Quiet, sparse,
+dangerous.</p>
+<p><strong>This is the justification for the whole feature, and it is our own result, not an argument.</strong>
+It also sets the target: the retrain must shrink that penalty without losing the D71 headline.
+<em>Caveat: it uses the §5 example threat library, which is our judgement on 68 radar names.</em></p>
+<hr />
+<h2>1. What we claim, and what we do not</h2>
+<p><strong>We do not define threat and we do not infer it.</strong> Threat is doctrine plus mission context.
+Measured, the receiver cannot recover it: across 772 occupied band-pairs, against the narrow
+weapon-directing class, <strong>every band-level observable is within 0.060 of a coin flip</strong>
+(max level 0.485, mean level 0.497, hit rate 0.560, intermittency 0.472). So priority arrives
+from outside. That is forced by measurement, not chosen for convenience.</p>
+<p><strong>State the scope precisely.</strong> The mechanism is <code>S = max</code> over contributors plus one declaration
+per cell — which <code>receiver.py</code> itself labels a modelling choice with a per-pulse version deferred,
+and D28 calls <em>"an implementation choice taken inside this design (routine, not gated)."</em>
+Say <strong>"in this architecture"</strong>, never <em>"at the scan-scheduler layer"</em> as a general truth. A
+domain reviewer will know that a real receiver sees the quiet pulse; what it cannot do without
+deinterleaving (out of scope, D12/D19) is <em>attribute</em> it.</p>
+<p><strong>The interface is not novel, and we say so first.</strong> Two papers already in
+<code>docs/reference/scheduling/</code> have it:</p>
+<ul>
+<li><strong>Köksal</strong> (<code>optimumsearch.pdf</code>, ch. 6, pp. 85/92/106) — <em>"assign different priority to each
+  frequency band"</em>, operator-set, with the tradeoff named. <strong>Per band, exactly our object.</strong></li>
+<li><strong>Dutertre</strong>, RTSS'02 (<code>Dynamic Scan Scheduling.pdf</code>, pp. 1–2, 8) — per-emitter-type weights
+  that <em>"vary during a mission"</em>, entering as <em>"a reward received whenever an emitter of type e
+  is detected"</em>; a uniform-weight control arm; and a scorecard split Critical / Noncritical.</li>
+</ul>
+<p>D70's sentence "no scan-scheduling paper in the reference set has it" is <strong>false</strong>, and names
+Köksal among the exonerated. It needs correcting. <strong>What is genuinely ours:</strong> both papers assume
+<em>disjoint</em> bands and an a-priori emitter table; our bands overlap by half (D3) and our PS says
+<em>"in the absence of prior reliable intelligence."</em> Nobody asked whether the band is a valid unit
+for priority under overlap. <strong>The measurement in §0 is the contribution — not the feature.</strong></p>
+<hr />
+<h2>2. What gets built</h2>
 <p>The scheduler takes a per-band priority vector <code>p ∈ ℝ³⁶</code>.</p>
-<pre><code>p = 1 everywhere   -&gt;  the plain PS objective. The default. Nothing changes.
-p weighted         -&gt;  the scheduler re-plans around what matters this mission.
+<pre><code>p = 1 everywhere  -&gt;  the plain PS objective. The default. Nothing changes.
+p graded          -&gt;  the scheduler re-plans around what matters this mission.
 </code></pre>
-<p><strong><code>p</code> has two sources and they are the same code:</strong> a human operator, or a downstream categoriser.
-That is what makes "autonomous by default, supervised when a human has something to add" one
-system rather than two.</p>
+<p><strong>How <code>p</code> is computed (from a threat library, offline):</strong></p>
+<pre><code>p[b] = Σ_e  w(class of e) · share_e(b)      over emitters e known to occupy band b
+       where share_e(b) = e's illuminations in band b / all illuminations in band b
+       and   w = {HIGH 1.0, MEDIUM 0.5, LOW 0.0}, then rescaled so 1.0 = &quot;ordinary&quot;
+</code></pre>
+<p>Three things this fixes that the max rule did not: 334 distinct values instead of 3; it degrades
+gracefully as band mixing rises; and it satisfies D55 (a block pinned at its ceiling on 77.8% of
+bands is D55's complaint with the sign flipped).</p>
 <p><strong>How it enters:</strong></p>
 <ol>
-<li><code>p</code> is concatenated to the observation: <strong>146 → 182</strong>.</li>
-<li>During training <code>p</code> is <strong>sampled per episode</strong> — sometimes uniform, sometimes weighted — so the
-   policy learns to use it rather than memorising one setting.</li>
-<li>The reward multiplies per-emitter discovery credit by <code>p[band]</code>. Weight <strong>discovery only</strong>, not
-   per-slot occupancy: a weighted per-slot term pays repeatedly for camping on one emitter, which
-   is D53's failure mode with a new coefficient on it. <code>newly</code> fires once per <code>(emitter, band)</code>
-   pair (D51), which is the right granularity.</li>
+<li><strong>Observation: 183 → 219.</strong> (D67 took the base vector to 183; the previous draft's "146 → 182"
+   is stale.) Scale so <code>p = 1.0</code> means ordinary, per D55.</li>
+<li><strong>Sampled per episode</strong> during training so the policy learns to use <code>p</code> rather than memorise one
+   setting. The sampling distribution is <strong>open</strong> — fix it before the retrain (§4).</li>
+<li><strong>Reward: a new term, then a re-screen.</strong> Weight <strong>discovery credit only</strong>, never per-slot
+   occupancy — a per-slot threat term pays repeatedly for camping, which is D53's failure mode with
+   a new coefficient on it. <code>newly</code> fires once per <code>(emitter, band)</code> pair (D51), so it is bounded
+   and cannot.</li>
 </ol>
-<p><strong>This is a retrain and every existing checkpoint dies</strong>, as they did at D49 and again at D55.
-That is the cost; it is not a bolt-on.</p>
-<h3>3.1 Why priority is a post-discovery problem</h3>
-<p>The PS separates two categories in one sentence: time should go to <em>"new </em><em>or</em><em> threatening"</em>
-emitters. <strong>New</strong> means not yet found. <strong>Threatening</strong> means already found and identified. You
-cannot know an emitter is a fire-control radar until you have intercepted it, so threat priority is
-inherently about <em>what you do with airtime after discovery</em>.</p>
-<p>That is not a hole in the idea, it is the mechanism, and it is the reason this fits the machinery
-we already have: <strong>"new vs threatening" is D14's explore/exploit tension with a threat term on the
-exploit side.</strong> The scheduler was always trading breadth against depth; threat is what tells it
-which depth is worth buying.</p>
-<p>So <code>p</code> is loaded at episode start and it may also move during the episode as emitters are
-identified. Both are the same interface.</p>
-<p><strong>One bounded question for Aamir, and it is the only open item here.</strong> The in-episode update means
-the observation learns something truth-side — that the emitter just intercepted is HIGH. <strong>D29 says
-the reward may read truth and the observation may not.</strong> The case for allowing it: this is not
-leakage but a stand-in for the processing-unit function we abstracted away, and it reveals only
-what a real ES system genuinely knows at that instant. Episode-start <code>p</code> has no such question and
-can be built today.</p>
-<h2>4. The demo, which is the deliverable</h2>
-<p>Operator marks bands as priority. The waterfall re-plans in front of the judge. The metrics move.</p>
-<p>A slide describing this architecture is worth very little. Thirty seconds of it running is the
-thing they remember.</p>
-<h2>5. How it gets scored, and the example threat library</h2>
-<p>Report the <code>EVALUATION.md</code> §4 table <strong>split by threat class</strong>, alongside the pooled table — never
-instead of it. The nine PS figures of merit are reported unchanged.</p>
-<p>For the demo and the scoring we need <em>an</em> instance of a threat library.
-<code>metadata/transmitters/*/.attrs['function']</code> names all 68 emitter types, classified the way a real
-RWR would:</p>
-<table>
-<thead>
-<tr>
-<th>class</th>
-<th>contents</th>
-<th>n</th>
-<th>share</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><strong>HIGH</strong></td>
-<td>fire control, engagement, missile guidance, counter-battery (it is locating <em>your</em> guns), LPI</td>
-<td>656</td>
-<td>38.5%</td>
-</tr>
-<tr>
-<td><strong>MEDIUM</strong></td>
-<td>air-defence search, early warning, surveillance, maritime patrol</td>
-<td>775</td>
-<td>45.5%</td>
-</tr>
-<tr>
-<td><strong>LOW</strong></td>
-<td>weather, marine navigation, airport/ground movement, SAR, ground-penetrating</td>
-<td>273</td>
-<td>16.0%</td>
-</tr>
-</tbody>
-</table>
-<p><strong>Label this as an example, not as our threat model.</strong> It is domain knowledge applied to a dataset
-field, it goes in code before any scheduler is scored against it, and it never changes afterwards.
-A weighting defined once results are visible is not a weighting — this repository has withdrawn
-four figures for exactly that failure (D33, D41, and two in the 2026-09-03 audit).</p>
-<h2>6. Order of work</h2>
-<p><strong>Ordered so the cheapest thing that could kill the idea runs first.</strong> Steps 0 and 1 need no agent
-and no checkpoint — <code>runs/checkpoints/</code> is empty here and every checkpoint died at D49/D55 anyway.</p>
+<blockquote>
+<p><strong>Read this before writing the reward.</strong> <code>reward_balance</code> — the only D62-passing candidate and
+the current <code>DEFAULT_REWARD</code> — <strong>does not read <code>newly</code> at all</strong> (D53 records this; only
+<code>reward_explore</code> consumes it). So this is <em>adding a term</em>, not multiplying an existing one, and
+<strong>the result must be re-run through <code>python -m rfenv.reward_gate</code>.</strong> Measured: a
+<code>+2.0 · p[b] · len(newly)</code> term is <strong>33–59% of total episode reward</strong> — large enough to disturb
+the rung ordering D62 exists to protect. Start at a coefficient near <strong>0.5</strong> and screen upward.</p>
+</blockquote>
+<hr />
+<h2>3. Order of work</h2>
 <table>
 <thead>
 <tr>
 <th></th>
 <th>Do</th>
 <th>Cost</th>
-<th>Kills the idea if…</th>
+<th>Kill condition</th>
 </tr>
 </thead>
 <tbody>
 <tr>
 <td><strong>0</strong></td>
-<td><strong>P2 — the band-mixing rate.</strong> For every occupied band across the 47 configs, the threat classes of its contributors.</td>
-<td>One hour, HDF5 only.</td>
-<td>Most occupied bands hold both a HIGH and a LOW emitter. Band priority then cannot discriminate. Go to §7.3 before going further.</td>
+<td>~~P2 band mixing~~ · ~~P1 split coarseness~~</td>
+<td>—</td>
+<td><strong>DONE 2026-09-11. Passed, with the design change in §0.</strong></td>
 </tr>
 <tr>
 <td><strong>1</strong></td>
-<td><strong>P1 — is the split coarse?</strong> The 38.5% HIGH share, and whether a narrower top class (fire control + missile guidance only) is usefully smaller.</td>
-<td>One hour, HDF5 only.</td>
-<td>Nothing narrows below roughly a third. <code>p</code> is then near-uniform in practice.</td>
+<td><strong>The inference-time knob.</strong> Reweight the sampled action distribution by <code>log p</code> at inference (D54 already samples). Works on the <strong>frozen 17c checkpoint</strong> — no retrain, no observation change.</td>
+<td>Hours.</td>
+<td>— This is the demo, and the fallback if step 3 fails.</td>
 </tr>
 <tr>
 <td><strong>2</strong></td>
-<td>Score any RL-lane checkpoint split by the §5 classes</td>
-<td>An afternoon, no retrain, <strong>needs a checkpoint from the RL lane.</strong></td>
-<td>— Gives a slide either way: does the scheduler already favour HIGH emitters by accident?</td>
-</tr>
-<tr>
-<td><strong>3</strong></td>
-<td>Add <code>p</code> to the observation, sample it in training, weight discovery credit by it — <strong>and train the <code>p = uniform</code> control arm alongside</strong> (P5)</td>
-<td>The retrain.</td>
+<td>Implement graded <code>p</code> (§2) as code, plus the 68-name threat library, <strong>before</strong> any scheduler is scored against it.</td>
+<td>A day.</td>
 <td>—</td>
 </tr>
 <tr>
+<td><strong>3</strong></td>
+<td>Add <code>p</code> to the observation, add the reward term, <strong>re-run <code>reward_gate</code></strong>, retrain — <strong>with the <code>p = uniform</code> control arm alongside.</strong></td>
+<td>The retrain. Every checkpoint dies, as at D49/D55/D67.</td>
+<td>Screen fails → re-tune the coefficient, do not ship.</td>
+</tr>
+<tr>
 <td><strong>4</strong></td>
-<td><strong>P4 — the permutation ablation.</strong> Freeze the checkpoint, shuffle <code>p</code>, re-run.</td>
-<td>Minutes, once trained.</td>
-<td>Behaviour does not change. The agent ignored <code>p</code> and the feature is dead.</td>
+<td><strong>Ablations. Two arms, not one.</strong> (a) permutation: shuffle <code>p</code>, re-run; (b) <strong>correct-<code>p</code></strong>: the true graded vector.</td>
+<td>Minutes.</td>
+<td>(a) unchanged behaviour → feature dead.</td>
 </tr>
 <tr>
 <td><strong>5</strong></td>
-<td>Selection and scoring: training half only (D60), <code>rfenv/selection.py</code> (D61), D47's rule</td>
+<td>Select with <code>rfenv/selection.py</code> (D61), score on the 12 validation configs (D60).</td>
 <td>Existing machinery.</td>
 <td>—</td>
 </tr>
 <tr>
 <td><strong>6</strong></td>
-<td>Build the demo</td>
-<td>The deliverable.</td>
+<td>Report <code>EVALUATION.md</code> §4 <strong>split by threat class, alongside the pooled table</strong> — never instead of it.</td>
 <td>—</td>
+<td>HIGH intercepts per episode too few → report pooled with effect size.</td>
 </tr>
 </tbody>
 </table>
-<p>Steps 0 and 1 are the gate. <strong>Do not spend a retrain before they pass</strong> — and if they fail, §7.3
-says what to change rather than what to abandon.</p>
-<h2>7. Known problems, and where the idea gets better</h2>
-<p><strong>None of the following is measured.</strong> They are the honest failure modes of §3, written down before
-anyone builds it, because the refinements that answer them are what turn a reasonable idea into a
-strong one. Each row names the cheapest thing that would settle it.</p>
-<h3>7.1 The blunt-knob problems — these can be settled today, with no agent</h3>
+<p><strong>Step 1 before step 3.</strong> It de-risks the demo completely and costs a morning.</p>
+<hr />
+<h2>4. Open — decide before the retrain</h2>
+<ol>
+<li><strong>Share weight:</strong> pulse-share or cell-share. Both measure 2.22×. <strong>Recommend pulse-share</strong> —
+   illuminations are the interception-ratio denominator. Fix in code first.</li>
+<li><strong><code>p</code> on empty bands.</strong> ~19 of 36 bands are unoccupied in a typical config and <code>p</code> there is
+   undefined. That is a third of the vector.</li>
+<li><strong>The <code>p</code> sampling distribution</strong> during training (D70's own open item, still open).</li>
+<li><strong>In-episode <code>p</code> update — recommend DEFER.</strong> It needs emitter <em>identity</em>, which needs
+   deinterleaving, which D12/D19 put out of scope. So it is not a stand-in for something we
+   abstracted away; it is a stand-in for something we <strong>excluded</strong>, feeding the observation a value
+   no component of our architecture can produce. Episode-start <code>p</code> raises no such question. If the
+   in-episode story is wanted later, the clean form reads only <code>Y</code> and stays inside D29.</li>
+</ol>
+<hr />
+<h2>5. Known problems</h2>
 <table>
 <thead>
 <tr>
 <th>#</th>
 <th>Problem</th>
-<th>Why it could be fatal</th>
-<th>Cheapest test</th>
+<th>Status</th>
 </tr>
 </thead>
 <tbody>
 <tr>
 <td><strong>P1</strong></td>
-<td><strong>The HIGH class is 38.5% of emitters.</strong></td>
-<td>If two in five emitters are "important", prioritising them barely narrows the search and <code>p</code> is close to uniform in practice. The idea dies quietly — it trains, it just does nothing.</td>
-<td>Count it. Then re-split: does a finer top class (fire control + missile guidance only, excluding early warning) give a usefully small share?</td>
+<td>HIGH is 38.3% of emitters — <code>p</code> near-uniform.</td>
+<td><strong>Measured.</strong> Narrowing to fire-control-only gives 15.8% of emitters but <strong>53.4% of bands</strong> — narrowing works on emitters, not on bands. Graded <code>p</code> is the fix, not a narrower class.</td>
 </tr>
 <tr>
 <td><strong>P2</strong></td>
-<td><strong>Priority is per band; threat is per emitter.</strong> Bands overlap by half (D3), most emitters straddle two, and <code>S = max</code> (D25).</td>
-<td>If most occupied bands hold <strong>both</strong> a HIGH and a LOW emitter, band priority cannot discriminate and there is nothing for the agent to learn. <strong>This is the single most likely way the idea fails.</strong></td>
-<td>Measure the band-mixing rate across the 47 configs: for each occupied band, the threat classes of its contributors. One hour on the HDF5 files.</td>
+<td>Priority is per band; threat is per emitter.</td>
+<td><strong>Measured and answered by §2.</strong> 1.15× → 2.22×.</td>
 </tr>
 <tr>
 <td><strong>P3</strong></td>
-<td><strong>Thin scoring.</strong> The §5 split reports per class, on 12 validation configs (D60).</td>
-<td>If HIGH-class intercepts per episode are few, the split cannot separate schedulers and the headline metric is theatre.</td>
-<td>Count HIGH-class intercepts per episode under rung 5. If the count is small, report pooled-with-effect-size instead of a split table.</td>
+<td>Thin scoring — too few HIGH intercepts per episode to split the table.</td>
+<td><strong>Open.</strong> Count it under rung 5 before committing to a split table.</td>
 </tr>
-</tbody>
-</table>
-<p><strong>P1 and P2 together decide whether this is worth a retrain.</strong> Run them first. If P2 comes back
-"most bands are mixed", the fix is not to abandon the idea but to change what <code>p</code> encodes — see 7.3.</p>
-<h3>7.2 The training problems — need the RL lane</h3>
-<table>
-<thead>
-<tr>
-<th>#</th>
-<th>Problem</th>
-<th>Why it could be fatal</th>
-<th>Cheapest test</th>
-</tr>
-</thead>
-<tbody>
 <tr>
 <td><strong>P4</strong></td>
-<td><strong>The agent ignores <code>p</code>.</strong> The standard failure of a conditioned policy: if the priority term is weak against the other reward terms, the policy averages over it.</td>
-<td>You ship a scheduler with 36 extra inputs and identical behaviour.</td>
-<td><strong>The permutation ablation.</strong> Freeze the checkpoint, shuffle <code>p</code>, re-run. If behaviour does not change, the feature is dead. This is also the cleanest slide in the deck if it <em>does</em> change.</td>
+<td>The agent ignores <code>p</code>.</td>
+<td><strong>Open.</strong> Needs both ablation arms (§3 step 4): a random-<code>p</code> permutation passes for the wrong reason.</td>
 </tr>
 <tr>
 <td><strong>P5</strong></td>
-<td><strong>No control arm.</strong> CLAUDE.md: no RL result in this repository is currently clean.</td>
-<td>"Threat weighting helps" is unfalsifiable without an identically-trained <code>p = uniform</code> arm on the same split.</td>
-<td>Train the uniform arm alongside. Non-negotiable, not optional.</td>
+<td>No control arm.</td>
+<td><strong>Non-negotiable.</strong> Train <code>p = uniform</code> alongside, same split, same seeds.</td>
 </tr>
 <tr>
 <td><strong>P6</strong></td>
-<td><strong><code>p</code> needs scaling.</strong> D55 found two of three observation blocks living in the bottom tenth of their range.</td>
-<td>A priority block on a different scale to its 146 neighbours trains badly for reasons that have nothing to do with the idea.</td>
-<td>Apply D55's reasoning: state the units, put 1.0 at "ordinary".</td>
+<td><code>p</code> needs scaling.</td>
+<td><strong>Answered</strong> — graded <code>p</code> with 1.0 = ordinary (D55).</td>
 </tr>
 </tbody>
 </table>
-<h3>7.3 Refinements — what makes the edge better, not just survivable</h3>
-<p>Each of these is a <em>response to a row above</em>, which is why they are worth more than a longer feature
-list. All are unmeasured candidates, not decisions.</p>
+<p><strong>Deleted from the previous draft, with reasons:</strong></p>
 <ul>
-<li><strong>Graded priority instead of three buckets (answers P1).</strong> <code>p</code> is already a real vector; nothing
-  forces it to take three values. A continuous rating per radar model is closer to what a real
-  threat library holds anyway, and it removes the arbitrariness of the class boundaries.</li>
-<li><strong>Split HIGH by what the radar is <em>doing</em> (answers P1).</strong> Real RWRs already distinguish a search
-  illumination from a lock-on, and treat them as different alarms. "Something is looking for me"
-  and "something is guiding a weapon at me" collapsing into one class is our simplification, not
-  the domain's.</li>
-<li><strong>Make <code>p</code> an expected threat per band, not a max (answers P2).</strong> If a band holds a HIGH and a
-  LOW emitter, its priority is the threat weighted by each contributor's share of the band. That
-  is a strictly better-posed quantity than "the band contains something scary" and it degrades
-  gracefully as mixing rises.</li>
-<li><strong>Threat × staleness (answers P2 and P4).</strong> You care most about a dangerous emitter you have
-  <em>not</em> looked at recently. This is D14's explore/exploit tension expressed inside the priority
-  itself, and it gives the agent a signal that varies during an episode rather than a constant.</li>
-<li><strong>Cite doctrine for the classification, not our judgement (answers a credibility risk).</strong> §5 is
-  currently our reading of 68 radar names. A domain reviewer who disagrees with one assignment can
-  unpick the demo. An external source for the ratings removes that.</li>
+<li>~~<em>Split HIGH by search vs lock-on</em>~~ — <strong>impossible on this data.</strong> <code>scan_config.attrs['scan_type']</code>
+  takes exactly two values across all 2,363 transmitters: <code>Circular</code> (2,258) and <code>Omni</code> (105).
+  No track, no lock, no sector. Situational threat is <strong>unrepresentable</strong> here, not deferred.</li>
+<li>~~<em>Cite external doctrine for the ratings</em>~~ — <strong>no obtainable source.</strong> Per-radar threat ratings
+  live in classified national libraries; open doctrine describes prioritisation without publishing
+  ratings. Instead: publish the mapping as code with one line of rationale per name, and report the
+  narrow fire-control class as a <strong>sensitivity arm</strong>.</li>
 </ul>
-<h3>7.4 What we are choosing not to fix</h3>
-<p><strong>Situational threat.</strong> A search radar that has just acquired you is more dangerous than the same
-radar sweeping, and our library is static. That is real, it is what "cognitive" EW eventually
-means, and it needs mode recognition we do not have (D12/D19). Name it as future work; do not
-build it.</p>
-<h2>8. What does not move</h2>
-<p><code>rfenv/constants.py</code> is untouched. D42 puts reward candidates and observation extensions
-deliberately outside the freeze list; D57 lifted D29's cap of three candidates. No gate re-runs,
-no baseline re-runs. <code>DEFAULT_REWARD</code> stays <code>reward_balance</code> as the control arm.</p></body></html>
+<hr />
+<h2>6. What does not move</h2>
+<p><code>rfenv/constants.py</code> untouched. No gate re-runs, no baseline re-runs. <code>DEFAULT_REWARD</code> stays
+<code>reward_balance</code> as the control arm. D20's cold start is unaffected: the <em>scheduler</em> still starts
+with no emitter intelligence — <code>p</code> is mission input, not a learned prior.</p></body></html>

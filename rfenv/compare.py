@@ -110,7 +110,7 @@ def resolve_priority_kwargs(
 
     Every rung defaults to `band_priority=False`, so this is a no-op for the
     whole ladder except the rungs that actually need the block (22a/22b as of
-    D74, plus whichever D74-follow-up rungs use `priority_high`/
+    D78, plus whichever D78-follow-up rungs use `priority_high`/
     `occupancy_coef`/`occupancy_decay_cap`) -- a registered priority
     checkpoint carries its own true training config with it into every
     comparison, rather than depending on the caller passing matching
@@ -118,7 +118,7 @@ def resolve_priority_kwargs(
     time (a silent-mismatch risk: forgetting the flag would evaluate a
     priority-trained checkpoint under an all-ones vector without raising).
     The CLI flags stay meaningful as the default for any rung that doesn't
-    declare its own -- everything before D74.
+    declare its own -- everything before D78.
     """
     spec = B.BY_KEY[key]
     if spec.band_priority:
@@ -185,11 +185,11 @@ def run_one(
     receiver's noise draw and the policy's own randomness both reproduce. They do
     not collide -- `baselines.make` derives an independent stream per rung name.
 
-    `obs_version` (D30/D71) only changes what the *policy* is fed -- every
+    `obs_version` (D30/D75) only changes what the *policy* is fed -- every
     heuristic rung that reads the observation at all (`recency`, `camper`) only
     ever reads `HIT_RATE`/`STALENESS`, both inside the first `4 * N_BANDS`
     elements, which "v1" and "v2" lay out identically. A trained checkpoint must
-    still match: an "v1" checkpoint fed a "v2" (362-wide, D72) observation raises
+    still match: an "v1" checkpoint fed a "v2" (362-wide, D76) observation raises
     inside `predict()`, not here.
 
     `band_priority`/`priority_coef`/`priority_n_bands`/`priority_uniform` are
@@ -325,7 +325,7 @@ def compare(
     ladder -- and so every rung on a scenario sees exactly the same world, which
     is what makes the comparison paired rather than merely averaged.
 
-    `obs_version` (D30/D71) applies to every rung in this run, heuristic and
+    `obs_version` (D30/D75) applies to every rung in this run, heuristic and
     trained alike -- see `run_one`'s docstring for why a heuristic rung is safe
     under either.
     """
@@ -653,6 +653,246 @@ def _report_md(summary: dict[str, dict], meta: dict) -> str:
 
 
 # --------------------------------------------------------------------------- #
+# Figures of merit -- the seven the problem statement names
+# --------------------------------------------------------------------------- #
+#
+# Specified in `docs/project/FIGURES_OF_MERIT.md`. Read that before changing
+# anything here; the two rules this section exists to enforce are:
+#
+#   * **Five of the seven do not vary with the scheduler**, and that is correct.
+#     P_d, P_fa and sensitivity are receiver properties at the frozen operating
+#     point (§3, D21); % correct predictions and average intercept-time error are
+#     model-level properties of the environment (§2). Only average intercept rate
+#     and average reward are scheduler results.
+#   * **So they are printed in three blocks, not as five constant columns down a
+#     per-rung table.** The values are the same either way; the shape is what stops
+#     a reader concluding something is broken. FIGURES_OF_MERIT.md §8.
+
+FOM_FILENAME = "figures_of_merit.md"
+
+
+def model_level_figures(config_ids: list[str], seed: int = 0) -> dict:
+    """The five policy-independent figures of merit over these replay grids.
+
+    Computed over the **stare replay grids only**, never the sampled scenarios: a
+    sampled scenario has no underlying scan recording to predict against, so #6 and
+    #7 are undefined on it and P_d's population would silently change (D33).
+
+    `gate1`/`intercept_time_error` are imported lazily because they pull `h5py`,
+    which the ordinary ladder does not need -- the same reason `figures()` keeps
+    matplotlib local.
+    """
+    from rfenv.validate import gate1, intercept_time_error
+
+    config_ids = list(config_ids)
+    grids = [TruthGrid.from_scenario(Scenario.replay(c, COMPARISON_SOURCE))
+             for c in config_ids]
+    point = operating_point(grids)
+    pd_by_config = np.array([operating_point([g])["pd"] for g in grids], dtype=np.float64)
+
+    g1 = gate1(config_ids, seed)
+    ite = intercept_time_error(config_ids, seed)
+
+    def _iqr(a: np.ndarray) -> dict:
+        # A grid with no occupied reference-sweep cells has no P_d; drop those
+        # rather than let one NaN poison the quartiles.
+        a = a[~np.isnan(a)]
+        if not a.size:
+            return {"median": float("nan"), "p25": float("nan"),
+                    "p75": float("nan"), "n": 0}
+        return {"median": float(np.median(a)), "p25": float(np.percentile(a, 25)),
+                "p75": float(np.percentile(a, 75)), "n": int(a.size)}
+
+    return {
+        "config_ids": config_ids,
+        "n_grids": len(grids),
+        "seed": seed,
+        "operating_point": point,
+        "pd": {"pooled": point["pd"], **_iqr(pd_by_config)},
+        "pfa": point["pfa"],
+        "sensitivity_dbm": point["sensitivity_dbm"],
+        "pd_target": point["pd_target"],
+        "pct_correct": {
+            "accuracy": g1.measured["accuracy"],
+            "mcc": g1.measured["mcc"],
+            "precision": g1.measured["precision"],
+            "recall": g1.measured["recall"],
+            "base_rate": g1.measured["base_rate"],
+            "n_dwells": int(g1.measured["n_configs"]
+                            * g1.measured["n_dwells_per_config"]),
+            "band0_predicted": g1.measured["band0_predicted"],
+            "band0_recorded": g1.measured["band0_recorded"],
+        },
+        "intercept_time_error": ite,
+    }
+
+
+def figures_of_merit_md(summary: dict[str, dict], meta: dict, mf: dict) -> str:
+    """The seven figures of merit, in the three blocks FIGURES_OF_MERIT.md §8 sets."""
+    op = mf["operating_point"]
+    pct = mf["pct_correct"]
+    ite = mf["intercept_time_error"]
+
+    def cell(agg, metric, fmt="{:.4f}"):
+        a = agg.get(metric)
+        if not a or not a["n"]:
+            return "—"
+        return (f"{fmt.format(a['mean'])} <br><sub>[{fmt.format(a['p25'])}, "
+                f"{fmt.format(a['p75'])}]</sub>")
+
+    out = [
+        "# Figures of merit — the seven the problem statement names",
+        "",
+        f"`python -m rfenv.compare --figures-of-merit` — {meta['written_utc']}. "
+        f"Definitions and formulas: `docs/project/FIGURES_OF_MERIT.md`.",
+        "",
+        "> *\"...building up figures of merit for interception performance such as "
+        "probability of detection, probability of false alarm, sensitivity, Avg "
+        "intercept rate, Avg Reward / cost function, percentage of correct predictions "
+        "and average intercept time error.\"* — the problem statement",
+        "",
+        "**Five of these seven do not vary with the scheduler, and that is the correct "
+        "outcome, not a bug.** Three describe the receiver at the frozen operating "
+        "point (D21, §3); two describe how faithfully the environment reproduces the "
+        "real recordings (§2). Only average intercept rate and average reward are "
+        "results about a search strategy. They are therefore reported in three blocks "
+        "rather than as five identical columns down a per-rung table.",
+        "",
+        "---",
+        "",
+        "## A — the receiver  ·  P_d, P_fa, sensitivity",
+        "",
+        "Properties of the detector at the frozen threshold. No scheduler and no "
+        "reward can move them: penalising a false alarm prices a wasted dwell, it does "
+        "not improve the detector (D15, D21).",
+        "",
+        "| figure | value | notes |",
+        "|---|---|---|",
+        f"| **P_d** — probability of detection | **{mf['pd']['pooled']:.4f}** "
+        f"<br><sub>per-grid [{mf['pd']['p25']:.4f}, {mf['pd']['p75']:.4f}]</sub> | "
+        f"`P(Y=1 \\| Z=1)` over the `{op['population']}` cells of these "
+        f"{mf['n_grids']} stare replay grids ({op['n_occupied']:,} occupied). "
+        "Conditioned on threshold-free `Z`, never on `S ≥ γ` (D26). |",
+        f"| **P_fa** — probability of false alarm | **{mf['pfa']:.4e}** | "
+        f"`1 − Φ((γ − N₀)/σ)`. Exact and data-independent; no distribution to show. |",
+        f"| **Sensitivity** | **{mf['sensitivity_dbm']:.2f} dB** | "
+        f"`γ + σ·Φ⁻¹(p)` at p = {mf['pd_target']:.2f}, at the P_fa above. Never quote "
+        "it without both. |",
+        "",
+        f"Operating point: γ = {op['gamma_dbm']} dB, σ = {op['sigma_db']} dB.",
+        "",
+        "**The P_d figure is not interchangeable with others in this repository.** D33 "
+        "froze the population *rule*, not the set of grids — the same rule over the "
+        "scan-replay grids `validate.py` builds gives a different number. Quote "
+        "whichever you name the grids for, and never one without them.",
+        "",
+        "---",
+        "",
+        "## B — the environment  ·  % correct predictions, intercept-time error",
+        "",
+        "Model-level metrics (§2): they measure whether the stare-built environment "
+        "reproduces what Turing's own sweep actually recorded. The problem statement's "
+        "own wording assigns *prediction* to the system model. Both are computed "
+        "out-of-sample — the environment never saw the scan recordings it is tested "
+        f"against (D17) — over the {mf['n_grids']} stare replay configs at seed "
+        f"{mf['seed']}.",
+        "",
+        "| figure | value | notes |",
+        "|---|---|---|",
+        f"| **% correct predictions** | **{pct['accuracy']:.4f}** "
+        f"<br><sub>MCC {pct['mcc']:.4f}</sub> | Per dwell (D37), against the raw scan "
+        f"ToA stream. Precision {pct['precision']:.4f}, recall {pct['recall']:.4f}, "
+        f"base rate {pct['base_rate']:.4f} over {pct['n_dwells']:,} dwells. "
+        "**Never quote the accuracy alone** — with sparse occupancy, \"predict "
+        "nothing\" scores well and is useless (§7). |",
+        f"| **Avg intercept-time error** — timing | **{ite['mean_abs_error_s']:.2f} s** "
+        f"<br><sub>median {ite['median_abs_error_s']:.2f}, "
+        f"[{ite['p25_abs_error_s']:.2f}, {ite['p75_abs_error_s']:.2f}]</sub> | "
+        f"`mean \\|predicted − actual\\|` over the {ite['n_both_detected']:,} emitters "
+        "detected on **both** sides. Misses are not censored into this mean. |",
+        f"| **Avg intercept-time error** — outcome | **{ite['agreement_rate']:.4f}** "
+        f"agreement | Fraction of the {ite['n_emitters_matched']:,} matched emitters "
+        f"where both sides agree on whether it was detected at all "
+        f"({ite['n_predicted_only']:,} predicted only, {ite['n_measured_only']:,} "
+        f"recorded only, {ite['n_neither']:,} neither). |",
+        f"| **Avg intercept-time error** — direction | **{ite['signed_mean_error_s']:+.2f} s** | "
+        "Signed mean. Near zero means unbiased but noisy — a different conclusion from "
+        "a model that is systematically early or late. |",
+        "",
+        "**Why the timing error is reported in three parts.** A single censored number "
+        "conflates *\"predicted the wrong time\"* with *\"predicted the wrong "
+        "outcome\"*, and the two cannot be separated afterwards. Measured on this "
+        "dataset, censoring misses into the mean reads 8.42 s where the separated form "
+        "reads 6.60 s of timing error plus 87% outcome agreement — 1.8 s of that 8.42 "
+        "is missed detections, not mistimed ones (FIGURES_OF_MERIT.md §7).",
+        "",
+        "**Read the timing error together with the distributions before calling it a "
+        "defect.** scan and stare are independent simulation runs (D24), so the same "
+        "emitter has different activity in each. Measured, the environment reproduces "
+        "the *distribution* of intercept time closely (predicted mean 8.49 s against "
+        "recorded 8.63 s, matching at every percentile) while per-emitter agreement is "
+        "only r = 0.07. That is the expected behaviour for this problem, and it is what "
+        "licenses comparing schedulers over distributions rather than per emitter.",
+        "",
+        f"Known limitation, stated not patched: band 0 (250 MHz) is "
+        f"{pct['band0_recorded']:.1%} occupied in the recordings and "
+        f"{pct['band0_predicted']:.1%} predicted — stare cannot see below 500 MHz "
+        "(D10). It inflates both figures in this block.",
+        "",
+        "---",
+        "",
+        "## C — the schedulers  ·  average intercept rate, average reward",
+        "",
+        "**The only two of the seven that are a verdict on a search strategy.** Means "
+        "come with the interquartile range because scenario difficulty spans 2 to 99 "
+        f"emitters (§7). Reward is `{meta['reward']}` throughout.",
+        "",
+        "| rung | scheduler | avg intercept rate (/s) | avg reward |",
+        "|---|---|---|---|",
+    ]
+
+    for key, block in summary.items():
+        agg = block["aggregate"]
+        name = f"`{key}`" + (" *(reference line)*" if block["reference"] else "")
+        out.append(
+            f"| {block['rung']} | {name} | "
+            f"{cell(agg, 'avg_intercept_rate_per_s', '{:.3f}')} | "
+            f"{cell(agg, 'total_reward', '{:.2f}')} |"
+        )
+
+    out += [
+        "",
+        "**Average intercept rate** counts each emitter *once* however many times it "
+        "is seen; counting re-detections would measure how long a scheduler camped on "
+        "a busy band, which is the failure mode the ladder exists to expose (D14).",
+        "",
+        "**Average reward is not a ranking.** It is comparable only within one reward "
+        "family and is never used to rank across different rewards (D7): two rewards "
+        "can order the same schedulers identically and differ by orders of magnitude. "
+        "A **reference line** reads the truth grid and is not a scheduler (§5).",
+        "",
+        "---",
+        "",
+        "## Provenance",
+        "",
+        f"- Written {meta['written_utc']} (UTC).",
+        f"- Blocks A and B: the {mf['n_grids']} stare replay configs, seed {mf['seed']}.",
+        f"- Block C: {meta['n_scenarios']} scenarios "
+        f"({meta['n_replays']} stare replays, {meta['n_sampled']} sampled), "
+        f"seeds {meta['seeds']}, split `{meta['split']}`, reward `{meta['reward']}`.",
+        f"- Scheduler rows are scored by `metrics.scheduler_metrics()` from the "
+        f"artefacts under `{meta['out_root']}`, never from live environment state.",
+        "- P_d, % correct predictions and intercept-time error re-derive from "
+        "`receiver.operating_point`, `validate.gate1` and "
+        "`validate.intercept_time_error`. No figure here is transcribed.",
+        "- Definitions, formulas and the traps behind each: "
+        "`docs/project/FIGURES_OF_MERIT.md`.",
+        "",
+    ]
+    return "\n".join(out)
+
+
+# --------------------------------------------------------------------------- #
 # Figures
 # --------------------------------------------------------------------------- #
 
@@ -800,6 +1040,9 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--reward", default=DEFAULT_REWARD,
                     help="reward candidate; affects the reward column only (D7)")
     ap.add_argument("--figures", action="store_true", help="write the comparison plots")
+    ap.add_argument("--figures-of-merit", dest="figures_of_merit", action="store_true",
+                    help="also write figures_of_merit.md: all seven PS figures of merit "
+                         "(see docs/project/FIGURES_OF_MERIT.md)")
     ap.add_argument("--gif-stride", type=int, default=8,
                      help="slots between animation frames, --figures only (default 8)")
     ap.add_argument("--gif-fps", type=int, default=12, help="--figures only")
@@ -819,11 +1062,11 @@ def main(argv: list[str] | None = None) -> int:
                     help="control arm: band_priority stays all-ones every episode "
                          "(same reward scale, no real signal) -- this task.")
     ap.add_argument("--priority-high", type=float, default=3.0,
-                    help="the elevated band's priority value (default 3.0, D74's own "
+                    help="the elevated band's priority value (default 3.0, D78's own "
                          "value). No effect unless --band-priority is set.")
     ap.add_argument("--occupancy-coef", type=float, default=0.0,
-                    help="D74 follow-up: coefficient on the decaying per-slot priority "
-                         "term (default 0.0, off -- reproduces D74's own runs exactly). "
+                    help="D78 follow-up: coefficient on the decaying per-slot priority "
+                         "term (default 0.0, off -- reproduces D78's own runs exactly). "
                          "No effect unless --band-priority is set.")
     ap.add_argument("--occupancy-decay-cap", type=float, default=2.0,
                     help="fair-share visit_density at which the occupancy term above "
@@ -912,6 +1155,27 @@ def main(argv: list[str] | None = None) -> int:
         encoding="utf-8",
     )
     (out_root / "comparison.md").write_text(_report_md(summary, meta), encoding="utf-8")
+
+    # The five policy-independent figures, over the replay grids only: a sampled
+    # scenario has no scan recording to predict against, so #6 and #7 are undefined
+    # on it and P_d's population would silently change (D33).
+    if args.figures_of_merit:
+        replay_configs = list_configs(COMPARISON_SOURCE)
+        if args.configs is not None:
+            replay_configs = replay_configs[: args.configs]
+        print(f"computing the five policy-independent figures of merit over "
+              f"{len(replay_configs)} replay grids ...", flush=True)
+        model_figs = model_level_figures(replay_configs, seed=seeds[0])
+        meta["figures_of_merit"] = model_figs
+        (out_root / FOM_FILENAME).write_text(
+            figures_of_merit_md(summary, meta, model_figs), encoding="utf-8"
+        )
+        # Rewrite summary.json so the figures travel with the run, not just the report.
+        (out_root / "summary.json").write_text(
+            json.dumps({"meta": meta, "ladder": summary}, indent=2, default=_jsonable) + "\n",
+            encoding="utf-8",
+        )
+        print(f"  figures of merit: {out_root / FOM_FILENAME}")
 
     if args.figures:
         for path in figures(out_root, summary, keys, seeds[0], args.reward,

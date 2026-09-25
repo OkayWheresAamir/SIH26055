@@ -5,14 +5,14 @@ vector: every block, what it means, its dtype, its range, how it's computed, and
 persists. It documents the four layouts that exist today ("v1", "v2", "v2p" and "v3" —
 D30/D71/D72/D74/D75)
 and nothing else — it is not a decision record (that's `DECISIONS.md`,
-D34/D49/D55/D67/D30/D71/D72/D74) and not a working brief (that's `STATE_ACTION_FORMULATION.md`). If
+D34/D49/D55/D67/D30/D75/D76/D78) and not a working brief (that's `STATE_ACTION_FORMULATION.md`). If
 a number here disagrees with `rfenv/env.py`, the code wins; this file describes it, it does not
 define it.
 
 **Source of truth.** Everything below is read directly from `rfenv/env.py`: `_BLOCK_SPECS`,
 `OBS_LAYOUTS`, `_observation_blocks()`, `reset()` and `step()`. Verified against the code this
-session, 2026-09-14 (D30/D71), updated the same session for D72's `pulse_count` addition, and again
-2026-09-19 for the "v2p" `band_priority` block described in §2.4 (D74, `MEASURED`: the mechanism is
+session, 2026-09-14 (D30/D75), updated the same session for D76's `pulse_count` addition, and again
+2026-09-19 for the "v2p" `band_priority` block described in §2.4 (D78, `MEASURED`: the mechanism is
 built and registered, but a control-arm comparison plus a permutation ablation found it was never
 learned at the scale tested — see §2.4 for the numbers), and again the same day for "v3"'s three
 in-context blocks in §2.5 (D75, `BUILT` — no training run yet, so there is no result to quote), and a
@@ -87,13 +87,13 @@ from the agent's own scan history; none of them ever reads the truth grid (D29, 
 |---|---|---|---|---|
 | `measured_dbm` | 1 | **scalar** | `[0.0, 1.0]` | The **global**, last-dwell-only signal reading: mean of `S + noise` (what the receiver's detector actually read) over the most recent dwell's slots, clamped to `[-120, -20]` dBm and linearly rescaled to `[0, 1]`. Forgets every band but the one just left the instant the agent moves on — this is exactly the weakness "v2" fixes with `measured_dbm_band`. Before any dwell, reads `0.0` (the clamp floor, quietest possible). |
 
-### 2.3 "v2"-only blocks (D30, resolved as D71, 2026-09-14; extended by D72, same day)
+### 2.3 "v2"-only blocks (D30, resolved as D75, 2026-09-14; extended by D76, same day)
 
 Five blocks, appended after `current_hit_streak`, in this order. Four of the five (all but
 `measured_dbm_band`) are gated on `Y` (see below). Three (`pulse_width`, `aoa_sin`, `aoa_cos`)
 read the two previously-discarded PDW columns, PulseWidth and AoA (`metadata/feature_names`
 columns 2 and 3 — `rfenv/scenario.py` now reads them instead of silently dropping them); the
-fifth, `pulse_count` (D72), reads `dwell.C`, a quantity that already existed in `DwellResult` but
+fifth, `pulse_count` (D76), reads `dwell.C`, a quantity that already existed in `DwellResult` but
 had never entered the observation before this.
 
 **Why `pulse_count` is 36 wide when `dwell.C` itself isn't.** `DwellResult.C` (`rfenv/receiver.py`)
@@ -112,18 +112,18 @@ other, not just see the one it is currently tuned to.
 | `pulse_width` | 36 | per-band | `[0.0, 1.0]` | The pulse width (raw PDW column, microseconds) of the loudest pulse in the last **declared hit** on this band. Clamped to `[0, 200]` µs (measured this session over 6 real recordings: true range 0.007–220.0 µs, p99 = 102.3) and rescaled to `[0, 1]`. `0.0` if this band has never had a declared hit. |
 | `aoa_sin` | 36 | per-band | `[0.0, 1.0]` | `(sin θ + 1) / 2`, where θ is the angle of arrival (degrees, converted to radians) of the loudest pulse in the last declared hit on this band. See §3 for why sine/cosine rather than a raw angle. |
 | `aoa_cos` | 36 | per-band | `[0.0, 1.0]` | `(cos θ + 1) / 2`, the paired cosine component. `aoa_sin` and `aoa_cos` are always read together. |
-| `pulse_count` | 36 | per-band | `[0.0, 1.0]` | `log1p(C) / log1p(64)`, clipped to `[0, 1]` — `C` being the illumination count (`truth.py`) at the loudest slot of the last **declared hit** on this band. `0.0` if this band has never had a declared hit. Same reference constant (`_DENSITY_REF_PULSES = 64`) `reward_balance_improved` already normalises `C` by, reused rather than duplicated (D72). |
+| `pulse_count` | 36 | per-band | `[0.0, 1.0]` | `log1p(C) / log1p(64)`, clipped to `[0, 1]` — `C` being the illumination count (`truth.py`) at the loudest slot of the last **declared hit** on this band. `0.0` if this band has never had a declared hit. Same reference constant (`_DENSITY_REF_PULSES = 64`) `reward_balance_improved` already normalises `C` by, reused rather than duplicated (D76). |
 
 **Gating, four of the five "v2"-only per-band signals (`measured_dbm_band` excepted — see
 below):** `pulse_width`, `aoa_sin`, `aoa_cos` and `pulse_count` only update on a slot where the
 receiver **actually declared a hit** (`Y = 1`). A real receiver only measures a pulse's width and
-bearing on a pulse it detected, and D72 extends the same argument to count: a real receiver's own
+bearing on a pulse it detected, and D76 extends the same argument to count: a real receiver's own
 PDW stream carries a count of the detections it resolved on a hit. Writing any of these on a miss
 would be reading truth the receiver never had. `measured_dbm_band` is **not** gated this way:
 amplitude is a continuous quantity a receiver reads on every slot it's tuned to, hit or miss, the
 same way `measured_dbm` already worked in "v1".
 
-**`pulse_count`'s gap, stated precisely (D72).** The *cell* is gamma-gated, just indirectly: `Y`
+**`pulse_count`'s gap, stated precisely (D76).** The *cell* is gamma-gated, just indirectly: `Y`
 is exactly `measured_dbm >= gamma` (`receiver.py`, `Y = measured >= self.gamma`, `measured = S +
 noise`), so requiring `Y = True` before `pulse_count` updates already is a gamma test — a noisy
 one, since it runs on `measured` (the receiver's own noisy read), not on the true signal, the same
@@ -137,7 +137,7 @@ those sub-threshold contributors a real per-pulse-resolving receiver would not h
 gating is a real gamma gate on the cell as a whole; it does not, and structurally cannot, extend
 that same test down to each contribution `C` adds together — that would need resolving individual
 pulses within one merged cell, which D28 already rules out for this receiver model ("not a
-per-pulse detector... a real receiver cannot un-mix a cell"). See `DECISIONS.md` D72 and
+per-pulse detector... a real receiver cannot un-mix a cell"). See `DECISIONS.md` D76 and
 `PDW_COMPLETENESS_AND_BAND_DENSITY_BRIEF.md` §1 for the full argument on both sides.
 
 **Within a multi-slot dwell with more than one declared hit,** the loudest slot is the
@@ -145,7 +145,7 @@ representative reading for `pulse_width`/`aoa_sin`/`aoa_cos`/`pulse_count` — t
 grid (`rfenv/truth.py`) already uses to resolve multiple *emitters* sharing one cell (`TruthGrid.PW`/
 `.AOA` follow whichever contributor's peak amplitude wins).
 
-### 2.4 "v2p"-only block (D74, `MEASURED` — never learned at the scale tested)
+### 2.4 "v2p"-only block (D78, `MEASURED` — never learned at the scale tested)
 
 One block, appended after `pulse_count`, on top of everything "v2" already has. Unlike every
 other block in this document, it is not derived from anything the receiver measures — it is an
@@ -189,7 +189,7 @@ makes it a genuine control: it isolates whether a trained policy's behaviour com
 reading `band_priority`, versus merely benefiting from a larger reward scale that has nothing to do
 with which band it's on.
 
-**Status (D74, `MEASURED`).** Two RecurrentPPO checkpoints tested this —
+**Status (D78, `MEASURED`).** Two RecurrentPPO checkpoints tested this —
 `lstm_balance_v2p_priority_seed2` (treatment, `priority_uniform=False`) and
 `lstm_balance_v2p_uniform_seed2` (control, `priority_uniform=True`) — registered as ladder rungs
 22a/22b. **The comparison runs the wrong way**: the control beat the treatment on every headline
@@ -211,7 +211,7 @@ now configurable), 512-wide LSTM (was 256), 800k timesteps (was 400k). The stren
 permutation ablation found its airtime correlates with true priority identically whether fed real or
 shuffled values (+0.031 both ways). **Still never learned**, at roughly 4x the incentive and double
 the capacity/budget. Full numbers: `MODEL_COMPARISON.md`'s Width 398 section. Not adopted, not
-promoted, code not removed — nothing defaults to it. Full account: `DECISIONS.md` D74.
+promoted, code not removed — nothing defaults to it. Full account: `DECISIONS.md` D78.
 
 ---
 
@@ -319,7 +319,7 @@ heuristic rung currently needs to address past index 144 under it (see §5).
 | `146 : 182` | `hit_streak` |
 | `182` | `current_hit_streak` |
 
-### "v2" (362 wide, D72 appended `pulse_count` after `aoa_cos`)
+### "v2" (362 wide, D76 appended `pulse_count` after `aoa_cos`)
 
 | Index range | Block |
 |---|---|
@@ -334,9 +334,9 @@ heuristic rung currently needs to address past index 144 under it (see §5).
 | `218 : 254` | `pulse_width` |
 | `254 : 290` | `aoa_sin` |
 | `290 : 326` | `aoa_cos` |
-| `326 : 362` | `pulse_count` (D72) |
+| `326 : 362` | `pulse_count` (D76) |
 
-### "v2p" (398 wide, appends `band_priority` after `pulse_count`; D74)
+### "v2p" (398 wide, appends `band_priority` after `pulse_count`; D78)
 
 | Index range | Block |
 |---|---|
@@ -409,7 +409,7 @@ absent but is now present in a narrower form than its literal version:
   can include contributions that would never individually cross `gamma` — an ungated reading would
   hand the policy a number with no path to existing outside the simulator's own bookkeeping
   (`PDW_COMPLETENESS_AND_BAND_DENSITY_BRIEF.md` §1). What **is** now present, "v2" only, is
-  `pulse_count` — the same `C`, but `Y`-gated (D72), and `Y` is itself a gamma test
+  `pulse_count` — the same `C`, but `Y`-gated (D76), and `Y` is itself a gamma test
   (`measured_dbm >= gamma`, on the receiver's own noisy reading) — so the cell as a whole is
   gamma-gated indirectly through `Y`; only the per-contribution amplitude check inside `C` is
   missing, and cannot be added without resolving individual pulses within one merged cell, which
@@ -434,16 +434,16 @@ absent but is now present in a narrower form than its literal version:
 ## 7. Cross-references
 
 - `DECISIONS.md` — **D34** (base vector ratified), **D49** (109→146), **D55** (rescaled, `camp_time`
-  removed), **D67** (146→183, `hit_streak`), **D30 / D71** (183→326, "v2"), **D72** (326→362,
-  `pulse_count`), **D74** (362→398, `band_priority` — built, registered, `MEASURED` as never learned
+  removed), **D67** (146→183, `hit_streak`), **D30 / D75** (183→326, "v2"), **D76** (326→362,
+  `pulse_count`), **D78** (362→398, `band_priority` — built, registered, `MEASURED` as never learned
   at the scale tested; not adopted, not promoted, code not removed).
 - `rfenv/env.py` — `_BLOCK_SPECS`, `OBS_LAYOUTS`, `obs_width()`, `ScanEnv._observation_blocks()`
   (every block's own inline derivation and reasoning lives in its docstring).
 - `rfenv/baselines/guard.py` — the "v1" slice constants heuristic rungs read by name.
 - `tests/test_observation_d30.py` — the "v2"-specific invariants (gating, sentinel, persistence,
-  layout agreement, and D72's `pulse_count` transform) as executable tests.
+  layout agreement, and D76's `pulse_count` transform) as executable tests.
 - `STATE_ACTION_FORMULATION.md` — the broader RL-lane working brief this reference doc does not
   replace (action space, reward candidates, amendment history).
-- `PDW_COMPLETENESS_AND_BAND_DENSITY_BRIEF.md` — the planning document that preceded D71, including
-  the mechanical/policy case against ungated `C` and the `BAND_POWER` alternative; D72 narrows but
-  does not overturn its verdict (see D72's own entry for how the two relate).
+- `PDW_COMPLETENESS_AND_BAND_DENSITY_BRIEF.md` — the planning document that preceded D75, including
+  the mechanical/policy case against ungated `C` and the `BAND_POWER` alternative; D76 narrows but
+  does not overturn its verdict (see D76's own entry for how the two relate).
