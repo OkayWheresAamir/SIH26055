@@ -1,4 +1,4 @@
-"""The "v3" in-context observation layout and `reward_balance_obs` (D75).
+"""The "v3" in-context observation layout and `reward_balance_obs` (D79).
 
 `"v3"` is 399 wide, not 436 -- two same-day amendments, both on direct
 questions (2026-09-20). First, `prev_action` shipped, was found bit-identical
@@ -96,7 +96,7 @@ def test_earlier_layouts_are_untouched_by_v3_existing():
 
 
 def test_the_new_block_declares_the_unit_interval_even_at_a_raised_priority_high():
-    """It must not inherit `band_priority`'s `_high_for` override (D74's bug)."""
+    """It must not inherit `band_priority`'s `_high_for` override (D78's bug)."""
     env = _env(priority_high=5.0)
     high = env.observation_space.high
     assert np.all(high[OFF["prev_reward"]] == 1.0)

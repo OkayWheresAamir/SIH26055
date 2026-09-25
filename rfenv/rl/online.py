@@ -1,4 +1,4 @@
-"""Online fine-tuning: a trained policy that keeps learning while it scans (D77).
+"""Online fine-tuning: a trained policy that keeps learning while it scans (D81).
 
 Everything else in `rfenv.rl` trains a policy, freezes it, and evaluates the
 frozen thing. This module is the other mode -- load a checkpoint, put it in a
@@ -12,7 +12,7 @@ returns `reward_balance`, whose third term is `0.5 * dwell.Z.sum()` -- truth, no
 measurement. A fielded receiver has no `Z`. An agent fine-tuned against it would
 be optimising a quantity it could never compute outside the simulator, so the
 "adapts in the field" claim would be false. The wrapper substitutes the `Y`-based
-twin (D75), which is exactly what the receiver declared. Scoring is untouched:
+twin (D79), which is exactly what the receiver declared. Scoring is untouched:
 `total_reward` and `episode_metrics()` still use the training reward, so a
 fine-tuned checkpoint is judged on the same yardstick as every other rung.
 
@@ -22,7 +22,7 @@ fill even a fourteenth of one rollout, and at `gamma=0.997` the effective horizo
 (~333 steps) is comparable to the whole episode, so the advantages would be
 dominated by the terminal bootstrap. A per-mission update is therefore not a
 small update, it is a noisy one, and this module does not offer it. Fine-tuning
-runs on a continuous grid (`episode_slots`, D76) instead, where a simulated hour
+runs on a continuous grid (`episode_slots`, D80) instead, where a simulated hour
 is 40k-72k steps and the rollout the policy trained with fits several times over.
 
 **And why the rollout stays at 8192 rather than shrinking.** A shorter rollout
@@ -343,7 +343,7 @@ def fine_tune(
     cannot perturb the run it is watching) and run for `animate_slots`
     (default 3 segments, 90s) on the same distribution training is running
     on, rendered as `<run>_s<n>.gif` beside the snapshot's own
-    `.zip`/`.json`. This is what made D81's finding legible in the first
+    `.zip`/`.json`. This is what made D85's finding legible in the first
     place -- the segment scorecard alone said coverage was climbing, not
     *how* the policy's behaviour was actually changing -- and doing it
     automatically here means a future run does not depend on someone
@@ -449,7 +449,7 @@ def fine_tune(
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(
         prog="python -m rfenv.rl.online",
-        description="Fine-tune a trained checkpoint online, on a continuous grid (D77).",
+        description="Fine-tune a trained checkpoint online, on a continuous grid (D81).",
     )
     ap.add_argument("--checkpoint", required=True, help="the checkpoint to adapt")
     ap.add_argument("--out-checkpoint", default=None,

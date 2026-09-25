@@ -1,8 +1,8 @@
-"""`rfenv.env.band_layout`/`obs_version_for_width` (D79): splitting a flat
+"""`rfenv.env.band_layout`/`obs_version_for_width` (D83): splitting a flat
 observation into its per-band and global parts, purely from `_BLOCK_SPECS`'s
 declared widths -- no hardcoded block-name list anywhere.
 
-No training stack needed (pure numpy), unlike `test_policies.py`'s D79 half.
+No training stack needed (pure numpy), unlike `test_policies.py`'s D83 half.
 """
 from __future__ import annotations
 
@@ -41,7 +41,7 @@ def test_classification_matches_block_specs_width_directly(version):
 
 
 def test_prev_action_would_be_classified_per_band_if_any_layout_used_it():
-    """D75 shipped `prev_action` in "v3", then removed it the next day -- it
+    """D79 shipped `prev_action` in "v3", then removed it the next day -- it
     is still registered in `_BLOCK_SPECS`, N_BANDS wide, just unused by any
     current `OBS_LAYOUTS` entry. `band_layout`'s classification is purely
     width-based, so this one fact is what guarantees it would never be

@@ -1,4 +1,4 @@
-"""Online fine-tuning (D77).
+"""Online fine-tuning (D81).
 
 The only test module here that needs the training stack, so it skips at module
 level rather than importing it at the top -- a module-level torch import aborts

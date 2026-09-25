@@ -4675,7 +4675,7 @@ saved to the repository.
 
 ---
 
-## D75 — The observation may carry the agent's own previous action and outcome ("v3"), and the reward it is shown is the `Y`-based one
+## D79 — The observation may carry the agent's own previous action and outcome ("v3"), and the reward it is shown is the `Y`-based one
 
 **Status:** `BUILT` (2026-09-19). Mechanism built, tested and registered; **no training run yet**,
 so nothing here is a result. The matched pair and the ablation that would make it one are specified
@@ -4731,18 +4731,18 @@ and learn about emitters it never detected. `reward_balance_obs` is the same for
 **`reward_balance`'s own source bytes are untouched** — a fact about the file, not an intention.
 
 **This does not reopen D29.** D29 governs what the *reward* may read and is unchanged:
-`reward_balance` still reads `Z`, still trains every arm, still scores every rung. What D75 adds is
+`reward_balance` still reads `Z`, still trains every arm, still scores every rung. What D79 adds is
 a second, separately-computed quantity on the *observation* side, which D19/D20 already govern and
 which `reward_balance_obs` satisfies. This is ordinary asymmetric actor-critic with the two halves
 kept apart — privileged critic, deployable actor — and it is what keeps a `"v3"` rung
 `deployable=True` and its numbers comparable to 17c and 23a. D29's own sentence *"the restriction
-would only bite if we ever fine-tuned online, which we do not"* is the thing D77 changes, and D77
+would only bite if we ever fine-tuned online, which we do not"* is the thing D81 changes, and D81
 resolves it the same way: by fine-tuning on the observable reward, not by relaxing D29.
 
 `reward_balance_obs` is deliberately **not** a `REWARDS` entry — `reward_gate.py` screens
 `sorted(REWARDS)` by default, so registering it would silently create a D62 screening obligation and
 add a candidate to a set whose size is itself a recorded decision (D57, D63). Same precedent
-`priority_reward_bonus` set in D74.
+`priority_reward_bonus` set in D78.
 
 **The clamp, measured.** `_REWARD_OBS_CLAMP = 6.0`, set from the analytic bound rather than from a
 percentile so it is mathematically incapable of binding: the four terms bound to `[-6.0, +3.0]`
@@ -4779,14 +4779,14 @@ registered layout. Four arms remain, not five.
 
 Arm D is not optional. If corrupting a block the policy has leaned on since D34 does not degrade it
 either, the ablation is measuring nothing and every null in A–C is uninterpretable — which is the
-lesson D74 paid for twice.
+lesson D78 paid for twice.
 
 **Criterion, fixed before the runs.** Paired per-episode deltas over the standard 47 × 3 episodes;
 the headline triple reported together (`EVALUATION.md` §4); Wilcoxon signed-rank plus a 95% bootstrap
 CI on the mean paired delta for coverage and for censored intercept time. A block counts as read
 only if the CI excludes zero **and** the relative effect clears D47's 5% margin on at least one
 headline metric **and** arm D degrades at least as much. A null is a reportable outcome here, as it
-was in D73 and D74, not something to tune away.
+was in D77 and D78, not something to tune away.
 
 **Evidence.** `rfenv/env.py` (`reward_balance_obs`, `_normalise_prev_reward`, `_REWARD_OBS_CLAMP`,
 the `_BLOCK_SPECS` entries, `OBS_LAYOUTS["v3"]`, `corrupt_obs_blocks`/`_corrupt`, `last_reward_obs`);
@@ -4824,21 +4824,21 @@ stays too, on a weaker version of the same argument: it *is* `current_hit_streak
 pre-existing information, but there is no companion block making it directly, provably redundant the
 way `current_band` made `prev_action` redundant, and it costs one column.
 
-**None of this is settled by the argument alone, and D74 is the reason not to trust it uncritically.**
+**None of this is settled by the argument alone, and D78 is the reason not to trust it uncritically.**
 The RL² case for `prev_reward` is a claim about what *should* help an optimiser reach a representation
 faster — it is not a claim that this training run, on this architecture, at this scale, actually
-learns to use the channel. D74 already measured, twice, that this exact setup does not reliably learn
+learns to use the channel. D78 already measured, twice, that this exact setup does not reliably learn
 to use even a much stronger, unambiguous, high-magnitude signal (`band_priority`) that was also never
-available anywhere else in the observation. That precedent is the whole reason D75's ablation exists
+available anywhere else in the observation. That precedent is the whole reason D79's ablation exists
 rather than the layout being asserted as an improvement on the strength of the architecture argument
 alone.
 
-**Cost, paid on purpose.** Same class of change as D49/D55/D67/D72: `lstm_v3_seed0` and
+**Cost, paid on purpose.** Same class of change as D49/D55/D67/D76: `lstm_v3_seed0` and
 `lstm_v3_seed1`, both complete 800k-step checkpoints trained on the 436-wide shape, are now
 permanently unloadable — `require_loadable` refuses them by name, with the recorded width in the
 error message. Rung 24a stays registered against the dead checkpoint, matching how every other width
 casualty in this repo stays registered as a record of what was measured rather than pruned; rung 24b
-(the "v2p" control) is unaffected. The D75 seed-0 comparison already run and committed stays valid as
+(the "v2p" control) is unaffected. The D79 seed-0 comparison already run and committed stays valid as
 a record of what was measured on the old, 436-wide shape — it is not extended, and nothing in it is
 retracted, only superseded by whatever trains on the narrower layout next.
 
@@ -4858,7 +4858,7 @@ holding "a weaker version of the same argument" as `prev_action` — pre-existin
 provable — and this amendment acts on that weakness rather than leaving it as a footnote.
 `OBS_LAYOUTS["v3"]` narrows from `v2p` + 2 blocks (400 wide) to `v2p` + 1 (399 wide), the same
 plain tail-deletion the first amendment was. **`prev_reward` is now the only block "v3" carries
-beyond `v2p`**, which is also the cleanest form of D75's own central claim: this layout tests
+beyond `v2p`**, which is also the cleanest form of D79's own central claim: this layout tests
 exactly one hypothesis, that the raw per-step reward is information an LSTM's hidden state could
 not otherwise reconstruct, with nothing else in the way of reading that result.
 
@@ -4878,13 +4878,13 @@ new refusal case for `corrupt_obs_blocks=("prev_hit",)`); `tests/test_band_layou
 
 ---
 
-## D76 — An episode may run longer than one recording, and you can watch it
+## D80 — An episode may run longer than one recording, and you can watch it
 
 **Status:** `BUILT` (2026-09-19). Mechanism built and tested; no long-mission result yet.
 
 **Why.** A 30 s episode is the task definition (D35) and stays the evaluation unit. But an agent that
 adapts *during* a mission has nothing to adapt over in 300–600 decisions, and online fine-tuning
-(D77) needs far more than one episode's worth of transitions before an update means anything. The
+(D81) needs far more than one episode's worth of transitions before an update means anything. The
 request was for missions that run until stopped.
 
 **`constants.py` is not touched.** `N_SLOTS = 600` and `EPISODE_S = 30.0` are frozen (D42), pinned
@@ -4992,15 +4992,15 @@ colour); `tests/test_online.py` (the view-callback regression test).
 
 ---
 
-## D77 — Online fine-tuning exists, on a continuous grid, and its gradient sees the observable reward
+## D81 — Online fine-tuning exists, on a continuous grid, and its gradient sees the observable reward
 
 **Status:** `BUILT` (2026-09-19). Mechanism built and tested; no adaptation result yet.
 
 **This is a new, additional mode, not a replacement.** Asked directly whether offline training —
 `rfenv.rl.{ppo,recurrent_ppo,dqn}.train()`, frozen-checkpoint, the path every rung in
-`EVALUATION.md` §5 has ever been produced by, including D77's own two arms — is still available: yes,
+`EVALUATION.md` §5 has ever been produced by, including D81's own two arms — is still available: yes,
 completely unaffected, and it stays the default. `rfenv/rl/online.py` is a *second* driver that loads
-an already-trained checkpoint and keeps adapting it; nothing in D77 touches, wraps, or gates the
+an already-trained checkpoint and keeps adapting it; nothing in D81 touches, wraps, or gates the
 ordinary `train()` functions, and `PROJECT_ARCHITECTURE.md` §10's `Develop RL scheduler → Freeze final
 system → Final held-out evaluation` workflow is exactly as true today as it was before this decision.
 Verified directly (2026-09-20): a plain `rfenv.rl.ppo.train()` call and a plain
@@ -5010,7 +5010,7 @@ frozen checkpoints on the current (400-wide, post-amendment) "v3" layout, with n
 **What this changes about D29.** D29 records, correctly for its time, that *"there is no online
 learning after deployment anywhere in the architecture"* and that the observation/reward asymmetry
 *"would only bite if we ever fine-tuned online, which we do not."* We now do. **D29's rule is not
-relaxed** — it is satisfied, by fine-tuning on `reward_balance_obs` (D75) rather than on `step()`'s
+relaxed** — it is satisfied, by fine-tuning on `reward_balance_obs` (D79) rather than on `step()`'s
 return value. A gradient taken against a reward that reads `Z` describes a simulator, not a
 receiver, and the "adapts in the field" claim would be false. `ObservableRewardWrapper` makes that
 mechanical rather than argued. Scoring is untouched: `total_reward` and `episode_metrics()` still
@@ -5022,7 +5022,7 @@ rung.
 a fourteenth of one rollout, and at `gamma=0.997` the effective horizon (~333 steps) is comparable
 to the whole episode, so the advantages would be dominated by the terminal bootstrap. A per-mission
 update is not a small update, it is a noisy one, and **this module does not offer one.** Fine-tuning
-runs only on a continuous grid (D76), where a simulated hour is 40k–72k steps and the rollout the
+runs only on a continuous grid (D80), where a simulated hour is 40k–72k steps and the rollout the
 policy trained with fits several times over.
 
 **The rollout stays at `n_steps=8192` rather than shrinking, and an earlier draft of this entry had
@@ -5077,7 +5077,7 @@ bit-identical**, which is the no-op control that rules out the harness perturbin
 route other than the optimiser; `custom_objects` really resizes the rollout buffer; an adapted
 checkpoint still runs through `run_episode` under `guarded()`).
 
-## D78 — A second recurrent-PPO policy, `MlpFeatureLstmPolicy`: a feature MLP ahead of the LSTM
+## D82 — A second recurrent-PPO policy, `MlpFeatureLstmPolicy`: a feature MLP ahead of the LSTM
 
 **Status:** `MEASURED`, single seed (2026-09-20). Built and tested the same day; the first matched-pair
 result landed a few hours later, once training finished. **The baseline wins on the headline metric,
@@ -5095,8 +5095,8 @@ default 256), and the post-LSTM actor/critic heads are `RecurrentActorCriticPoli
 
 **Registered as a second policy, not a replacement — `--policy MlpFeatureLstmPolicy` opts in,
 `--policy MlpLstmPolicy` (the default) is bit-for-bit what every existing rung trained on.** The
-same convention every other architecture question here has followed (D71 "v2", D74 band-priority,
-D75 "v3"): a fully-specified, directly-requested build, landed as a matched-pair comparison waiting
+same convention every other architecture question here has followed (D75 "v2", D78 band-priority,
+D79 "v3"): a fully-specified, directly-requested build, landed as a matched-pair comparison waiting
 to be run, not a change made to what the baseline already trains on.
 
 **Why a features-extractor swap and not a new policy class written from scratch.** SB3's own
@@ -5134,7 +5134,7 @@ reloads via `load_checkpoint()` and predicts correctly.
 Trained `lstm_v2p_mlpfeature_seed0` (rung 25a): `--policy MlpFeatureLstmPolicy`, `reward_balance`,
 `obs_version="v2p"`, seed 0, `ent_coef=0.01`, `gamma=0.997`, `n_steps=8192`, `lstm_hidden_size=512`,
 800k steps — identical in every training input to the already-trained `lstm_v2p_ctrl_seed0` (rung
-24b, D75's own control arm), reused as the baseline rather than retrained, since it differs from 25a
+24b, D79's own control arm), reused as the baseline rather than retrained, since it differs from 25a
 in nothing but `--policy`. Compared over the full 47-config development set, 3 seeds
 (`python -m rfenv.compare --rungs lstm_v2p_mlpfeature_seed0,lstm_v2p_ctrl_seed0,round_robin,recency
 --seeds 3`):
@@ -5154,13 +5154,13 @@ intercept time — the MLP-feature policy is measurably slower to first-detect e
 ratio and coverage.
 
 **Read as suggestive, not conclusive — one seed, same caution every other single-seed result in this
-repository carries (D64, D73, D74's first pair).** No mechanism has been checked yet (no permutation
-ablation, no entropy/diffuseness comparison, no camping check — the three D74 ran before concluding
+repository carries (D64, D77, D78's first pair).** No mechanism has been checked yet (no permutation
+ablation, no entropy/diffuseness comparison, no camping check — the three D78 ran before concluding
 its own null was a training-difficulty story and not a misused-signal story). The plausible reading,
 stated but not verified: the MLP ahead of the LSTM is extra capacity and extra optimisation depth in
 front of the recurrent core, and 800k steps that was enough to fit `MlpLstmPolicy` well may simply be
 a harder budget for a deeper network to converge on speed-to-first-detection specifically — the same
-"harder training problem" explanation D74 gave for its own treatment underperforming a simpler
+"harder training problem" explanation D78 gave for its own treatment underperforming a simpler
 control. **Not adopted, not promoted, code not removed** — `MlpFeatureLstmPolicy` stays registered
 and available; nothing defaults to it. A second and third seed (mirroring D68's own escalation) is
 the natural next step before treating this direction as settled either way, not run without being
@@ -5192,7 +5192,7 @@ this 12-scenario probe; registered as rung 25b (`lstm_v2p_mlpfeature_seed0_s12`)
 off a 12-scenario sample, and scored properly below.
 
 **Rung 25b vs. rung 23a (2026-09-20), the project's best-scoring checkpoint to date.** Curiosity check,
-not a matched pair — 23a (D74 follow-up's `lstm_balance_v2p_priority_strong_seed2_800k`, 73.1%
+not a matched pair — 23a (D78 follow-up's `lstm_balance_v2p_priority_strong_seed2_800k`, 73.1%
 beats-recency-both on its own 513-episode run) and 25b differ in observation, reward-term
 configuration and training length, not just architecture, so this is a "how far off the project's
 best is the new architecture" reading, not an isolated attribution. Scored on the 47-config
@@ -5234,18 +5234,18 @@ a checkpoint trained under the new policy reloads through `load_checkpoint()` an
 round_robin/recency; artefacts in `runs/baselines/d78_s12_vs_23a/`. The convergence check (training
 curve read + snapshot trend) was a scratch script, not committed, reported here in full with method
 and numbers rather than only a conclusion, per this repository's own provenance rules — same
-discipline D74's permutation ablations followed.
+discipline D78's permutation ablations followed.
 
-## D79 — A third recurrent-PPO policy, `BandEncoderLstmPolicy`: represent each band, then pool
+## D83 — A third recurrent-PPO policy, `BandEncoderLstmPolicy`: represent each band, then pool
 
 **Status:** `BUILT` (2026-09-20). Mechanism built and tested; no training result yet.
 
 **What it is.** A second architecture ablation on rung 9, fully specified and requested directly, in
-the same spirit as D78: `obs -> shared per-band encoder -> mean pool across bands -> concat encoded
+the same spirit as D82: `obs -> shared per-band encoder -> mean pool across bands -> concat encoded
 global features -> LSTM -> actor/critic`, in place of the baseline's `obs -> LSTM -> actor/critic` or
-D78's `obs -> flat-vector MLP -> LSTM -> actor/critic`. The idea being tested: the flat observation
+D82's `obs -> flat-vector MLP -> LSTM -> actor/critic`. The idea being tested: the flat observation
 already *is* 11 (in "v3") interleaved per-band arrays plus a handful of global scalars, but the
-baseline and D78 both feed it to the network as one undifferentiated vector, with no structural signal
+baseline and D82 both feed it to the network as one undifferentiated vector, with no structural signal
 telling the network "these 396 numbers are 36 repeats of an 11-feature description, one per band."
 This architecture makes that structure explicit instead of hoping the network discovers it.
 
@@ -5260,7 +5260,7 @@ per-band **exactly when its width is `N_BANDS`**, global otherwise, nothing abou
 falls where is hardcoded. `observations[:, band_index]` then gathers `(rows, 36, n_band_features)` in
 one indexing op, in both numpy and torch (verified — `x[:, idx]` with a 2D integer index array gives
 `x.shape[:1] + idx.shape`, checked directly rather than assumed). This is also what makes `prev_action`
-handled correctly with zero special-casing: no `OBS_LAYOUTS` entry uses it today (D75 shipped it in
+handled correctly with zero special-casing: no `OBS_LAYOUTS` entry uses it today (D79 shipped it in
 "v3", removed it the next day once `current_band` was shown to already carry the same information),
 but it is still registered `N_BANDS` wide in `_BLOCK_SPECS` — a layout that included it again would
 have it fall into the per-band bucket automatically, the same as any other `N_BANDS`-wide block, with
@@ -5294,14 +5294,14 @@ width is unique today (183/362/398/400), so this is unambiguous; an explicit `ob
 disagrees with the space's width is refused, not silently trusted, the same "checked, not assumed"
 discipline `require_loadable` applies to checkpoint width.
 
-**`lstm_hidden_size` and the post-LSTM actor/critic heads are untouched**, same convention D78 set —
+**`lstm_hidden_size` and the post-LSTM actor/critic heads are untouched**, same convention D82 set —
 `features_dim` (192 by default) becomes the LSTM's input width in place of the raw observation, but the
 recurrent core's own size stays at whatever is passed (library default 256, or 512 to match rung 23a's
 config for a fair first comparison, per the request). Every recurrent-PPO guarantee — episode-start
 masking, hidden-state reset, truncated-BPTT sequence handling, the rollout buffer — is `sb3_contrib`'s
 own code, never touched: the extractor only ever sees a flat `(rows, obs_dim)` tensor (one live
 timestep or a whole flattened rollout) and has no parameters that could depend on the sequence
-dimension, exactly the same guarantee D78 relies on and for the same underlying reason (SB3 reshapes
+dimension, exactly the same guarantee D82 relies on and for the same underlying reason (SB3 reshapes
 into a sequence *after* feature extraction, in `_process_sequence`, never before).
 
 **Registered as a third policy, not a replacement** — `--policy BandEncoderLstmPolicy` opts in,
@@ -5309,7 +5309,7 @@ into a sequence *after* feature extraction, in `_process_sequence`, never before
 300-timestep smoke run on "v3" (11 per-band blocks, 4 global) confirms `band_index.shape == (36, 11)`,
 `global_index.shape == (4,)`, `lstm_actor.input_size == 192`, `lstm_actor.hidden_size` untouched from
 whatever is passed; a checkpoint trained under the policy reloads via `load_checkpoint()` and predicts.
-No training result yet — same status D78 opened at. The natural next step, per the request: the exact
+No training result yet — same status D82 opened at. The natural next step, per the request: the exact
 23a training command (reward_balance, "v2p", `band_priority=True` at 23a's own strengthened settings,
 seed 2, `lstm_hidden_size=512`, `n_steps=8192`, 800k steps), differing only in `--policy`, not started
 without being asked.
@@ -5323,7 +5323,7 @@ band count; permuting bands before pooling leaves the output unchanged; `obs_ver
 mismatch is refused; `lstm_hidden_size` matches the baseline unless overridden; the post-LSTM heads are
 the same classes as the baseline's; a checkpoint round-trips through `load_checkpoint()` and predicts.
 
-## D80 — A third trap on interception ratio: 12 of 36 bands are structurally empty in every scenario, and every checkpoint's score tracks how well it has learned to avoid them
+## D84 — A third trap on interception ratio: 12 of 36 bands are structurally empty in every scenario, and every checkpoint's score tracks how well it has learned to avoid them
 
 **Status:** `MEASURED` (2026-09-20). A population regularity in the 47-config development set, and a
 methodological caution that follows directly from it — not a code change, not an environment change.
@@ -5347,9 +5347,9 @@ own beats-recency-both score (fair share would be 33.3%, since these are 12 of 3
 | checkpoint | dead-band airtime | beats-recency, both |
 |---|---|---|
 | 23a (`lstm_balance_v2p_priority_strong_seed2_800k`) | **1.73%** | **73.8%** |
-| 26a (`lstm_v3_bandenc_noprior_seed2`, D79) | 4.73% | 66.7% |
-| 24b (`lstm_v2p_ctrl_seed0`, D75/D78 baseline) | 9.94% | 62.4% |
-| 25a (`lstm_v2p_mlpfeature_seed0`, D78) | 12.53% | 46.8% |
+| 26a (`lstm_v3_bandenc_noprior_seed2`, D83) | 4.73% | 66.7% |
+| 24b (`lstm_v2p_ctrl_seed0`, D79/D82 baseline) | 9.94% | 62.4% |
+| 25a (`lstm_v2p_mlpfeature_seed0`, D82) | 12.53% | 46.8% |
 
 Within rung 26a's own 800k-step training run, the same relationship holds internally: correlating
 beats-recency-both score against dead-band airtime across all 16 checkpoint-freq snapshots gives
@@ -5402,18 +5402,18 @@ memory): `TruthGrid.from_scenario()` over all 47 stare and all 47 scan train-spl
 occupancy check; `episode_log.csv` artefacts from `runs/baselines/d79_bandenc_final/`,
 `d79_bandenc_all_snapshots_vs_23a/`, and `d79_bandenc_seed0_check/` for the airtime-share figures.
 Diagnostic scripts were scratch, not committed, per this repository's provenance rules (same
-discipline D74's permutation ablations and D78/D79's convergence checks followed) — reported here in
+discipline D78's permutation ablations and D82/D83's convergence checks followed) — reported here in
 full with method and numbers rather than only a conclusion.
 
-## D81 — D77's first real result: online fine-tuning works, and it is not the same thing as in-context adaptation
+## D85 — D81's first real result: online fine-tuning works, and it is not the same thing as in-context adaptation
 
-**Status:** `MEASURED` (2026-09-20). D77 built the mechanism on 2026-09-19 and it had never been run
+**Status:** `MEASURED` (2026-09-20). D81 built the mechanism on 2026-09-19 and it had never been run
 for an actual result until tonight. This entry is that result, plus two things found and fixed along
 the way: `rfenv/rl/online.py` had no periodic checkpointing, and `compare_animation` couldn't show
 misses or false alarms at all.
 
-**The test world, built for this specifically.** D80 found that 23a gives **zero airtime, ever**, to
-ten bands: 12, 14, 24, 27, 28, 30, 32, 33, 34, 35 — seven of these are among D80's twelve
+**The test world, built for this specifically.** D84 found that 23a gives **zero airtime, ever**, to
+ten bands: 12, 14, 24, 27, 28, 30, 32, 33, 34, 35 — seven of these are among D84's twelve
 structurally-always-empty bands, three (12, 24, 32) are bands that *do* carry real traffic sometimes
 but 23a has still learned to ignore. To test whether the model can be made to un-learn that habit, a
 fully synthetic `EmitterPool` was hand-built (not derived from any real recording): two emitters per
@@ -5434,17 +5434,17 @@ segment:
 | **60–90s** | **18** |
 | 90s onward | 18–20, every segment, for the full 30 minutes measured (94.8% coverage by the end) |
 
-This is the LSTM's hidden state doing exactly what D75 predicted it could: integrating evidence within
+This is the LSTM's hidden state doing exactly what D79 predicted it could: integrating evidence within
 a mission and changing behaviour with no weight update. It is fast (under 90 seconds) and it is free —
-nothing about it required D77's mechanism, and this same curve reappeared, unchanged, at the very start
+nothing about it required D81's mechanism, and this same curve reappeared, unchanged, at the very start
 of the fine-tuning run below, before a single gradient step had fired.
 
-**Then D77 itself was run for the first time.** Two sessions, resumed cleanly across a stop (below):
+**Then D81 itself was run for the first time.** Two sessions, resumed cleanly across a stop (below):
 163,840 additional steps beyond 23a's original 802,816 (≈25.6 minutes of real wall-clock fine-tuning:
 ~900 s session 1, 635.7 s session 2 exactly, from the manifest), covering ≈72 minutes of simulated
 mission time — one complete 1-hour mission (reaching 97% coverage) plus 20.8% into a second before the
-run ended, `n_steps=8192` (unchanged from training, per D77's own reasoning), `learning_rate=1e-5`,
-`clip_range=0.1`, `target_kl=0.02` (D77's three brakes).
+run ended, `n_steps=8192` (unchanged from training, per D81's own reasoning), `learning_rate=1e-5`,
+`clip_range=0.1`, `target_kl=0.02` (D81's three brakes).
 
 **The result that matters: tested on a brand-new episode the fine-tuned checkpoint had never seen —
 not a continuation of anything it trained on — it performed strongly from the very first slot.** 314
@@ -5489,7 +5489,7 @@ a standing skill.
 
 **What this does not show.** One synthetic world, one seed for the fine-tuned cold-start test, no
 comparison against *not* fine-tuning for the same wall-clock budget, and the world was deliberately
-"easy mode" (near-zero miss rate by construction) — none of this is a claim that D77 generalises
+"easy mode" (near-zero miss rate by construction) — none of this is a claim that D81 generalises
 robustly to harder or differently-shaped distribution shifts, only that the mechanism, run for the
 first time end to end, produced a real, measurable, correctly-attributed effect.
 
@@ -5503,3 +5503,238 @@ lstm_balance_v2p_priority_strong_seed2_inverted_online*.zip`; segment-by-segment
 ramp-up, `finetuned.gif` for the cold-start result). The synthetic-pool construction and the
 fine-tune/resume driver were scratch scripts, not committed, per this repository's provenance
 rules — reported here in full with method and numbers.
+
+---
+
+## D86 — the "8.42 s" censored intercept-time error was two defects, not one; a published figure is withdrawn
+
+**Status:** `SETTLED` (2026-09-21) — found by re-deriving a transcribed number rather than quoting
+it. **A published figure is withdrawn**, so it is recorded rather than silently corrected. No
+*reported* number moves: 6.60 s and 87.3% are re-measured and confirmed. What moves is the
+counterfactual they were contrasted against, and the attribution drawn from it.
+
+**The finding.** `FIGURES_OF_MERIT.md` §7, `EVALUATION.md` §2, `validate.py` and the prose
+`compare.py` writes into `figures_of_merit.md` all stated that censoring missed detections into the
+mean intercept-time error reads **8.42 s** against **6.60 s** separated, and attributed the whole
+**~1.8 s** gap to missed detections. Re-measured 2026-09-21 over the 47 train pairs at seed 0, one
+defect at a time on one fixed 1,530-emitter matched population:
+
+| recorded side | misses | mean abs error | n |
+|---|---|---|---|
+| ungated (any pulse present) | censored to 30 s | **8.4246 s** | 1,530 |
+| gated (`peak_dbm ≥ γ`) | censored to 30 s | **8.0543 s** | 1,530 |
+| gated (`peak_dbm ≥ γ`) | excluded | **6.5970 s** | 1,295 |
+
+**8.42 s is the value with *both* of §7's named traps active** — an ungated recorded side *and*
+censoring — not the censored form alone, which is 8.05 s. The correct decomposition of the 8.42 s
+is therefore **1.46 s of missed detections plus 0.37 s of a mismatched detection rule**, not 1.8 s
+of missed detections. Both traps were already written down in §7; the worked example quietly
+tripped the one it was not illustrating.
+
+**Two smaller transcription errors fell out of the same check.** `FIGURES_OF_MERIT.md` §7 and
+`validate.py` carried **6.58 s / 87.0% / 1.84 s** where `EVALUATION.md` §2 and `compare.py` carried
+**6.60 s / 87.3% / 1.8 s** — the same measurement, two variants, because both were prose rather
+than computed. The live values are **6.5970 s** and **0.8725**, so the `EVALUATION.md` pair was the
+correct one. The distributional diagnostic was also stale: predicted mean **8.50 s** against
+recorded **8.57 s** (documented as 8.49 / 8.63), per-emitter **r = 0.066** (documented as 0.07),
+agreeing within 1.1 s at every decile p10–p90 over the 1,295 emitters detected on both sides. The
+qualitative conclusion — distributions match, individual emitters do not — is unchanged and is what
+licenses comparing schedulers over distributions (D24).
+
+**Why this happened, and it is the repository's own rule that catches it.** `FIGURES_OF_MERIT.md`
+§9.4 says *"Re-derive, never transcribe. Every figure comes from the code that computes it, in the
+run that prints it."* Every number corrected here was hardcoded prose in four places and satisfied
+nothing but itself: `intercept_time_error()` returns the separated form only, so the censored
+counterfactual it is contrasted against has never been computed by committed code and could not
+drift back into agreement. That is the mechanism, and it is the same one behind D32, D41 and D56 —
+a convention that was never recorded beside the number it produced.
+
+**Also clarified, on a teammate's reading of the same table (no number changes).** P<sub>d</sub> is
+**not** analytic and is not "a property of the threshold" in the sense P<sub>fa</sub> and
+sensitivity are. Measured over every cell population in this repository, P<sub>fa</sub> is
+identically `1.349898e-03` — exact, data-independent, as `receiver.operating_point`'s docstring
+says. P<sub>d</sub> is an empirical average over a chosen population and is scheduler-invariant
+only because **D33** pinned that population to one fixed reference sweep. Averaged instead over
+"the cells this scheduler looked at", at the same γ and σ on the same 47 stare grids, a camper
+parked on each grid's busiest band reports **P<sub>d</sub> = 0.9158** against the reference sweep's
+**0.8395**, and a camper on the quietest band reports no P<sub>d</sub> at all (empty denominator).
+`receiver.reference_sweep_cells`'s docstring already predicted exactly this; it had not been
+measured. The right answer for the wrong reason is the one that breaks on reimplementation, which
+is why it is recorded.
+
+**One presentation hazard named, not changed.** `compare.py` computes the operating point twice per
+run: `meta["operating_point"]` over every scenario the ladder ran (replays *and* sampled), which
+`comparison.md` and `metrics.json` print, and `model_level_figures()` over the stare replay grids
+only, which `figures_of_merit.md` prints. At `--sampled 10` those are **0.8421** and **0.8395** —
+two P<sub>d</sub> in one output directory, both correctly labelled, from one command. Deliberate
+(#6 and #7 are undefined on a sampled scenario, so its grids must not enter blocks A/B) and left
+as-is; documented in `FIGURES_OF_MERIT.md` §1 so neither is quoted as "our P_d".
+
+**Evidence.** Re-derivation scripts were scratch, not committed, and are reported here with method
+and numbers in full: `intercept_time_error`'s own loop re-run with the recorded-side gate and the
+censoring each varied independently (47 configs, `list_configs("stare")`, seed 0,
+`_g3_sweep_policy()`); `operating_point` over `reference_sweep`/`all_cells` on the stare and scan
+replay grids and over camper-visited cells built from `dwell_schedule()`; `gate1` over the same 47
+configs returning accuracy 0.8585 / MCC 0.6854 / precision 0.8819 / recall 0.6932 / base rate
+0.3540, all unchanged. Documents corrected in place: `FIGURES_OF_MERIT.md` §0, §1, §6, §7;
+`EVALUATION.md` §2; `rfenv/validate.py`; `rfenv/compare.py`.
+
+**Open, not taken here.** The durable fix is to have `intercept_time_error()` return the censored
+and ungated counterfactuals as fields so §7's table is computed rather than transcribed, and to
+delete the prose constants. That changes the metric's return surface, so it is proposed rather than
+built (`CLAUDE.md` §Working rules).
+
+---
+
+## D87 — the RL scheduler's edge over the bar is a learned dead-band map, and it inverts under a band-allocation shift
+
+**Status:** `MEASURED` (2026-09-22). Not a decision to adopt or remove anything — a measurement that
+answers a question D84 explicitly said this project could not answer from training and comparison
+data alone, and that reframes what the online lane (D81, D85) is for. Nothing in `rfenv/` changed.
+
+**The question.** D84 found that every checkpoint's score tracks how little airtime it wastes on the
+twelve bands that are structurally empty in all 47 comparison scenarios, and named the risk
+precisely: `reward_balance`'s airtime terms and interception ratio reward avoiding those bands
+*identically* whether the emptiness is a general fact about the operating environment or an artifact
+of one finite synthetic emitter library — "and this project cannot tell those apart from
+training/comparison data alone, since both draw from the same population." This entry tells them
+apart, synthetically, without spending D8's held-out split.
+
+**Method.** Every contribution in `split.training_pool()` (2,600 contributions, 1,431 emitters) had
+its band index cyclically relocated, `band -> (band + k) % 36`, for `k = 0, 9, 18`. Nothing else was
+touched: the same emitters, the same pulse amplitudes, widths, AoA and per-slot timing, moved
+elsewhere in the spectrum. This is the "the deployment band plan does not match TSRD's" case, built
+out of real signal statistics rather than a hand-constructed world. The relocation is real and
+verified by counting cells per band: the zero-occupancy set moves from
+`{13,14,25,26,27,28,29,30,33,34,35}` at `k=0` to `{0,1,2,3,6,7,8,22,23,34,35}` at `k=9` and
+`{7,8,9,10,11,12,15,16,17,31,32}` at `k=18`, and the five busiest bands move from
+`{6,5,18,19,7}` to `{24,23,0,1,25}`.
+
+Scored on one continuous D80 grid of `episode_slots = 20 * N_SLOTS` (10 simulated minutes, 909
+detectable emitters), seeds 0 and 1, rung 23a (`lstm_balance_v2p_priority_strong_seed2`, the
+strongest checkpoint this project has measured) against rung 5 `recency` — THE BAR — on identical
+worlds. 23a was run through `RecurrentRLScheduler` at its own ladder env settings (`obs_version=
+"v2p"`, `band_priority=True`, `priority_coef=2.0`, `priority_high=5.0`, `occupancy_coef=0.3`,
+`occupancy_decay_cap=6.0`). Airtime is charged in slots via `DWELL_SLOTS`, not in decisions, so a
+wide band costs what it actually costs.
+
+| shift | seed | 23a coverage | `recency` | delta (pp) | 23a airtime on the *currently* dead bands | `recency` |
+|---|---|---|---|---|---|---|
+| +0 | 0 | **0.8163** | 0.7822 | **+3.41** | **6.81%** | 17.90% |
+| +0 | 1 | **0.7837** | 0.7513 | **+3.24** | **11.67%** | 19.70% |
+| +9 | 0 | 0.6128 | 0.7602 | **−14.74** | **40.97%** | 25.33% |
+| +9 | 1 | 0.6321 | 0.7409 | **−10.88** | **40.16%** | 27.49% |
+| +18 | 0 | 0.7019 | 0.7888 | **−8.69** | **28.68%** | 21.72% |
+| +18 | 1 | 0.6684 | 0.7668 | **−9.84** | **29.78%** | 23.72% |
+
+**`recency` is the control, and it is flat: 0.7822 -> 0.7888 at `k=18`, 0.7602 at `k=9`.** A
+memoryless index policy with no learned band prior sees essentially the same problem in every
+relocated world, which is what establishes that the shifted worlds are not harder. Whatever 23a
+loses, it loses because of what 23a carries into them.
+
+**The finding, and the mechanism is the same one D84 named.** In-distribution, 23a's entire margin
+over the bar *is* its dead-band map: it wastes 6.8–11.7% of airtime on empty bands where `recency`
+wastes 17.9–19.7%, and it beats the bar by +3.2/+3.4 pp. Relocate the population and the map
+inverts — 23a now wastes **28.7–41.0%**, *more* than `recency`'s 21.7–27.5% — and the +3.4 pp lead
+becomes a −8.7 to −14.7 pp deficit. **The learned prior is the asset in-distribution and the
+liability out of it, and it is the same prior both times.** The direction is consistent across both
+shifts and both seeds, six runs, with no overlap between the in-distribution and shifted groups.
+
+**There is no in-context recovery.** Per-segment new discoveries at `k=18`, seed 0 (23a
+in-distribution / 23a shifted / `recency` shifted), one row per 30 s segment:
+
+```
+23a  in-dist : 24 31 72 31 40 48 47 46 42 61 61 23 2 6 9 54 28 18 40 59
+23a  shifted : 19 20 62 22 39 42 35 36 47 51 58 19 2 6 7 53 26 14 38 52
+recency shft : 22 31 71 28 39 50 47 37 46 59 54 22 2 5 9 54 25 18 38 60
+```
+
+The shifted curve is uniformly depressed across all 20 segments and never converges on either of the
+others. The shared dips at segments 12–14 are the stitched world's own emitter availability (D80 —
+each 30 s segment is an independent draw), not policy behaviour. **Ten simulated minutes of hidden
+state does not recover the deficit**, which is the claim D85 would need and does not have on
+realistic signal statistics.
+
+**What this means for D81/D85, the online lane.** It is the strongest existing argument *for* it:
+the failure mode online adaptation is meant to address is now demonstrated rather than hypothesised,
+and it is severe enough to cost the project its entire margin over the bar. But it also names the
+control that D85 never ran. D85 compares a frozen checkpoint against its own fine-tuned self; the
+comparison that decides whether the lane is worth anything is **against `recency`**, which scores
+0.74–0.79 on every shifted world from the first slot, for free, with no gradient step, no GPU and no
+adaptation period. Online fine-tuning does not have to beat its own degraded self — it has to beat
+the zero-cost fallback, starting from 9–15 pp behind it. **That experiment is not run**, and until it
+is, "the model adapts when deployed" is not a claim this repository can make.
+
+**Three corrections to D85 that fell out of checking it.** Recorded here rather than edited into D85,
+which stands as the record of what was run.
+
+1. **The simulated-mission-time figure is wrong by ~2.6×.** D85 reports 163,840 steps as "≈72 minutes
+   of simulated mission time". A step is one dwell and the shortest dwell is one slot
+   (`DWELL_SLOTS.min() == 1`) at `SLOT_S = 0.05`, so 163,840 steps is **≥136.5 minutes** by
+   arithmetic alone, with no measurement needed. At 23a's own measured rate — 4,432 decisions over
+   6,000 slots, mean dwell **1.354 slots** — it is **≈185 minutes**. The corresponding per-update
+   figure, which is the one that matters operationally, is **9.2 minutes of mission time per gradient
+   update** at `n_steps=8192`. The ≈26 minutes of wall clock D85 also reports is real but is
+   simulator throughput, not adaptation speed; the two must not be quoted interchangeably.
+2. **D85's "the frozen model adapts in-context in under 90 seconds, for free" does not reproduce on
+   realistic signal statistics.** That result came from a world D85 itself describes as "easy mode" —
+   `-80 dBm`, ~10σ above threshold, 95% duty cycle, two emitters per band, traffic on ten bands and
+   literally nothing on the other 26 — where a miss is essentially impossible by construction and any
+   exploratory policy finds everything quickly. The per-segment table above is the same question
+   asked with real amplitudes and real duty cycles, and the answer is no recovery at all. The
+   in-context half of D85 should not be carried forward.
+3. **D85 is not reproducible from the repository.** Its cited segment log
+   (`runs/baselines/inverted_world_online_finetune/segments.jsonl`) is absent — `runs/*` is
+   gitignored except checkpoints — and the synthetic-pool builder was a scratch script, deliberately
+   not committed. The checkpoints exist; the world they were trained on cannot be rebuilt. Same
+   failure mode as D56 and D86: a number that satisfies nothing but itself.
+
+**Two implementation defects in `rfenv/rl/online.py`, found while checking the above.** Neither is
+fixed here; both are reported so they are not discovered in a demo.
+
+1. **`fine_tune(reward=...)` never reaches the gradient.** `ObservableRewardWrapper.step` returns
+   `env.unwrapped.last_reward_obs`, which is always `reward_balance_obs` regardless of which key the
+   env was built with. Measured: `reward_balance`, `explore` and `greedy` each hand the learner
+   identical values (`1.5, 1.5, 1.5, 1.5, 1.5` on the first five steps of a seed-0 episode). The
+   argument and its `--reward` CLI flag change only `env.reward_name` and what `total_reward` and
+   `episode_metrics()` report. This is arguably the right default — it is what keeps the gradient
+   deployable — but it is silent, and an inert flag that looks live is how a wrong claim gets made.
+2. **Fine-tuning a priority-trained checkpoint silently drops the priority terms.**
+   `priority_reward_bonus` is added to `reward` in `ScanEnv.step()` *after* `_prev_reward_obs` is
+   computed, so with the bonus enabled the scored reward and the gradient's reward diverge:
+   measured `2.1, 2.1, 1.8, 1.8, 1.8` against `1.5, 1.5, 1.5, 1.5, 1.5`. D85 fine-tuned rung 23a,
+   whose whole training objective included that bonus, so that run **switched 23a's objective
+   mid-flight** rather than continuing its training. Not materially damaging — D78 measured the
+   priority mechanism null twice — but "we fine-tuned 23a" is imprecise as stated.
+
+**What this does not show.** The shift is synthetic: a cyclic relocation is a clean way to hold the
+emitter population fixed while moving where it sits, but it is not a real second operating
+environment, and D84's own caution applies unchanged — **the only test that settles whether the
+twelve dead bands are a general fact or a library artifact is the 45 held-out pairs (D8), spent
+once, on a final system.** Beyond that: one checkpoint (23a), two seeds, two shifts, coverage only —
+censored intercept time and interception ratio were not scored, and the headline ladder metric
+(paired beats-recency-on-both) was not computed, so these numbers are not directly comparable to
+`EVALUATION.md` §5's. The recurrent policy samples its actions (D54), so repeated runs of one
+configuration vary by roughly a point of coverage; the effect measured here is 9–15 points and sits
+far outside that.
+
+**Evidence.** Measured 2026-09-22 on this machine. Scripts were scratch, not committed, and the
+method is stated above in full so it can be rebuilt: `dataclasses.replace` over every
+`EmitterContribution` in `split.training_pool()` rewriting `cells[:, 0]`; `ScanEnv(pool=...,
+episode_slots=20*N_SLOTS, **rung-23a env kwargs)`; `RecurrentPPO.load(
+"runs/checkpoints/v2p/lstm_balance_v2p_priority_strong_seed2/lstm_balance_v2p_priority_strong_seed2.zip",
+device="cpu")` driven by `rl.common.RecurrentRLScheduler`; `baselines.recency.RecencyActivity` on the
+identical pool and seed; coverage read as `len(env.tracks) / len(env.detectable)`; airtime
+accumulated as `DWELL_SLOTS[action]` and normalised; dead-band sets recomputed per shift by counting
+cells per band rather than assumed. Mean dwell from a 6,000-slot run of the same checkpoint. The two
+`online.py` defects were confirmed by constructing `make_online_env` at three reward keys and with
+the priority bonus on and off, and comparing the wrapper's returned reward against `step()`'s
+directly. `python scripts/doctor.py` clean at the time of writing (2 pre-existing doc-sync warnings,
+unrelated).
+
+**Consequence.** `EVALUATION.md` §4's third trap (D84) now has a measured failure behind it rather
+than a correlation: report dead-band airtime beside a ratio gain, and treat a checkpoint's margin
+over the bar as partly a bet that the band population is stable. No rung is promoted, demoted or
+removed. The open thread is the three-way comparison named above — `recency` against frozen 23a
+against an online-fine-tuned 23a, on one shifted world, same episodes and seeds, coverage against
+mission time — which is what would decide whether D81's lane earns its place.

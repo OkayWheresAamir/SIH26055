@@ -10,7 +10,7 @@ the thing it is pinning.
 What a failure here means: an existing rung's schedule, an existing observation
 layout's bytes, or the reward attached to either has moved. That is either a bug
 or a deliberate change that invalidates every checkpoint trained before it (D49,
-D55, D67, D72 each paid that cost). It is never a reason to re-take the hashes.
+D55, D67, D76 each paid that cost). It is never a reason to re-take the hashes.
 
 Numpy-only on purpose -- no training stack at module level, or collection of the
 whole suite aborts on a machine without torch (`scripts/doctor.py` checks this).
@@ -46,7 +46,7 @@ RUNG_LOG_SHA256 = {
 # lands on the wide bands often enough to exercise the 2-slot dwell path).
 # `total_reward` is identical for v1 and v2 by construction: the observation is
 # the policy's input path and the reward never reads it (D29). v2p differs only
-# because `band_priority=True` adds `priority_reward_bonus` on top (D74).
+# because `band_priority=True` adds `priority_reward_bonus` on top (D78).
 OBS_TRAJECTORY_SHA256 = {
     "v1": "a6d5ef1680f126b18f8fe3c39be0fdb4a959ba6cb2540608baceddf211b2773e",
     "v2": "f4dde7255d23248b71f31c263681d30c35b2181e63bca82fc54d0b16a4838a86",
@@ -107,7 +107,7 @@ def test_observation_trajectory_is_unchanged(version):
     assert width == {"v1": 183, "v2": 362, "v2p": 398}[version]
     assert digest == OBS_TRAJECTORY_SHA256[version], (
         f'"{version}" observation bytes moved; every checkpoint on this layout '
-        f"is invalidated. See D49/D55/D67/D72 for what that costs."
+        f"is invalidated. See D49/D55/D67/D76 for what that costs."
     )
     assert total == pytest.approx(OBS_TRAJECTORY_TOTAL_REWARD[version], abs=1e-4)
 

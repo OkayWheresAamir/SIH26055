@@ -1,4 +1,4 @@
-"""Watching an episode while it runs (D76).
+"""Watching an episode while it runs (D80).
 
 Until now the only way to see a schedule was to finish the episode and render a
 GIF. That is fine for a 30 s replay and useless for a mission that runs for an
@@ -208,7 +208,7 @@ class _RateLimited(NullView):
         long mission's counts would silently undercount between redraws.
         Bounded by new rows only, same as `_tail_state`.
 
-        If `log_window_slots` (D76) is set, old rows are dropped from the
+        If `log_window_slots` (D80) is set, old rows are dropped from the
         front of `env.log` once the window fills, which would make this
         index run past the end. Detected and reset rather than raising -- the
         tally then resumes from what remains, undercounting whatever was

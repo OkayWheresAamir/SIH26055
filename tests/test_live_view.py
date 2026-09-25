@@ -1,4 +1,4 @@
-"""The live views (D76).
+"""The live views (D80).
 
 Pinned here, in rough order of how much damage the failure would do:
 (1) `rfenv.live` never imports matplotlib -- the whole point of the light view;
@@ -109,7 +109,7 @@ def test_the_tail_strip_classifies_every_looked_cell_against_truth():
 
 
 def test_truth_is_visible_on_a_band_before_anything_ever_looked_at_it():
-    """The point of D77's redesign: where the emitters are, not just what was
+    """The point of D81's redesign: where the emitters are, not just what was
     declared. A band with a real emitter transmitting shows UNSEEN_TRUTH even
     on a slot nothing ever tuned to."""
     env = _env()

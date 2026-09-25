@@ -1,5 +1,5 @@
-"""Opt-in recurrent-PPO policy architectures: `MlpFeatureLstmPolicy` (D78, obs
--> MLP -> LSTM -> actor/critic) and `BandEncoderLstmPolicy` (D79, obs -> a
+"""Opt-in recurrent-PPO policy architectures: `MlpFeatureLstmPolicy` (D82, obs
+-> MLP -> LSTM -> actor/critic) and `BandEncoderLstmPolicy` (D83, obs -> a
 shared per-band encoder, mean-pooled, concatenated with encoded global
 features -> LSTM -> actor/critic).
 
@@ -7,7 +7,7 @@ Skips at module level without the training stack, same reason `test_online.py`
 does -- a module-level torch/sb3_contrib import aborts collection of the whole
 suite on a machine without either, which `scripts/doctor.py` checks for.
 
-D78 pinned here: (1) the baseline (`MlpLstmPolicy`) is untouched -- its
+D82 pinned here: (1) the baseline (`MlpLstmPolicy`) is untouched -- its
 extractor is still the library's no-op `FlattenExtractor` and its LSTM still
 takes the raw observation width; (2) `MlpFeatureLstmPolicy` really does run
 the MLP first -- the LSTM's input width is the extractor's `features_dim`
@@ -19,7 +19,7 @@ produce the same per-row output; (5) a checkpoint trained under the new
 policy reloads through the ordinary `load_checkpoint()` and predicts, same as
 any other rung's checkpoint.
 
-D79 pinned here: (1) the per-band gather is correct (proven at the pure-numpy
+D83 pinned here: (1) the per-band gather is correct (proven at the pure-numpy
 level in `test_band_layout.py`; here it's proven at the module level via
 permutation of which physical band holds which feature vector); (2) the band
 encoder is genuinely **shared** across all 36 bands -- a fixed parameter
@@ -28,7 +28,7 @@ pooling makes the pre-LSTM features invariant to which physical band a value
 sits in, as long as the same multiset of per-band vectors is presented; (4)
 `obs_version` auto-detects correctly from `observation_space`'s width, and
 mismatches are refused rather than silently gathering the wrong columns; (5)
-`lstm_hidden_size` is untouched, same as D78; (6) checkpoints round-trip.
+`lstm_hidden_size` is untouched, same as D82; (6) checkpoints round-trip.
 """
 from __future__ import annotations
 
@@ -169,7 +169,7 @@ def test_resolve_policy_maps_the_cli_string_to_the_class_only_for_the_new_polici
 
 
 # =============================================================================
-# BandEncoderLstmPolicy (D79)
+# BandEncoderLstmPolicy (D83)
 # =============================================================================
 
 def test_the_band_encoder_policy_puts_a_shared_band_encoder_ahead_of_the_lstm(tmp_path):

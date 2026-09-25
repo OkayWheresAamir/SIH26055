@@ -133,9 +133,9 @@ _BLOCK_SPECS: dict[str, tuple[int, float, float]] = {
     "aoa_cos":            (N_BANDS, 0.0, 1.0),    # D30, (cos+1)/2
     "pulse_count":        (N_BANDS, 0.0, 1.0),    # D76, log1p(C)/log1p(ref), Y-gated
     "band_priority":      (N_BANDS, 1.0, _PRIORITY_HIGH),   # this task, externally sampled/supplied, not computed
-    "prev_action":        (N_BANDS, 0.0, 1.0),    # D75, one-hot of the last band chosen
-    "prev_reward":        (1, 0.0, 1.0),          # D75, `reward_balance_obs` rescaled
-    "prev_hit":           (1, 0.0, 1.0),          # D75, did the last dwell declare anything
+    "prev_action":        (N_BANDS, 0.0, 1.0),    # D79, one-hot of the last band chosen
+    "prev_reward":        (1, 0.0, 1.0),          # D79, `reward_balance_obs` rescaled
+    "prev_hit":           (1, 0.0, 1.0),          # D79, did the last dwell declare anything
 }
 
 # "v1" is the frozen 183-wide vector (D34, D49, D55, D67) -- every checkpoint in
@@ -164,7 +164,7 @@ OBS_LAYOUTS: dict[str, tuple[str, ...]] = {
     "v2p": ("hit_rate", "visit_density", "staleness", "current_band", "clock",
             "measured_dbm_band", "hit_streak", "current_hit_streak",
             "pulse_width", "aoa_sin", "aoa_cos", "pulse_count", "band_priority"),
-    # D75: "v2p" plus two in-context blocks, appended last so every "v2p"
+    # D79: "v2p" plus two in-context blocks, appended last so every "v2p"
     # offset holds. 398 + 2 = 400 wide. This is the RL^2 interface -- a
     # recurrent policy that is shown what its last action returned can run an
     # adaptation rule inside the episode, in its hidden state, with no
@@ -187,13 +187,13 @@ OBS_LAYOUTS: dict[str, tuple[str, ...]] = {
     # *input* at some point, and no layout before "v3" ever exposed the raw
     # per-step reward -- `hit_rate`/`hit_streak`/`staleness` are running
     # aggregate statistics, not the scalar the policy is actually optimised
-    # against. Whether this agent actually reads it is untested; see D75's
+    # against. Whether this agent actually reads it is untested; see D79's
     # ablation.
     #
     # **This is an in-place width change** (436 -> 400), the same class of
-    # change D49/D55/D67/D72 made before it: every checkpoint trained on the
+    # change D49/D55/D67/D76 made before it: every checkpoint trained on the
     # 436-wide shape (`lstm_v3_seed0`, `lstm_v3_seed1`) is now permanently
-    # unloadable. Not free, paid on purpose -- see D75's amendment.
+    # unloadable. Not free, paid on purpose -- see D79's amendment.
     #
     # **Second amendment, same day (2026-09-20): `prev_hit` removed too,
     # requested directly, on a first-pass "does prev_reward alone train well"
@@ -206,7 +206,7 @@ OBS_LAYOUTS: dict[str, tuple[str, ...]] = {
     # `runs/checkpoints/v3/` still predates it, at 436), so nothing loadable
     # is lost -- this narrows the *target* before anything was built against
     # it, not after. `prev_reward` is now the only in-context block "v3"
-    # carries, isolating D75's own central claim (the raw per-step reward is
+    # carries, isolating D79's own central claim (the raw per-step reward is
     # genuinely new information an LSTM's hidden state could not otherwise
     # reconstruct) from a second, weaker one in the same layout.
     "v3": ("hit_rate", "visit_density", "staleness", "current_band", "clock",
@@ -227,7 +227,7 @@ def obs_version_for_width(width: int) -> str:
     """The layout whose `obs_width()` is `width` -- the reverse of `obs_width()`.
 
     For a policy that needs to know its own layout but is only ever handed a
-    `gymnasium.spaces.Box` (D79's `BandEncoderFeaturesExtractor`, built by SB3
+    `gymnasium.spaces.Box` (D83's `BandEncoderFeaturesExtractor`, built by SB3
     from nothing but `observation_space`): every registered width is unique
     today (183/362/398/399), so this is unambiguous, but raises rather than
     guessing if that ever stops being true, and raises if `width` matches no
@@ -279,14 +279,14 @@ def band_layout(version: str) -> BandLayout:
     global otherwise (`clock`, `measured_dbm`, `current_hit_streak`,
     `prev_reward`, `prev_hit`). This is what lets `prev_action` be handled
     correctly with no special case at all: no `OBS_LAYOUTS` entry uses it
-    today (D75 shipped it in "v3", then removed it the next day once
+    today (D79 shipped it in "v3", then removed it the next day once
     `current_band` was shown to already carry the same information -- see
     "v3"'s own comment), but it is still `N_BANDS` wide in `_BLOCK_SPECS`, so
     a layout that *did* include it would have it fall into the per-band
     bucket automatically, exactly like any other `N_BANDS`-wide block --
     never silently dropped into "global" or left out of the gather.
 
-    Built for `rfenv/rl/policies.py`'s `BandEncoderFeaturesExtractor` (D79),
+    Built for `rfenv/rl/policies.py`'s `BandEncoderFeaturesExtractor` (D83),
     which needs to turn the flat vector into `(N_BANDS, n_band_features)` +
     `(n_global_features,)` without ever hardcoding which columns are which --
     the flat vector interleaves blocks (`hit_rate[0:36]`, `visit_density[0:36]`,
@@ -989,7 +989,7 @@ def reward_balance_obs(
     This is not a reward candidate and is deliberately **not** in `REWARDS`:
     nothing trains on it, `reward_gate.py` does not screen it, and D29's
     truth-may-be-read rule is untouched. It exists only to be shown to the policy
-    as the "v3" layout's `prev_reward` block (D75).
+    as the "v3" layout's `prev_reward` block (D79).
 
     **Why a separate function at all.** `reward_balance`'s third term is
     `0.5 * dwell.Z.sum()`, and `Z` is threshold-free truth -- whether an emitter
@@ -1131,7 +1131,7 @@ class ScanEnv(gym.Env):
         self._priority_high = float(priority_high)
         self._occupancy_coef = float(occupancy_coef)
         self._occupancy_decay_cap = float(occupancy_decay_cap)
-        # D76: how long one episode runs. `None` means `N_SLOTS`, and every
+        # D80: how long one episode runs. `None` means `N_SLOTS`, and every
         # existing call site takes that path unchanged -- `constants.py` is
         # frozen (D42) and nothing here moves it; this is a per-env length, not
         # a new constant. Above 600 the world is stitched from whole recordings
@@ -1163,7 +1163,7 @@ class ScanEnv(gym.Env):
             raise ValueError(
                 f"log_window_slots must be >= 1 or None, got {self.log_window_slots}"
             )
-        # Ablation support (D75): named blocks are replaced, per step, by a draw
+        # Ablation support (D79): named blocks are replaced, per step, by a draw
         # from their own recent history before the vector is assembled. This is
         # a property of the *environment a checkpoint is scored in*, not of the
         # checkpoint, which is why it lives here and not on a rung -- the same
@@ -1246,7 +1246,7 @@ class ScanEnv(gym.Env):
     def last_reward_obs(self) -> float:
         """The most recent step's `reward_balance_obs` -- the deployable reward.
 
-        Exposed because online fine-tuning (D77) optimises *this*, not `step()`'s
+        Exposed because online fine-tuning (D81) optimises *this*, not `step()`'s
         return value: a gradient taken against a reward that reads `Z` describes
         a simulator, not a receiver. `rfenv.rl.online.ObservableRewardWrapper`
         is the only consumer.
@@ -1254,7 +1254,7 @@ class ScanEnv(gym.Env):
         return self._prev_reward_obs
 
     def _build_grid(self, scenario: Scenario) -> TruthGrid:
-        """This episode's world: one recording, or several laid end to end (D76).
+        """This episode's world: one recording, or several laid end to end (D80).
 
         At the default length this is `TruthGrid.from_scenario(scenario)` and
         nothing else -- the same call, consuming the RNG the same way -- so every
@@ -1286,7 +1286,7 @@ class ScanEnv(gym.Env):
         super().reset(seed=seed)
 
         # The ablation's own stream, reseeded per episode from the episode seed
-        # but drawn from a separate generator (D75). Derived from `seed` rather
+        # but drawn from a separate generator (D79). Derived from `seed` rather
         # than from `self.np_random` so that not one bit of the receiver's noise
         # sequence moves between a clean run and a corrupted one -- that is what
         # makes the pair a paired comparison.
@@ -1312,7 +1312,7 @@ class ScanEnv(gym.Env):
         self._last_slot = np.full(N_BANDS, -1, dtype=np.int64)     # slot of the last dwell per band, -1 = never -> staleness
         self._last_hit_slot = np.full(N_BANDS, -1, dtype=np.int64)  # slot of the last declared hit per band, -1 = never (episode log only, not in the observation)
         self._prev_action = -1        # last action taken; -1 sentinel so step() 1 always starts a fresh streak
-        # D75, the "v3" in-context blocks. Cold-start values, consistent with
+        # D79, the "v3" in-context blocks. Cold-start values, consistent with
         # every other array here (D20): nothing has been earned and nothing has
         # been declared, so 0.0 and False are the literal truth rather than a
         # fill. `_prev_reward_obs` reaches the observation through
@@ -1426,7 +1426,7 @@ class ScanEnv(gym.Env):
             ) / SWEEP_SLOTS
         else:
             staleness = _SWEEPS_PER_EPISODE
-        # D76: clipped to the declared ceiling, which is what keeps the matching
+        # D80: clipped to the declared ceiling, which is what keeps the matching
         # observation block inside its Box on a mission longer than one recording
         # -- a band untouched for a simulated hour would otherwise read 1674
         # against a declared 13.95. At the default length the clip provably never
@@ -1550,7 +1550,7 @@ class ScanEnv(gym.Env):
                         )
                     )
 
-        # D75: the observable twin of the reward, for the "v3" layout's
+        # D79: the observable twin of the reward, for the "v3" layout's
         # `prev_reward` block. Computed from *this same* pre-dwell snapshot --
         # the three arrays were written at `action` above and nothing touches
         # them again this step, so the two values price the identical state and
@@ -1574,7 +1574,7 @@ class ScanEnv(gym.Env):
         )
         self._prev_hit = bool(dwell.Y.any())
 
-        # This task, extended by D74's follow-up (`priority_reward_bonus`):
+        # This task, extended by D78's follow-up (`priority_reward_bonus`):
         # band-priority reward, additive on top of whatever `self._reward_fn`
         # produced -- it does not touch `REWARDS` or `reward_gate.py`'s
         # screen, which still runs against the base reward candidates
@@ -1649,7 +1649,7 @@ class ScanEnv(gym.Env):
     def _corrupt(self, blocks: dict[str, np.ndarray]) -> dict[str, np.ndarray]:
         """Replace the named blocks with a draw from their own recent history.
 
-        The ablation (D75). Each corrupted block keeps its own marginal -- the
+        The ablation (D79). Each corrupted block keeps its own marginal -- the
         values are ones this block really did take, in this episode -- but loses
         any correspondence with the state that produced them. A policy that
         conditions on the block degrades; a policy that ignores it does not
@@ -1851,7 +1851,7 @@ class ScanEnv(gym.Env):
         # 1.0 now means "one full pass overdue". Never-visited reads the ceiling,
         # _SWEEPS_PER_EPISODE -- maximally stale, as before, and still at least
         # as attractive as any band last seen at t=0.
-        # Clipped to that same ceiling (D76) so a mission longer than one
+        # Clipped to that same ceiling (D80) so a mission longer than one
         # recording cannot leave the declared Box; never binds at the default
         # length. The identical clip is applied in `step()` where the reward's
         # copy of this array is written -- the two must agree (D52).
@@ -1923,7 +1923,7 @@ class ScanEnv(gym.Env):
             0.0, 1.0,
         )
 
-        # D75, the three in-context blocks. `prev_action` is all zeros before the
+        # D79, the three in-context blocks. `prev_action` is all zeros before the
         # first step -- deliberately *not* a one-hot at band 0, which is what
         # `current_band` reads there and is a small untruth it inherited (it
         # claims a dwell that never happened). The zero vector sits off the
@@ -2033,7 +2033,7 @@ class ScanEnv(gym.Env):
         render. The env accumulates rows and writes nothing; serialising them is
         `metrics.py`'s job.
         """
-        # D76: a bounded log for long missions. `None` (the default) keeps every
+        # D80: a bounded log for long missions. `None` (the default) keeps every
         # row, which every existing caller relies on -- `metrics.artefacts` reads
         # the whole episode back off it and checks its length.
         if self.log_window_slots is not None:
@@ -2068,7 +2068,7 @@ class ScanEnv(gym.Env):
         over only the emitters you did find rewards not looking. On a single
         recording -- every episode this repository has ever scored -- the segment
         and the episode are the same 600 slots; they differ only on a stitched
-        mission (D76), where charging a segment-0 miss the whole hour would make
+        mission (D80), where charging a segment-0 miss the whole hour would make
         the figure incomparable with every other number here.
 
         The full comparison across schedulers, with distributions and repeated
@@ -2079,7 +2079,7 @@ class ScanEnv(gym.Env):
         for e, (on_e, _) in self.detectable.items():
             track = self.tracks.get(e)
             # An emitter never found is censored at the end of **its own 30 s
-            # segment**, not at the end of the mission (D76). On a single
+            # segment**, not at the end of the mission (D80). On a single
             # recording those are the same slot and this is bit-identical to the
             # `N_SLOTS` it replaced. On a stitched one they are not: an emitter
             # that only ever existed in segment 0 would otherwise be charged the
@@ -2101,7 +2101,7 @@ class ScanEnv(gym.Env):
             ),
             "emitter_coverage": len(self.tracks) / n_e if n_e else float("nan"),
             # Per second of *this* episode, which is `EPISODE_S` at the default
-            # length and longer on a stitched mission (D76).
+            # length and longer on a stitched mission (D80).
             "avg_intercept_rate_per_s": (
                 len(self.tracks) / (self.episode_slots * SLOT_S)
             ),

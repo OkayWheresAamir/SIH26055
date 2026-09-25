@@ -10,7 +10,7 @@ Truth background plus path plus declarations -- `waterfall`'s picture
 once and only their data updated (`set_data`), not the fresh-figure-per-call
 `env_frame` does, which is too slow to sit inside a step loop.
 
-**Not the pre-D77 version's plain looked/hit strip.** That only showed the
+**Not the pre-D81 version's plain looked/hit strip.** That only showed the
 receiver's own log, so a viewer could never see where an emitter really was
 until the schedule happened to land on it, and "looked, heard nothing" and
 "never looked" both looked identical to a genuine miss. Truth is materialised

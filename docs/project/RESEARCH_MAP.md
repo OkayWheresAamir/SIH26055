@@ -82,7 +82,7 @@ that primary is not in this repository.
   Until then, treat them as different quantities that share a name.
 
 **Resolved since the 2026-08-28 list:**
-- **An online agent, in three pieces (D75/D76/D77, all `BUILT` 2026-09-19/20, none measured).** A
+- **An online agent, in three pieces (D79/D80/D81, all `BUILT` 2026-09-19/20, none measured).** A
   fourth observation layout, "v3" (399-wide = "v2p" + `prev_reward`, narrowed twice the same day —
   `prev_action` and then `prev_hit` both removed once shown redundant/requested off), so a recurrent
   policy sees what its last decision returned and can adapt inside a mission with no gradient step —
@@ -97,14 +97,14 @@ that primary is not in this repository.
   why the observation needed it when an LSTM's hidden state already carries the last action forward
   on its own (`current_band` has held it since "v1") — `prev_action` was duplicating a channel the
   network already had, and OBS_LAYOUTS["v3"] narrowed 436→400 in place, the same class of width
-  change D49/D55/D67/D72 made; `lstm_v3_seed0`/`lstm_v3_seed1`, both complete 800k-step checkpoints,
+  change D49/D55/D67/D76 made; `lstm_v3_seed0`/`lstm_v3_seed1`, both complete 800k-step checkpoints,
   are now permanently unloadable. `prev_reward` is unaffected and remains "v3"'s only genuinely new
   signal — no layout before it ever exposed the raw per-step reward, only running aggregates
   (`hit_rate`/`hit_streak`/`staleness`). Nothing has been trained on the current shape yet: the
-  matched pair and a four-arm ablation — including a `hit_rate` positive control, because D74
+  matched pair and a four-arm ablation — including a `hit_rate` positive control, because D78
   showed twice that a null tells you nothing unless you know the instrument can detect a positive —
-  are pre-registered in D75 and not yet run.
-- **A band-priority reward, "v2p" (D74, `MEASURED` 2026-09-19).** A fourth observation layout
+  are pre-registered in D79 and not yet run.
+- **A band-priority reward, "v2p" (D78, `MEASURED` 2026-09-19).** A fourth observation layout
   (398-wide, "v2" + `band_priority`) and an additive, discovery-gated reward term in
   `ScanEnv.step()`, on a direct, fully-specified request — not the same thing as `DECISIONS.md` D70
   ("the scheduler takes a threat priority from outside; it does not compute one"), which took a

@@ -3,15 +3,15 @@ only which `features_extractor_class` runs on each timestep's flat
 observation before it reaches the LSTM.
 
     BASELINE  obs -> LSTM -> actor/critic                            ("MlpLstmPolicy", unchanged)
-    D78       obs -> 2-layer LayerNorm MLP -> LSTM -> actor/critic    ("MlpFeatureLstmPolicy")
-    D79       obs -> per-band encoder (shared) + mean pool
+    D82       obs -> 2-layer LayerNorm MLP -> LSTM -> actor/critic    ("MlpFeatureLstmPolicy")
+    D83       obs -> per-band encoder (shared) + mean pool
                    -> concat global -> LSTM -> actor/critic           ("BandEncoderLstmPolicy")
 
 Each is registered as a second, selectable policy (`--policy ...`) rather
 than a replacement for the default -- meant to be trained as a matched pair
 against the baseline and compared, the same convention every other
-architecture question in this repository has followed (D71 "v2", D74
-band-priority, D75 "v3"), not a change made unilaterally to what every
+architecture question in this repository has followed (D75 "v2", D78
+band-priority, D79 "v3"), not a change made unilaterally to what every
 existing rung already trains on.
 
 Everything below each extractor -- the LSTM, its hidden state handling,
@@ -77,12 +77,12 @@ class MlpFeaturesExtractor(BaseFeaturesExtractor):
 class BandEncoderFeaturesExtractor(BaseFeaturesExtractor):
     """Represent each of the 36 bands as its own vector, encode all 36 with
     **one shared** encoder, mean-pool across bands, then concatenate the
-    global features -- the "Band Encoder + LSTM" architecture (D79):
+    global features -- the "Band Encoder + LSTM" architecture (D83):
 
         obs -> {per-band (36, K), global (G)} -> shared band_encoder + mean pool
             -> band_context (band_embed_dim) ++ global_encoder(global) -> LSTM -> actor/critic
 
-    in place of `MlpFeatureLstmPolicy`'s flat-vector MLP (D78) or
+    in place of `MlpFeatureLstmPolicy`'s flat-vector MLP (D82) or
     `MlpLstmPolicy`'s library-default no-op flatten.
 
     **The gather, not a reshape.** The flat observation interleaves *blocks*
@@ -94,7 +94,7 @@ class BandEncoderFeaturesExtractor(BaseFeaturesExtractor):
     `(rows, 36, n_band_features)`, `observations[:, self.global_index]` ->
     `(rows, n_global_features)`). Which blocks are per-band vs global is never
     hardcoded here -- `band_layout` reads it off `_BLOCK_SPECS`'s declared
-    width, so `prev_action` (D75 shipped it in "v3", removed the next day --
+    width, so `prev_action` (D79 shipped it in "v3", removed the next day --
     still a registered `N_BANDS`-wide block, just unused by any current
     `OBS_LAYOUTS` entry) would fall into the per-band bucket automatically if
     a layout ever included it again, with nothing here to update.
@@ -128,7 +128,7 @@ class BandEncoderFeaturesExtractor(BaseFeaturesExtractor):
     untouched by this class either way -- same convention `MlpFeatureLstmPolicy`
     set: more input structure is not a reason to also grow the recurrent core.
 
-    **Runs independently per timestep, same as `MlpFeaturesExtractor` (D78).**
+    **Runs independently per timestep, same as `MlpFeaturesExtractor` (D82).**
     `RecurrentActorCriticPolicy` always calls `extract_features` on a flat
     `(rows, obs_dim)` tensor -- one live timestep during rollout collection or
     a whole flattened rollout during a gradient update -- and only reshapes

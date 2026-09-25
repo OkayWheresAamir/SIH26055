@@ -116,7 +116,7 @@ class Apfeld:
         self.use_period_estimation = bool(use_period_estimation)
         self.key = "apfeld" if use_period_estimation else "apfeld_active_rfs"
 
-        # `n_slots` is the episode this instance will run in (D76). It is the
+        # `n_slots` is the episode this instance will run in (D80). It is the
         # constant for every 30 s episode, and longer only for a stitched
         # mission -- but it cannot be left as the constant, because `series` is
         # indexed by *absolute* slot below and a long episode would run off the
