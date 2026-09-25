@@ -1438,7 +1438,7 @@ again, more carefully. Full account: `DECISIONS.md` D78; numbers: `MODEL_COMPARI
 check, the `observation_space` ceiling regression); full suite re-run clean (470 passed, 1
 pre-existing unrelated failure, 27/27 RL, 26/26 band-priority) before any of this was trusted.
 
-## 19. Making it online: "v3", missions that do not end, and a view (D75/D76/D77, 2026-09-19)
+## 19. Making it online: "v3", missions that do not end, and a view (D79/D80/D81, 2026-09-19)
 
 Three requests in one: make the recurrent policy an *online* learner, let episodes run as long as we
 like, and let us actually watch the environment while it runs.
@@ -1494,11 +1494,11 @@ one-hot at band 0 after `reset()` — claiming a dwell that never happened — w
 the zero vector, off the one-hot simplex and unreachable by any real action.
 
 I kept the layout, because the RL² interface is conventional and 38 columns is cheap, but two things
-follow and both are now in D75, `OBSERVATION_SPACE.md` §2.5, `CLAUDE.md` and a test. **`prev_reward`
+follow and both are now in D79, `OBSERVATION_SPACE.md` §2.5, `CLAUDE.md` and a test. **`prev_reward`
 is the only genuinely new information in "v3".** And **an ablation corrupting `prev_action` alone
 would read null by construction** — so the pre-registered ablation corrupts it together with
 `current_band`, and carries a `hit_rate` positive-control arm. That control is the direct lesson of
-D74: a null tells you nothing unless you have shown the instrument can detect a positive.
+D78: a null tells you nothing unless you have shown the instrument can detect a positive.
 
 ### Long missions, without touching the freeze
 
@@ -1547,7 +1547,7 @@ comparable to the whole episode, so the advantages would be dominated by the ter
 per-mission update is not a small update, it is a noisy one.
 
 So `rfenv/rl/online.py` does not offer one. Fine-tuning exists only on a continuous grid, at
-`n_steps=2048` — about two simulated minutes, ~30 updates per simulated hour — pre-registered in D77
+`n_steps=2048` — about two simulated minutes, ~30 updates per simulated hour — pre-registered in D81
 rather than tuned afterwards, with a conservative `learning_rate=1e-5`, `clip_range=0.1` and
 `target_kl=0.02`, because adaptation starts from a policy that already works and the risk is wrecking
 it. `ent_coef=0.01` is retained specifically because D54's documented failure mode for this rung is
@@ -1589,7 +1589,7 @@ All three are `BUILT`, none is `MEASURED`. 79 new tests; full suite green apart 
 pre-existing `test_heldout_split_is_refused_without_an_explicit_flag` (the 45 held-out pairs are not
 on this machine). The matched pair — "v2p" control against "v3" treatment, identical but for
 `--obs-version`, three seeds per arm because D68 escalated over a 1.2 pp gap — and the four-arm
-ablation are specified in D75 and not yet run. **Nothing in this section is a claim about whether any
+ablation are specified in D79 and not yet run. **Nothing in this section is a claim about whether any
 of it works.**
 
 ### 19.1 `prev_action` removed the next day, and two live views got a real redesign (2026-09-20)
@@ -1604,7 +1604,7 @@ to the last band tuned. `prev_action` was never a new channel, only a second cop
 existed, and §19 already said so in these words when "v3" first shipped: *"`prev_reward` is the only
 genuinely new information in this layout."* Asked to justify keeping the redundant block anyway,
 there wasn't a good one, so it came out — `OBS_LAYOUTS["v3"]` narrows from 436 to 400 wide, in place,
-the same class of change D49/D55/D67/D72 made before it. `lstm_v3_seed0` and `lstm_v3_seed1`, both
+the same class of change D49/D55/D67/D76 made before it. `lstm_v3_seed0` and `lstm_v3_seed1`, both
 complete 800k-step runs, are now permanently unloadable. The seed-0 comparison already run against
 them stays on record as what was measured on the old shape; nothing about it is retracted, it just
 cannot be extended.
@@ -1614,7 +1614,7 @@ by analogy: an LSTM's hidden state can only carry forward what appeared in its *
 and no layout before "v3" ever put the raw per-step reward there — `hit_rate`/`hit_streak`/`staleness`
 are running aggregate statistics, not the scalar the policy is actually optimised against. The RL²
 argument for handing it over explicitly anyway (Duan et al. 2016) is about gradient path length, not
-about information the architecture otherwise lacks a route to — and D74 is the standing reason not to
+about information the architecture otherwise lacks a route to — and D78 is the standing reason not to
 trust that argument on faith: it already showed, twice, that this exact setup does not reliably learn
 to use even a stronger, equally-unavailable-elsewhere signal. The ablation this was always going to
 need is unchanged in what it tests, only in the header row: four arms now, not five, since the arm
@@ -1638,14 +1638,14 @@ backends subclass it to share its no-op `open`/`close`. Online fine-tuning with 
 been running and silently drawing nothing this whole time. Fixed with an exact type comparison,
 caught only because a smoke test finally looked for actual output instead of a clean exit.
 
-### 19.2 Two architecture ablations on rung 9, and a second narrowing of "v3" (D78/D79, 2026-09-20)
+### 19.2 Two architecture ablations on rung 9, and a second narrowing of "v3" (D82/D83, 2026-09-20)
 
 Rung 9's policy has been `MlpLstmPolicy` since it existed — `FlattenExtractor` is a no-op on an
 already-flat observation, so the architecture every checkpoint has ever trained on is really
 `obs -> LSTM -> actor/critic`. Two requests, same day, each asking whether a different piece of
 structure ahead of the LSTM would help.
 
-**D78 — a flat MLP first.** `obs -> 2-layer LayerNorm MLP (256) -> LSTM -> actor/critic`,
+**D82 — a flat MLP first.** `obs -> 2-layer LayerNorm MLP (256) -> LSTM -> actor/critic`,
 `MlpFeatureLstmPolicy`, registered opt-in via `--policy`. Trained the matched pair against the
 already-trained `lstm_v2p_ctrl_seed0` (reused as the control, not retrained — identical config,
 differing only in `--policy`). **The baseline won, decisively for one seed**: paired against
@@ -1660,7 +1660,7 @@ apparent edge rather than confirming it: on the full 47-config/3-seed set the 60
 worse than the final 800k one, not better. A 12-scenario probe, it turns out, isn't enough to rank
 snapshots by, only enough to say training has stopped moving.
 
-**D79 — represent each band, then pool.** A more structural ask: since the observation already *is*
+**D83 — represent each band, then pool.** A more structural ask: since the observation already *is*
 11 interleaved per-band arrays (in "v3") plus a few global scalars, make that explicit instead of
 handing the network one undifferentiated vector. `obs -> shared per-band encoder -> mean pool across
 bands -> concat encoded global features -> LSTM -> actor/critic`, `BandEncoderLstmPolicy`. The
@@ -1685,12 +1685,12 @@ training run tests exactly one hypothesis (does the raw per-step reward help) in
 ones. No checkpoint cost this time — nothing had ever been successfully trained on the 400-wide shape
 it replaces. Also asked for: band-priority off for this run (not literal zero — `band_priority`'s
 declared range is `[1.0, priority_high]`, so zero would violate `ScanEnv`'s own `observation_space`
-the same way D74's `priority_high` bug once did; "off" still means the reset default, all-ones,
-uninformative but in-bounds), and the architecture to use is D79's brand-new `BandEncoderLstmPolicy`
+the same way D78's `priority_high` bug once did; "off" still means the reset default, all-ones,
+uninformative but in-bounds), and the architecture to use is D83's brand-new `BandEncoderLstmPolicy`
 — untested combination, both the narrowed observation and the representation architecture unproven
 together, picked deliberately over the safer one-variable-at-a-time choice. Training launched at
 23a's own scale (512-wide LSTM, `n_steps=8192`, 800k steps, `reward_balance`) so a result, if it
-comes, is comparable to the project's best-known number. Full accounts: D78, D79, D75's second
+comes, is comparable to the project's best-known number. Full accounts: D82, D83, D79's second
 amendment.
 
 ### 19.3 The run finished, mid-training checks kept getting overturned by the next one, and a real dataset property fell out of asking why (2026-09-20)
@@ -1700,18 +1700,18 @@ The seed-2 BandEncoder run (§19.2) finished at 66.7% beats-recency-both — sec
 a quick 12-scenario probe) it already read 66.7%; checked properly at 800k (the full 47-config/3-seed
 set) it read exactly the same 66.7%. Training reward had stopped climbing by ~250k steps and spent
 the rest of the run oscillating in a band (203 → 250 → dip to 220 at 491,520 steps → back up to
-234–262) rather than settling flat the way D78's run did — noisier, but the same underlying story:
+234–262) rather than settling flat the way D82's run did — noisier, but the same underlying story:
 whatever this run was going to learn, it had mostly learned it well before 800k.
 
 **Asked to compare every checkpoint-freq snapshot against 23a, not just the final one** — a fair
-question, since the small 12-scenario probe had already been shown (D78's own §19.2 story) to pick
+question, since the small 12-scenario probe had already been shown (D82's own §19.2 story) to pick
 the wrong snapshot once. All 16 snapshots, properly scored: none beat 23a. The best of the whole run
 was 70.2%, reached twice (100k, then again at 400k/450k) — 3.6 points short of 23a, and the final
 checkpoint (66.7%) wasn't even this run's own best. A real dip shows up at 500k (57.4%, the worst
 point in the whole series).
 
 **Asked why 23a keeps winning, given its own priority mechanism was already shown twice not to be
-read at all (D74) — so what's actually different about it?** Checked directly rather than guessed:
+read at all (D78) — so what's actually different about it?** Checked directly rather than guessed:
 built the truth grid for all 47 comparison scenarios and summed occupancy per band. **Twelve of the
 36 bands have never once had a pulse in any of the 47 scenarios** — bands 0, 13, 14, 25–30, 33–35,
 zero exceptions. Checked the scan replays of the same 47 configs too: eleven of the same twelve
@@ -1721,7 +1721,7 @@ in scan (427,078 pulses across the 47 files) — unexplained, not chased further
 Then the natural next question: does airtime on those twelve bands track the actual score gap?
 Pulled `episode_log.csv` from the comparison runs already sitting on disk (no retraining, no new
 eval) and summed dwell time on the dead twelve, per checkpoint: **23a spends 1.73% of its airtime
-there; the seed-2 BandEncoder run, 4.73%; the plain "v2p" baseline, 9.94%; D78's MLP-feature run,
+there; the seed-2 BandEncoder run, 4.73%; the plain "v2p" baseline, 9.94%; D82's MLP-feature run,
 12.53%.** The same order as the scores, every time. Inside the seed-2 run's own 16 snapshots,
 dead-band airtime and score correlate at r = −0.48, and the single worst snapshot on each measure
 (500k steps) is the same one. **This, not priority, not architecture, looks like most of what
@@ -1746,15 +1746,15 @@ frequencies its generator happens to never populate." Both look the same in the 
 twelve dead bands are a fact about a real operating environment or an artifact of this dataset's own
 construction isn't answerable from the 47-config development set alone, because every checkpoint
 here trained and was scored against the same population. The 45-config held-out split would answer
-it directly, and has not been touched. Written up as D80, and as a third entry beside D14's two
+it directly, and has not been touched. Written up as D84, and as a third entry beside D14's two
 traps in `EVALUATION.md` §4 — not a code or environment change, a caution about what the existing
 numbers have been able to hide.
 
-### 19.4 D77 finally got run for real, and the two speeds turned out to be different things (2026-09-20)
+### 19.4 D81 finally got run for real, and the two speeds turned out to be different things (2026-09-20)
 
-D77 (online fine-tuning) has existed since the day before yesterday and had never once been run to
+D81 (online fine-tuning) has existed since the day before yesterday and had never once been run to
 completion. Asked directly to actually do it: build a world where the model's own known blind spot
-(the ten bands it gives zero airtime to, from D80) becomes the *only* place anything happens, and
+(the ten bands it gives zero airtime to, from D84) becomes the *only* place anything happens, and
 watch how long it takes to stop ignoring them.
 
 **Built a synthetic world by hand.** Not from the real dataset -- a fabricated `EmitterPool`, two
@@ -1766,7 +1766,7 @@ happened had to come from hits and misses, nothing handed to it.
 **First surprise: the frozen model, untouched, already handled it.** Watching it live with no
 training at all: nothing in the first 30 seconds, 2 finds in the next 30, then 18-20 out of 20 new
 emitters every single 30-second window from 90 seconds onward, for the full half hour measured. That's
-the recurrent hidden state doing exactly the thing D75 always claimed it could -- adjusting within a
+the recurrent hidden state doing exactly the thing D79 always claimed it could -- adjusting within a
 single mission, no gradient step, for free. Genuinely fast, and genuinely already there.
 
 **Then online fine-tuning ran for the first time ever, in two pieces.** The first session got
@@ -1795,4 +1795,4 @@ reading my own printouts a few messages earlier -- I'd counted "any declaration"
 quietly mislabelled a genuine false alarm (one real event, slot 162, band 18, in the very first
 frozen-model segment) as a success. Caught only by going back and checking the actual rendered pixel
 data directly instead of trusting the summary line I'd already told the user. Fixed, and said so
-plainly rather than letting the earlier wrong claim stand uncorrected. Written up as D81.
+plainly rather than letting the earlier wrong claim stand uncorrected. Written up as D85.

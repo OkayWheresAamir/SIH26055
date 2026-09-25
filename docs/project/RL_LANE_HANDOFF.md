@@ -96,7 +96,7 @@ six-rung ladder. **Delete them; this file is the source.**
 > **AMENDED 2026-09-19 — (15)** A fourth layout, **"v3"** (436 wide), plus two changes to the
 > episode itself. "v3" is "v2p" + `prev_action` (36, one-hot of the last band, all-zero before the
 > first step) + `prev_reward` (1) + `prev_hit` (1) — the RL² interface, so a recurrent policy can
-> adapt inside the episode with no gradient step (D75). **36 of those 38 columns duplicate existing
+> adapt inside the episode with no gradient step (D79). **36 of those 38 columns duplicate existing
 > blocks** — `prev_action` is bit-identical to `current_band` after any step, `prev_hit` is
 > `current_hit_streak > 0` — so `prev_reward` is the only new information, and an ablation
 > corrupting `prev_action` alone reads null by construction. `prev_reward` carries
@@ -105,26 +105,26 @@ six-rung ladder. **Delete them; this file is the source.**
 > it. **D29 is unchanged** — the reward still reads truth and still scores every arm.
 >
 > `ScanEnv(episode_slots=...)` lets an episode outrun a recording, stitched from independent 30 s
-> draws (D76). `constants.py` is untouched; every default-length episode is bit-identical, pinned by
+> draws (D80). `constants.py` is untouched; every default-length episode is bit-identical, pinned by
 > golden digests taken before the change. `rfenv/live.py` draws the running episode in the terminal.
 > `rfenv/rl/online.py` fine-tunes a checkpoint while it scans, on a continuous grid, with the
-> gradient fed the observable reward (D77). **All three are `BUILT`, none measured** — the matched
-> pair and the ablation are pre-registered in D75 and not yet run.
+> gradient fed the observable reward (D81). **All three are `BUILT`, none measured** — the matched
+> pair and the ablation are pre-registered in D79 and not yet run.
 >
 > **AMENDED 2026-09-20 — (16)** Amendment (15)'s `prev_action` block was removed from "v3" the
 > next day, narrowing it 436 → 400 wide **in place** (the same class of width change D49/D55/D67/
-> D72 made -- `lstm_v3_seed0`/`lstm_v3_seed1`, both complete 800k-step checkpoints, are now
+> D76 made -- `lstm_v3_seed0`/`lstm_v3_seed1`, both complete 800k-step checkpoints, are now
 > permanently unloadable). Asked directly why the observation needed `prev_action` when an LSTM's
 > hidden state already carries information forward: it can only carry forward what appeared in its
 > *input*, and `current_band` -- in every layout since "v1" -- already put the last action there at
 > every step, so `prev_action` was duplicating a channel the network already had, not adding one.
 > `prev_reward` is unaffected and remains "v3"'s one genuinely new column; `prev_hit` stays too,
-> lacking the same direct duplicate. Same `DECISIONS.md` D75 entry, extended.
+> lacking the same direct duplicate. Same `DECISIONS.md` D79 entry, extended.
 >
 > **AMENDED 2026-09-20 -- (17)** Asked directly whether offline training is still available after
-> D77: yes, completely unaffected, and it stays the default. `rfenv.rl.{ppo,recurrent_ppo,dqn}.train()`
+> D81: yes, completely unaffected, and it stays the default. `rfenv.rl.{ppo,recurrent_ppo,dqn}.train()`
 > -- frozen checkpoint, the path every rung in `EVALUATION.md` §5 has ever been produced by -- is
-> untouched by D77; `rfenv/rl/online.py` is a *second*, additional driver that loads an
+> untouched by D81; `rfenv/rl/online.py` is a *second*, additional driver that loads an
 > already-trained checkpoint and keeps adapting it, never a replacement for the first. Verified
 > directly: a plain offline `train()` call, including on the narrowed 400-wide "v3" (amendment (16)),
 > still produces an ordinary loadable checkpoint with no code path change.
@@ -136,7 +136,7 @@ six-rung ladder. **Delete them; this file is the source.**
 > block making the redundancy as directly provable as `prev_action`'s, kept anyway at the time;
 > removed once asked plainly whether that was a reason or just a weaker excuse. `prev_reward` is now
 > the only block "v3" carries beyond "v2p" -- no checkpoint cost, since nothing was ever successfully
-> trained on the intermediate 400-wide shape. Same `DECISIONS.md` D75 entry, extended a second time.
+> trained on the intermediate 400-wide shape. Same `DECISIONS.md` D79 entry, extended a second time.
 >
 > The PDF beside this file is older still and does not carry any of these amendments.
 

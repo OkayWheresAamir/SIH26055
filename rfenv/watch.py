@@ -1,4 +1,4 @@
-"""Watch a scheduler run, live (D76).
+"""Watch a scheduler run, live (D80).
 
 `rollout.run_episode` is the scored driver and stays untouched -- no view, no
 pacing, as fast as Python allows, because that is what every metric in this
@@ -104,7 +104,7 @@ def watch(
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(
         prog="python -m rfenv.watch",
-        description="Watch a scheduler run live, in the terminal or a window (D76).",
+        description="Watch a scheduler run live, in the terminal or a window (D80).",
     )
     ap.add_argument("--rung", required=True, help=f"one of {sorted(B.BY_KEY)}")
     ap.add_argument("--config-id", default="config_2",

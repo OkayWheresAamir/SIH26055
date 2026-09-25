@@ -73,7 +73,7 @@ def write_run(
     directory.mkdir(parents=True, exist_ok=True)
 
     # `read_run` checks the log covers every slot exactly once, so a windowed
-    # log (D76, for long missions) cannot be written as if it were an episode.
+    # log (D80, for long missions) cannot be written as if it were an episode.
     # Refusing is the honest outcome: the alternative is a header that claims a
     # length the rows do not have, which is exactly the class of silently-wrong
     # artefact the cross-checks below exist to catch.
@@ -102,7 +102,7 @@ def write_run(
         "sigma_db": env.sigma,
         # This episode's own length, not the constant: identical at the default,
         # and the only thing that keeps `read_run`'s slot-count cross-check
-        # meaningful on a stitched mission (D76).
+        # meaningful on a stitched mission (D80).
         "episode_s": getattr(env, "episode_slots", N_SLOTS) * SLOT_S,
         "n_slots": getattr(env, "episode_slots", N_SLOTS),
         "n_bands": N_BANDS,

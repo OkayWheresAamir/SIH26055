@@ -107,7 +107,7 @@ class TruthGrid:
 
     @classmethod
     def stitch(cls, grids: list["TruthGrid"], *, name: str) -> "TruthGrid":
-        """Lay grids end to end into one longer world (D76).
+        """Lay grids end to end into one longer world (D80).
 
         This is how an episode runs longer than 30 s. A recording *is* 30 s, so
         there is no such thing as a one-hour scenario to load; a long mission is

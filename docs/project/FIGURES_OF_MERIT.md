@@ -62,6 +62,19 @@ the receiver at a frozen threshold; two are properties of the simulated environm
 If a table shows five columns repeating identically down every row, the numbers are probably right
 and the table shape is wrong — see §5.
 
+**But "no" and "no (analytic)" are different answers, and P<sub>d</sub> is the one that is not
+analytic.** P<sub>fa</sub> and sensitivity are closed forms in `γ`, `N₀` and `σ` alone — measured
+2026-09-21, P<sub>fa</sub> is identically `1.349898e-03` over every cell population in this
+repository, which is what "exact" means. P<sub>d</sub> is an **empirical average over a chosen
+population**, and it is scheduler-invariant only because D33 pinned that population to one fixed
+reference sweep. Average it over *"the cells this scheduler looked at"* instead and it stops being
+a receiver property altogether: measured on the same 47 stare grids at the same `γ` and `σ`, a
+camper parked on each grid's busiest band reports **P<sub>d</sub> = 0.916** against the reference
+sweep's **0.840**, and a camper on the quietest band reports **no P<sub>d</sub> at all** (zero
+occupied cells in its denominator). *"P<sub>d</sub> is a property of the threshold"* is the wrong
+reason for the right answer, and it is the reason that breaks the moment someone reimplements
+this.
+
 ### Symbols
 
 | | |
@@ -92,11 +105,20 @@ P_d = P(Y = 1 | Z = 1)
 **Population.** The occupied cells visited by **one fixed reference schedule** — here, the
 dataset's own sweep (`PD_POPULATION = reference_sweep`, D33). Not "cells the scheduler looked at":
 different schedulers look at different cells and per-cell detection probability is not uniform, so
-that choice makes P<sub>d</sub> scheduler-dependent, which contradicts D21.
+that choice makes P<sub>d</sub> scheduler-dependent, which contradicts D21 — measured, **0.916 for
+a busiest-band camper against 0.840 for the sweep** on the same 47 grids.
 
 **Report as** a single value, *always* with the grid set it was averaged over named beside it. The
-same rule over different grids gives different numbers and they are not interchangeable — measured,
-0.8395 / 0.8421 / 0.85058 over three different grid sets in this project (D33).
+same rule over different grids gives different numbers and they are not interchangeable — re-measured
+2026-09-21, 0.83951 (stare replays) / 0.84211 (stare replays + 10 sampled) / 0.85058 (scan replays)
+over three different grid sets in this project (D33).
+
+**One run directory prints two of those three.** `comparison.md` states the operating point over
+every scenario the ladder actually ran, sampled ones included; `figures_of_merit.md` states it over
+the stare replay grids only, because #6 and #7 are undefined on a sampled scenario. At
+`--sampled 10` that is 0.8421 in one file and 0.8395 in the other, from the same command. Both are
+labelled and neither is wrong — but quoting either as *"our P<sub>d</sub>"* without naming the grid
+set is.
 
 > **Trap — this one silently destroys the ROC.** Condition on `Z`, the threshold-free truth, never
 > on `S ≥ γ`. Conditioning on a second copy of the signal thresholded at the same `γ` forces
@@ -221,8 +243,9 @@ MCC = (TP·TN − FP·FN) / sqrt( (TP+FP)(TP+FN)(TN+FP)(TN+FN) )
 **Decide and state the unit.** A "look" is either one time-slot cell or one whole dwell. Both are
 defensible and they give different numbers. **This project scores per dwell** (D37) — scoring all
 36×600 cells would put ~97% of the denominator on cells the sweep never visits, making most of the
-score unfalsifiable. Note that `EVALUATION.md` §2 still says *cells*; D37 is the later, explicit
-convention and supersedes it. **That inconsistency should be fixed in `EVALUATION.md`.**
+score unfalsifiable. `EVALUATION.md` §2 said *cells* when this file was written; it was corrected
+to *dwells* on 2026-09-20 (commit `ca36dec`) and the two now agree. No number moved — only the
+text was wrong.
 
 > **Trap — never report bare accuracy.** Occupancy is sparse; a model that predicts "nothing, ever"
 > scores well and is useless (`EVALUATION.md` §7). MCC is not decoration here — it is what makes the
@@ -263,16 +286,33 @@ every emitter whose first pulses are sub-threshold, which inflates the error sys
 > **Trap — do not censor into the mean.** If the environment predicts an emitter is never
 > intercepted, do **not** set `predicted = T_episode` and average it in. That silently mixes
 > *"predicted the wrong time"* with *"predicted the wrong outcome"*, and afterwards nobody can
-> decompose it. Measured on this project's 47 train pairs: the censored form reads **8.42 s**, the
-> separated form reads **6.58 s of timing error plus 87.0% outcome agreement** — so **1.84 s of the
-> 8.42 s is missed detections wearing a stopwatch's clothes.**
+> decompose it.
+
+**The two traps in this section compound, so measure them one at a time.** Re-measured 2026-09-21
+over this project's 47 train pairs at seed 0, on one fixed 1,530-emitter matched population, moving
+one thing at a time:
+
+| recorded side | misses | mean \|error\| | what that number is |
+|---|---|---|---|
+| ungated (any pulse) | censored to 30 s | **8.42 s** | both traps at once |
+| gated (`≥ γ`) | censored to 30 s | **8.05 s** | the censoring trap alone |
+| gated (`≥ γ`) | excluded | **6.60 s** | what this section specifies, with 87.3% agreement |
+
+So of that 8.42 s, **1.46 s is missed detections and 0.37 s is the mismatched detection rule.**
+
+> **`8.42 s` is not "the censored figure" — it is the figure you get by tripping both traps.** This
+> file, `EVALUATION.md` §2 and `validate.py` all described it as the censored form until
+> 2026-09-21, and all three attributed the whole 1.8 s gap to missed detections. The censored-only
+> figure is 8.05 s. A single number that mixes two defects cannot be attributed to either, which is
+> the same argument this section makes about mixing timing with outcome — it just caught us first.
 
 **Expect the timing error to be large, and check why before calling it a defect.** Where the two
 recordings are independent simulation runs rather than two views of one world (D24), the same
 emitter has different activity in each, and part of the error is that divergence. The diagnostic is
-whether the *distributions* agree even when individual emitters do not. Measured here: predicted
-mean 8.49 s against recorded 8.63 s, matching within ~1 s at every percentile, with a per-emitter
-correlation of only r = 0.07. **The environment reproduces the statistics of intercept time almost
+whether the *distributions* agree even when individual emitters do not. Re-measured 2026-09-21 over
+the 1,295 emitters detected on both sides: predicted mean **8.50 s** against recorded **8.57 s**,
+agreeing within 1.1 s at every decile from p10 to p90, with a per-emitter correlation of only
+**r = 0.066**. **The environment reproduces the statistics of intercept time almost
 exactly and an individual emitter's barely at all** — which is the expected behaviour for this
 problem, not a modelling failure, and it is exactly what licenses comparing schedulers over
 distributions.

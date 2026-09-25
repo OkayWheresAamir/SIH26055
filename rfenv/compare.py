@@ -133,11 +133,11 @@ def resolve_obs_version(key: str, obs_version: str) -> str:
 
     `Rung.obs_version`'s docstring already promises this -- "so `compare.py` can
     build its env correctly ... without the caller having to pass matching
-    flags" -- but until D75 nothing actually read the field; every episode used
+    flags" -- but until D79 nothing actually read the field; every episode used
     one CLI-wide `--obs-version`, applied uniformly to every rung in the
     invocation. That was invisible as long as a comparison only ever needed one
     layout at a time (20d/21a on "v2", 22a-23b on "v2p", one flag covering the
-    whole run). D75's matched pair breaks that assumption outright: 24a needs
+    whole run). D79's matched pair breaks that assumption outright: 24a needs
     "v3", its own matched control 24b needs "v2p", in the same invocation, and
     there is no single `--obs-version` value that is correct for both.
 
@@ -822,16 +822,20 @@ def figures_of_merit_md(summary: dict[str, dict], meta: dict, mf: dict) -> str:
         "**Why the timing error is reported in three parts.** A single censored number "
         "conflates *\"predicted the wrong time\"* with *\"predicted the wrong "
         "outcome\"*, and the two cannot be separated afterwards. Measured on this "
-        "dataset, censoring misses into the mean reads 8.42 s where the separated form "
-        "reads 6.60 s of timing error plus 87% outcome agreement — 1.8 s of that 8.42 "
-        "is missed detections, not mistimed ones (FIGURES_OF_MERIT.md §7).",
+        "dataset one defect at a time, over one fixed 1,530-emitter population: "
+        "**8.42 s** with an ungated recorded side *and* misses censored to 30 s, "
+        "**8.05 s** with the censoring alone, **6.60 s** with neither, plus 87.3% "
+        "outcome agreement. 1.46 s of that 8.42 s is missed detections and 0.37 s is "
+        "the mismatched detection rule — the two traps compound, so 8.42 s is not "
+        "\"the censored figure\" (FIGURES_OF_MERIT.md §7).",
         "",
         "**Read the timing error together with the distributions before calling it a "
         "defect.** scan and stare are independent simulation runs (D24), so the same "
         "emitter has different activity in each. Measured, the environment reproduces "
-        "the *distribution* of intercept time closely (predicted mean 8.49 s against "
-        "recorded 8.63 s, matching at every percentile) while per-emitter agreement is "
-        "only r = 0.07. That is the expected behaviour for this problem, and it is what "
+        "the *distribution* of intercept time closely (predicted mean 8.50 s against "
+        "recorded 8.57 s, agreeing within 1.1 s at every decile from p10 to p90) while "
+        "per-emitter agreement is only r = 0.066. That is the expected behaviour for "
+        "this problem, and it is what "
         "licenses comparing schedulers over distributions rather than per emitter.",
         "",
         f"Known limitation, stated not patched: band 0 (250 MHz) is "
@@ -1001,7 +1005,7 @@ def figures(out_root: Path, summary: dict[str, dict], keys: tuple[str, ...],
         if priority_entry is not None:
             priority_key, priority_config = priority_entry
             eff_bp, eff_coef, eff_nbands, eff_uniform, eff_high, eff_occ, eff_cap = priority_config
-            # The rung's own obs_version (D75), not the loop's CLI-wide one --
+            # The rung's own obs_version (D79), not the loop's CLI-wide one --
             # matches how `run_one` builds this same rung's env.
             priority_env = ScanEnv(scenario=scenario,
                                     obs_version=resolve_obs_version(priority_key, obs_version),
@@ -1047,7 +1051,7 @@ def main(argv: list[str] | None = None) -> int:
                      help="slots between animation frames, --figures only (default 8)")
     ap.add_argument("--gif-fps", type=int, default=12, help="--figures only")
     ap.add_argument("--obs-version", default="v1", choices=("v1", "v2", "v2p", "v3"),
-                    help="observation layout (D30/D71) every rung in this run sees. "
+                    help="observation layout (D30/D75) every rung in this run sees. "
                          "A trained checkpoint must match what it was trained on, or "
                          "predict() raises mid-episode; heuristic rungs work under either.")
     ap.add_argument("--band-priority", action="store_true",
@@ -1073,7 +1077,7 @@ def main(argv: list[str] | None = None) -> int:
                          "has decayed to zero (default 2.0). No effect unless "
                          "--occupancy-coef is nonzero.")
     ap.add_argument("--corrupt-obs-blocks", default="",
-                    help="comma-separated observation blocks to corrupt (D75 ablation): each is "
+                    help="comma-separated observation blocks to corrupt (D79 ablation): each is "
                          "replaced per step by a draw from its own recent history, off a "
                          "separate RNG so the receiver noise stays bit-identical to a clean run.")
     args = ap.parse_args(argv)

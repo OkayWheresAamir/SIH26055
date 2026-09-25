@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# D75 matched pair: "v2p" control vs "v3" treatment, seeds 0-2, strictly sequential.
+# D79 matched pair: "v2p" control vs "v3" treatment, seeds 0-2, strictly sequential.
 # The two arms differ ONLY in --obs-version. band_priority stays off in both, so
 # v2p's band_priority block is constant all-ones and v3 adds only the three
 # in-context blocks. Interleaved so a matched pair finishes before the next starts.
@@ -18,7 +18,7 @@ run() {  # $1=obs_version $2=run-name-prefix $3=dir $4=seed
     --hyperparam ent_coef=0.01 --hyperparam gamma=0.997 --hyperparam n_steps=8192 \
     --hyperparam 'policy_kwargs={"lstm_hidden_size": 512}' \
     --checkpoint "$out" --run-name "$name" --device auto \
-    --description "D75 matched pair, $1 arm, seed $4: reward_balance, 512 LSTM, 800k. Differs from its partner only in --obs-version." \
+    --description "D79 matched pair, $1 arm, seed $4: reward_balance, 512 LSTM, 800k. Differs from its partner only in --obs-version." \
     || echo "!!! $name FAILED"
   echo "=== $(date +%T) done  $name"
 }

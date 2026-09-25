@@ -1,4 +1,4 @@
-"""Episodes longer than one recording: `episode_slots` and `TruthGrid.stitch` (D76).
+"""Episodes longer than one recording: `episode_slots` and `TruthGrid.stitch` (D80).
 
 `constants.py` is frozen (D42) and none of this moves it -- `N_SLOTS` is still
 600 and every default-length episode is bit-identical, which

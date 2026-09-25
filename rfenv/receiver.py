@@ -143,7 +143,7 @@ class Receiver:
         band, slot0 = int(band), int(slot0)
         if not 0 <= band < len(DWELL_SLOTS):
             raise ValueError(f"band {band} outside 0..{len(DWELL_SLOTS) - 1}")
-        # Bounds come from the grid, not the constant: a stitched grid (D76) is
+        # Bounds come from the grid, not the constant: a stitched grid (D80) is
         # longer than one recording, and only its own end clips a dwell. A seam
         # inside it is not a boundary -- a wide band straddling slot 599 reads
         # across it, which is correct, because the clock does not stop there.
