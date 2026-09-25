@@ -384,6 +384,7 @@ def pareto(
     *,
     title: str = "The two PS objectives, against each other",
     figsize: tuple[float, float] = (9.0, 5.6),
+    y_max: float | None = None,
 ):
     """Interception ratio against censored intercept time, one point per scheduler.
 
@@ -436,6 +437,13 @@ def pareto(
     key itself -- a caller that keyed this dict by label directly would silently
     collapse same-labelled rungs to one point before this function ever saw them.
 
+    `y_max` caps the ratio axis instead of taking it from the widest whisker.
+    The default (`None`) is unchanged and is the honest one: every interval is
+    in frame. A cap trades that away for a legible corner, and since a clipped
+    whisker looks exactly like a short one, the title names every rung whose p75
+    ran off the top -- the figure declares its own crop rather than leaving the
+    reader to notice.
+
     Reference lines -- the oracles -- are drawn hollow. They are not competitors
     (§5) and a filled marker would invite reading them as one.
     """
@@ -479,7 +487,22 @@ def pareto(
     ys = [r.get("interception_ratio_p75",
                 r["interception_ratio"]) for r in points.values()] or [1.0]
     ax.set_xlim(0.0, max(xs) * 1.12 + 0.5)
-    ax.set_ylim(0.0, max(ys) * 1.12 + 0.02)
+    # `y_max` overrides the headroom rule above: a caller that wants the
+    # interesting corner legible rather than the widest whisker in frame. It
+    # cuts whiskers, and a cut whisker reads as a short one, so every rung whose
+    # p75 lands above the cap is named under the title -- the figure says it has
+    # been cropped rather than leaving the reader to infer it.
+    clipped = []
+    if y_max is None:
+        ax.set_ylim(0.0, max(ys) * 1.12 + 0.02)
+    else:
+        ax.set_ylim(0.0, float(y_max))
+        clipped = [
+            f"{row.get('rung', key)} {row.get('label', key)}"
+            for key, row in points.items()
+            if row.get('interception_ratio_p75') is not None
+            and float(row['interception_ratio_p75']) > float(y_max)
+        ]
     ax.grid(alpha=0.25)
     ax.legend(loc="center left", bbox_to_anchor=(1.02, 0.5), fontsize=8,
               frameon=False, labelspacing=0.9, borderpad=0.0,
@@ -487,6 +510,8 @@ def pareto(
     ax.set_title(
         f"{title}\n"
         "median over the run, whiskers are the interquartile range\n"
-        "better is up and to the left; marker area is coverage",
+        "better is up and to the left; marker area is coverage"
+        + (f"\ny-axis cut at {float(y_max):g} — whisker runs past it: "
+           + "; ".join(clipped) if clipped else ""),
         fontsize=9)
     return _save(fig, path)

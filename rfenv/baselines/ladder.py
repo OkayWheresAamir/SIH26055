@@ -704,6 +704,22 @@ LADDER: tuple[Rung, ...] = (
          _recurrent_ppo_rung_factory(Path("runs/checkpoints/v3/lstm_v3_bandenc_noprior_seed0/lstm_v3_bandenc_noprior_seed0.zip")),
          obs_version="v3"),
 
+    Rung("lstm_v2p_noprior_online_scratch_seed2", "27", "Recurrent PPO (reward_balance, v2p, no priority, trained FROM SCRATCH online, seed 2, 800k)",
+         "Ours. The first policy in this repository trained entirely through D77's "
+         "online regime rather than offline `train()`: continuous-grid missions "
+         "(120 x 600 slots) instead of 30 s episodes, and the gradient fed "
+         "`reward_balance_obs` (Y-derived, what a real receiver could compute) "
+         "instead of the truth-reading `reward_balance` every other rung trained "
+         "on. Scored on `reward_balance` like everything else, so the yardstick is "
+         "unchanged. Matched to rung 23a on observation width (398), LSTM size "
+         "(512), n_steps/batch/epochs/gamma/ent_coef, seed and budget, with "
+         "band_priority stripped entirely -- which also tests the open thread "
+         "MODEL_COMPARISON.md flags, that 23a's lead may be capacity and budget "
+         "rather than a priority mechanism two ablations showed it never reads. "
+         "Needs ScanEnv(obs_version='v2p').",
+         _recurrent_ppo_rung_factory(Path("runs/checkpoints/v2p/lstm_v2p_noprior_online_scratch_seed2/lstm_v2p_noprior_online_scratch_seed2.zip")),
+         obs_version="v2p"),
+
     Rung("camper_oracle", "—", "Greedy static, truth-fed (D14's camper)",
          "Reference line: D14's camper, which knew where the pulses were.",
          lambda rng, grid: OracleCamper(grid, rng),
