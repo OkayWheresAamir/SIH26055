@@ -1,0 +1,8 @@
+
+gate 1  out-of-sample prediction    MEASURED  acc 0.8585  MCC 0.6854  prec 0.8819  rec 0.6932  r 0.935  (base rate 0.3540)
+gate 2  per-band structure          PASS      agg |d| 0.000 pp <= 0.5   max band |d| 0.000 pp <= 1.0   replayed 0.35403 vs recorded 0.35403
+gate 3  theory (Koksal)             PASS      |d| 0.0000 <= 0.01   Eq(3.8) 12.90 s >= 10.75 s
+gate 4  extremes                    PASS      12/12 assertions
+
+artefacts: runs\validation
+all 3 gated check(s) passed; gate 1 MEASURED

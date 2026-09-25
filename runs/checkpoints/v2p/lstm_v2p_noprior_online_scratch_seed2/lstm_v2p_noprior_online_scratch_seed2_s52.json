@@ -1,0 +1,60 @@
+{
+  "run": "lstm_v2p_noprior_online_scratch_seed2",
+  "description": "From-scratch online training (D77 regime), 800k steps, no band_priority. Tests two things at once: (1) can the observable Y-based reward train a policy from nothing, where every prior result used the truth-fed reward; (2) is 23a's 73.1% about the 512-wide LSTM and 800k budget rather than the priority mechanism two ablations already showed it never reads. Matched to 23a on obs width (398), LSTM size, n_steps/batch/epochs/gamma/ent_coef, seed and budget; departs on episode length (continuous grid, required by D77), gradient reward (reward_balance_obs), and lr/clip/target_kl (training values restored -- online's 1e-5/0.1/0.02 are fine-tuning brakes that would barely move a fresh policy).",
+  "checkpoint": "lstm_v2p_noprior_online_scratch_seed2_s52.zip",
+  "sha256": "c81da852836b082b34f735b9a6cb012c0e6d12bc7400794fb29d13d57e32832c",
+  "algorithm": "RecurrentPPO",
+  "policy": "RecurrentActorCriticPolicy",
+  "reward": "reward_balance",
+  "observation_width": 398,
+  "action_space": "Discrete(36)",
+  "seed": 2,
+  "total_timesteps": 425984,
+  "hyperparameters": {
+    "n_steps": 8192,
+    "batch_size": 128,
+    "learning_rate": 0.0003,
+    "clip_range": 0.2,
+    "target_kl": null,
+    "ent_coef": 0.01,
+    "n_epochs": 10,
+    "gamma": 0.997
+  },
+  "resolved": {
+    "learning_rate": 0.0003,
+    "gamma": 0.997,
+    "n_steps": 8192,
+    "batch_size": 128,
+    "n_epochs": 10,
+    "ent_coef": 0.01,
+    "gae_lambda": 0.95,
+    "vf_coef": 0.5,
+    "max_grad_norm": 0.5,
+    "device": "device(type='cuda')"
+  },
+  "argv": [
+    "C:/Users/DELL/AppData/Local/Temp/claude/c--Code-sih-SIH26055/6f201d88-5009-480d-93d5-dd7e2f0f7f60/scratchpad/train_online_from_scratch.py"
+  ],
+  "command": "C:\\Code\\sih\\SIH26055\\venv\\Scripts\\python.exe C:/Users/DELL/AppData/Local/Temp/claude/c--Code-sih-SIH26055/6f201d88-5009-480d-93d5-dd7e2f0f7f60/scratchpad/train_online_from_scratch.py",
+  "git": {
+    "commit": "bcc23468b54afac2bb6c79e16194655ecaf23439",
+    "dirty": true
+  },
+  "started_at": "2026-09-21T20:45:08Z",
+  "wall_clock_s": 4382.8,
+  "versions": {
+    "python": "3.12.10",
+    "stable_baselines3": "2.9.0",
+    "torch": "2.14.0+cu126",
+    "gymnasium": "1.3.0",
+    "numpy": "2.5.3",
+    "sb3_contrib": "2.9.0"
+  },
+  "hardware": {
+    "os": "Windows-11-10.0.26200-SP0",
+    "machine": "AMD64",
+    "processor": "Intel64 Family 6 Model 165 Stepping 2, GenuineIntel",
+    "cpu_count": 12,
+    "cuda": "NVIDIA GeForce GTX 1650"
+  }
+}

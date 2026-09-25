@@ -1,0 +1,289 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>RF_ENVIRONMENT_EXPLAINED</title>
+<style>
+@page { size: a4 portrait; margin: 16mm 15mm 15mm 15mm; }
+body { font-family: "Charter","Georgia",serif; font-size: 10.2pt; line-height: 1.45;
+       color: #17181a; }
+h1,h2,h3,h4 { font-family: "Helvetica","Arial",sans-serif; }
+h1 { font-size: 21pt; margin: 0 0 3mm; }
+h2 { font-size: 13.5pt; margin: 8mm 0 2.5mm; padding-bottom: 1.5mm;
+     border-bottom: 1.2pt solid #17181a; }
+h3 { font-size: 11pt; margin: 5mm 0 1.5mm; }
+h4 { font-size: 10pt; margin: 4mm 0 1mm; color: #3a3d42; }
+p  { margin: 0 0 2.5mm; }
+ul,ol { margin: 0 0 2.8mm; }
+li { margin-bottom: 1.1mm; }
+code { font-family: "Courier","monospace"; font-size: 8.7pt; background-color: #f2f2f0; }
+pre { font-family: "Courier","monospace"; font-size: 8.3pt; background-color: #f7f7f5;
+      border: 0.5pt solid #dcdcd6; padding: 3mm; margin: 0 0 3mm; }
+table { width: 100%; margin: 0 0 3.5mm; font-size: 8.9pt; }
+th { text-align: left; font-size: 8.2pt; color: #55585e;
+     border-bottom: 1pt solid #17181a; padding: 1.6mm 2mm 1.2mm; }
+td { padding: 1.6mm 2mm; border-bottom: 0.5pt solid #e0e0dc; }
+blockquote { border-left: 2.5pt solid #17181a; background-color: #f7f7f5;
+             padding: 2.5mm 4mm; margin: 0 0 3.5mm; }
+hr { border-top: 0.5pt solid #d5d5cf; margin: 5mm 0; }
+a { color: #17181a; }
+</style></head><body><h1>The RF Environment, Explained</h1>
+<p><strong>The simulated RF world we built for SIH26055 — how it was made from real recordings, how it
+generates new scenarios, and how we validated it.</strong> Companion to <em>NARADA: The Scanning Agent,
+Explained</em>.</p>
+<hr />
+<h2>1. Why a simulated environment</h2>
+<p>A receiver can listen to only one narrow band at a time, and must decide many times a second which
+band to check next. To develop a scheduler for that and compare it fairly against others, we need
+three things the real world does not give us:</p>
+<ul>
+<li><strong>Repeatability</strong> — every scheduler must face the identical situation.</li>
+<li><strong>Ground truth</strong> — to score a scheduler we must know what was transmitting, including in the bands
+  it never checked.</li>
+<li><strong>Speed</strong> — a 30-second mission runs in a fraction of a second.</li>
+</ul>
+<p>The problem statement asks for exactly this: <em>"a simulated RF environment which has truth
+information on status of emitters in each band and at each time slot."</em></p>
+<hr />
+<h2>2. The data</h2>
+<p>The Turing Synthetic Radar Dataset (TSRD), the dataset named in the problem statement: <strong>184 files,
+2.2 GB</strong> of recordings of a receiver listening to radar environments. Each scenario comes as a
+pair — a <strong>scan</strong> recording (receiver sweeping) and a <strong>stare</strong> recording (receiver parked and
+listening). Each is a list of detected pulses with time, frequency, strength, pulse width and
+bearing.</p>
+<p>Of 92 scenario pairs, <strong>47</strong> are used for development and <strong>45 are kept untouched</strong> for a clean
+final test. Inside the 47, a <strong>35 / 12</strong> split separates the scenarios the environment builds from
+and the ones kept for checking, with <strong>zero emitters shared</strong> between them.</p>
+<hr />
+<h2>3. A generative RF environment</h2>
+<p><strong>Step 1 — Extract and group.</strong> Every recorded pulse is extracted and grouped by the emitter that
+produced it.</p>
+<p><strong>Step 2 — Build a reusable emitter pool.</strong> Each emitter's activity becomes a reusable building
+block, giving <strong>3,443 emitter contributions</strong>.</p>
+<p><strong>Step 3 — Sample new scenarios.</strong> Emitters are drawn from the pool, with their timing, and dropped
+together into a fresh 30-second scenario. Every episode is new — the environment can produce
+combinations of emitters and situations the original dataset never contained.</p>
+<p><strong>Step 4 — Fill the grid.</strong> Each scenario becomes a grid of <strong>36 bands × 600 time slots</strong>, 50 ms per
+slot, 30 seconds in total.</p>
+<h3>The bands</h3>
+<p>The <strong>36 bands</strong> are the receiver's own, read from each file's metadata and checked against every
+file opened: centres 500 MHz apart from 250 MHz to 17,750 MHz, each <strong>±500 MHz</strong> wide, so adjacent
+bands overlap by half. We confirmed this against the data itself: <strong>99.985%</strong> of 4.4 million
+recorded pulses fall within ±500 MHz of the active band centre.</p>
+<h3>What each cell of the grid holds</h3>
+<table>
+<thead>
+<tr>
+<th>Quantity</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Z[b,t]</td>
+<td>is any emitter transmitting in band b at slot t</td>
+</tr>
+<tr>
+<td>S[b,t]</td>
+<td>the received signal level</td>
+</tr>
+<tr>
+<td>C[b,t]</td>
+<td>how many pulses illuminate the cell</td>
+</tr>
+<tr>
+<td>PW[b,t]</td>
+<td>pulse width of the loudest pulse in the cell</td>
+</tr>
+<tr>
+<td>AOA[b,t]</td>
+<td>angle of arrival of the loudest pulse in the cell</td>
+</tr>
+</tbody>
+</table>
+<p>This grid is the ground truth: a complete record of everything, everywhere, at every moment. It is
+used to <strong>score</strong> a mission, and is never shown to the scheduler. Each emitter's own signal is kept
+separately too, so a quiet emitter is only credited as found when <em>its</em> signal was strong enough —
+not because a louder neighbour happened to share the band.</p>
+<hr />
+<h2>4. A realistic receiver</h2>
+<p>Looking at a band does not reveal the truth — it produces a <strong>noisy measurement</strong>, compared against a
+detection threshold:</p>
+<blockquote>
+<p>Y[b,t] = HIT if signal + noise is above the threshold, otherwise NO HIT</p>
+</blockquote>
+<table>
+<thead>
+<tr>
+<th>Receiver parameter</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Detection threshold</td>
+<td><strong>-111 dBm</strong></td>
+</tr>
+<tr>
+<td>Noise spread</td>
+<td>3 dB</td>
+</tr>
+<tr>
+<td>Probability of detection (P_d)</td>
+<td><strong>0.8506</strong></td>
+</tr>
+<tr>
+<td>Probability of false alarm (P_fa)</td>
+<td><strong>0.00135</strong></td>
+</tr>
+<tr>
+<td>Sensitivity</td>
+<td><strong>-107.16 dBm</strong></td>
+</tr>
+</tbody>
+</table>
+<p>So the environment is not noiseless: the receiver occasionally misses a real signal and occasionally
+raises a false alarm, just as a real receiver does. A scheduler developed here is developed for a
+realistic detector. The scheduler controls <strong>where</strong> the receiver looks; detection quality belongs
+to the receiver itself.</p>
+<hr />
+<h2>5. The rules of the loop</h2>
+<ul>
+<li><strong>Action.</strong> The scheduler picks one of the 36 bands.</li>
+<li><strong>Dwell.</strong> The receiver listens for that band's natural dwell — 50 ms for 29 bands, 100 ms for the
+  other seven, as in the recordings.</li>
+<li><strong>Observation.</strong> The scheduler is told HIT or NO HIT, plus what the receiver measured.</li>
+<li><strong>Repeat.</strong> The clock advances by that dwell; a 30-second mission is <strong>300 to 600 decisions</strong>.</li>
+</ul>
+<p>Missions can also run far longer than 30 seconds by stitching fresh scenarios end to end — the basis
+for continuous online operation.</p>
+<hr />
+<h2>6. What the scheduler sees, and what it is paid</h2>
+<p><strong>Seen:</strong> only the receiver's own history — per band, how often looking there paid off, how much
+time it has had, how long since it was last checked, and what was last heard there (strength, pulse
+width, bearing, pulse count), plus the current band and the mission clock. <strong>Nothing from the truth
+grid is ever handed over.</strong> This is the problem statement's <em>"absence of prior reliable
+intelligence"</em> requirement, built into the code.</p>
+<p><strong>Paid:</strong> one fixed reward formula, computed from the same receiver-side quantities:</p>
+<blockquote>
+<p>Reward = exploit what pays + explore what is overdue + reward for hits - cost of hogging airtime</p>
+</blockquote>
+<p>The environment can also take a <strong>per-band priority</strong> from the operator, adding a bonus for
+discovering emitters on high-threat bands.</p>
+<hr />
+<h2>7. Validation</h2>
+<p>Before any scheduler was evaluated, the environment passed <strong>four validation gates</strong>, each with its
+criteria written down in advance:</p>
+<table>
+<thead>
+<tr>
+<th>Gate</th>
+<th>What it checks</th>
+<th>Result</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>1. Out-of-sample prediction</strong></td>
+<td>Build truth from <strong>stare</strong> recordings only, replay the receiver's own scan pattern, and predict what the <strong>scan</strong> recordings contain — data never used to build it</td>
+<td><strong>85.85% correct predictions</strong>, MCC 0.685, per-band correlation 0.935</td>
+</tr>
+<tr>
+<td><strong>2. Per-band structure</strong></td>
+<td>Replay the schedule that produced a recording and compare band-by-band activity</td>
+<td><strong>Exact match</strong> — 0.35403 vs 0.35403</td>
+</tr>
+<tr>
+<td><strong>3. Theory</strong></td>
+<td>A controlled periodic emitter against the periodic sweep, versus published closed-form results</td>
+<td><strong>Exact match</strong> — 0.18333 vs 0.18333</td>
+</tr>
+<tr>
+<td><strong>4. Extremes</strong></td>
+<td>The emptiest and busiest scenarios, 12 structural checks</td>
+<td><strong>12 / 12 pass</strong></td>
+</tr>
+</tbody>
+</table>
+<p>Once validated, every physical constant — band layout, 50 ms clock, dwell lengths, noise, threshold —
+was <strong>frozen</strong> and locked by an automated test, so no result can be improved by quietly changing the
+world.</p>
+<hr />
+<h2>8. How schedulers are scored</h2>
+<p>Three metrics, always reported together:</p>
+<table>
+<thead>
+<tr>
+<th>Metric</th>
+<th>Meaning</th>
+<th>Better</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Interception ratio</strong></td>
+<td>fraction of all transmitted pulses the receiver was tuned to</td>
+<td>higher</td>
+</tr>
+<tr>
+<td><strong>Censored intercept time</strong></td>
+<td>average time from an emitter becoming findable to its first detection; an emitter never found is charged the full 30 seconds</td>
+<td>lower</td>
+</tr>
+<tr>
+<td><strong>Emitter coverage</strong></td>
+<td>fraction of findable emitters detected at all</td>
+<td>higher</td>
+</tr>
+</tbody>
+</table>
+<p>Reporting all three together is what stops a scheduler looking good by camping on one busy band: a
+camper scores well on interception ratio but badly on intercept time and coverage, and the
+environment shows it.</p>
+<p><strong>Fair evaluation.</strong> Every scheduler runs on the identical scenarios with identical noise, and is
+compared mission by mission rather than by averages, so scenario difficulty cancels out entirely.</p>
+<hr />
+<h2>9. Glossary</h2>
+<table>
+<thead>
+<tr>
+<th>Term</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Band</strong></td>
+<td>One of 36 frequency ranges the receiver can tune to; ±500 MHz wide, overlapping by half</td>
+</tr>
+<tr>
+<td><strong>Slot</strong></td>
+<td>50 ms of time. A mission is 600 slots</td>
+</tr>
+<tr>
+<td><strong>Dwell</strong></td>
+<td>One look at one band — one decision. 50 or 100 ms</td>
+</tr>
+<tr>
+<td><strong>Episode / mission</strong></td>
+<td>One 30-second run, starting from zero knowledge</td>
+</tr>
+<tr>
+<td><strong>Emitter pool</strong></td>
+<td>Reusable emitter activity extracted from TSRD, sampled into new scenarios</td>
+</tr>
+<tr>
+<td><strong>Ground truth</strong></td>
+<td>The complete record of what transmitted where and when; used for scoring only</td>
+</tr>
+<tr>
+<td><strong>HIT / NO HIT</strong></td>
+<td>The receiver's declaration after one look</td>
+</tr>
+<tr>
+<td><strong>Censored</strong></td>
+<td>Charging a never-found emitter the full mission length</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<p><em>Built on Gymnasium 1.3 (environment interface), NumPy and h5py 3.16 (TSRD HDF5 access). Figures
+are from the project's own runs: the four validation gates, the band-geometry measurement and the
+receiver operating point.</em></p></body></html>
