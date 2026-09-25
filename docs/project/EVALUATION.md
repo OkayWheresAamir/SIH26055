@@ -61,12 +61,31 @@ comparing to the actual recordings. These validate the simulator, not any schedu
 
 | Metric | Definition |
 |---|---|
-| **% correct predictions** | Fraction of (band, slot) cells where the environment's predicted detection matches the recorded scan data, under Turing's own schedule. |
-| **Average intercept-time error** | Mean absolute difference between per-emitter first-intercept time predicted by the environment and the value measured from the actual scan recording. |
+| **% correct predictions** | Fraction of **dwells** where the environment's declared detection matches the recorded scan data, under Turing's own schedule. Reported with MCC and the base rate beside it, never alone (§7). |
+| **Average intercept-time error** | Per emitter, `\|predicted first-intercept − recorded first-intercept\|`, over emitters **detected on both sides**, reported with the outcome-agreement rate and the signed mean beside it. |
 
 > **PS reading.** *"The model should enable prediction of intercept time and interception ratio
 > of a scanning receiver…"* assigns prediction to the **system model**. That is why these two
 > live here and not in the scheduler family.
+
+**Both definitions were corrected 2026-09-20 to match what the code computes.** Neither number
+moved; the text did.
+
+- **% correct predictions is scored per dwell, not per cell.** D37 fixed that convention before
+  `validate.py` was written and this table was never updated. A dwell is the unit a receiver
+  produces a declaration for, and scoring all 36 × 600 cells would put ~97% of the denominator on
+  cells Turing's sweep never visits — the sweep sees 2.78% of them (D36) — making most of the
+  score unfalsifiable by construction.
+- **Average intercept-time error excludes misses from its mean.** Censoring an emitter the sweep
+  never caught to the 30 s horizon and averaging that in conflates *"predicted the wrong time"*
+  with *"predicted the wrong outcome"*, and the two cannot be separated afterwards. Measured over
+  the 47 train pairs: the censored form reads **8.42 s**, the separated form **6.60 s of timing
+  error plus 87.3% outcome agreement** — 1.8 s of that 8.42 s is missed detections, not mistimed
+  ones. Both sides must also apply the same detection rule, or an ungated recorded side fires on
+  sub-threshold pulses while the predicted side waits for a declaration.
+
+Formulas, populations and the traps behind each: **`FIGURES_OF_MERIT.md`**, which specifies all
+seven of the PS's figures of merit. Produced by `python -m rfenv.compare --figures-of-merit`.
 
 ---
 
@@ -419,12 +438,12 @@ gradient consumes), not a settled result. **Matched seed counts per arm is what 
 if either, becomes the one carried forward past this comparison) has not been made, and both are
 reported here as measured rather than one being promoted over the other by this document.
 
-### The first result on the widened "v2" observation (D72, D73) — measured 2026-09-18
+### The first result on the widened "v2" observation (D76, D77) — measured 2026-09-18
 
-D71 added PulseWidth/AoA/per-band amplitude as an opt-in 326-wide "v2" layout; D72 widened it
-again to 362 the same day, adding `pulse_count` (gated illumination count). The seed-2 pair D71
+D75 added PulseWidth/AoA/per-band amplitude as an opt-in 326-wide "v2" layout; D76 widened it
+again to 362 the same day, adding `pulse_count` (gated illumination count). The seed-2 pair D75
 started training on 326-wide "v2" never finished (385,024/400,000 steps) and was made permanently
-unloadable by D72's width change -- this is the first pair to finish training on the *widened*
+unloadable by D76's width change -- this is the first pair to finish training on the *widened*
 "v2", not a continuation of that one.
 
 Same pairing discipline as D64/D65: `reward_balance` (rung 20d, control) against
@@ -440,14 +459,14 @@ recorded in its manifest.
 |---|---|---|---|---|---|
 | 2 | round_robin | 0.060 | 4.18 | 0.865 | 3.5% |
 | 5 | recency | 0.111 | 3.34 | 0.887 | -- |
-| 20d | Recurrent PPO, D72 v2 (`reward_balance`, 400k) | 0.111 | 3.30 | 0.902 | 36.3% |
-| 21a | Recurrent PPO, D72 v2 (`reward_balance_improved_v2`, 400k) | 0.136 | 2.82 | 0.912 | **45.6%** |
+| 20d | Recurrent PPO, D76 v2 (`reward_balance`, 400k) | 0.111 | 3.30 | 0.902 | 36.3% |
+| 21a | Recurrent PPO, D76 v2 (`reward_balance_improved_v2`, 400k) | 0.136 | 2.82 | 0.912 | **45.6%** |
 
 **Both clear the bar; the treatment is ahead of the control on every column** here too, the same
 direction D65 found on "v1". **Not directly comparable to the D64/D65 numbers above** -- observation
 width, reward formula (`_DENSITY_SHRINKAGE_V2 = 0.75` against 0.5) and the sampled-scenario draws
 all differ at once. **Not read as settled**: one training seed per arm, same caveat D65 gave and
-did not resolve. Full account: D73.
+did not resolve. Full account: D77.
 
 **Reproduce the full ladder with:**
 
@@ -459,6 +478,50 @@ Both paired tables are printed: against `round_robin` (the floor, beating it is 
 against `recency` (**the bar** -- a scheduler that clears the floor and not the bar has not beaten
 the ladder). Until 2026-09-10 only the floor comparison was computed, so every RL claim in this
 repository had been measured against the wrong reference.
+
+### The full ladder with every live RL rung — measured 2026-09-11 (D71)
+
+**This supersedes every RL row above as the current standing.** All prior RL numbers in this
+section compared one run against a *different* run; this is the first in which every loadable
+checkpoint was scored against the whole ladder in one run, one scenario set, one set of seeds.
+
+`python -m rfenv.compare --seeds 3 --sampled 10 --figures --out runs/final_2026-09-11`
+— 33 rungs x 57 scenarios x 3 seeds = **5,643 episodes**. 24 of 57 registered rungs skipped by
+`compare.py`'s guard: every DQN/PPO checkpoint and every 146/147-wide LSTM predates D67 and is
+permanently unloadable.
+
+| rung | scheduler | interception ratio | censored intercept time (s) | emitter coverage | intercept rate (/s) |
+|---|---|---|---|---|---|
+| **17c** | **Recurrent PPO, `reward_balance`, seed 2, 300k** | **0.1304** | **3.04** | **0.9019** | **1.191** |
+| 5 | `recency` — **the bar** | 0.1105 | 3.34 | 0.8874 | 1.153 |
+| 6a | `apfeld_active_rfs` | 0.1320 | 4.32 | 0.8602 | 1.135 |
+| 6 | `apfeld` | 0.2455 | 14.86 | 0.3672 | 0.350 |
+| 4 | `camper` | 0.2088 | 9.67 | 0.4971 | 0.660 |
+| 3 | `turing_sweep` | 0.0805 | 3.74 | 0.8643 | 1.166 |
+| 2 | `round_robin` — the floor | 0.0605 | 4.18 | 0.8650 | 1.118 |
+| 1 | `random` | 0.0669 | 4.16 | 0.8583 | 1.117 |
+| — | `oracle_pulse` *(reference line)* | 0.6579 | 8.01 | 0.6912 | 0.813 |
+| — | `camper_oracle` *(reference line)* | 0.5680 | 15.71 | 0.2960 | 0.295 |
+
+Paired per episode (n = 171): **rung 17c beats `round_robin` on both metrics 81.9% of the time and
+`recency` — the bar — 54.4%.** Across all 24 live RL checkpoints the joint column ranges 18.7-54.4%
+against the bar (median 35.4%); **23 of 24 beat `apfeld_active_rfs`** at 23.4%, and the weakest
+still beats `turing_sweep` (9.9%), `apfeld` (2.9%) and `camper` (0.6%).
+
+**Rung 17c Pareto-dominates rung 5 on all four metrics in the means** — higher ratio, lower
+intercept time, higher coverage, higher intercept rate. No rung before it did that.
+
+**Rung 17c is the checkpoint D61's rule selected, on validation data, before this run existed.**
+It then scored highest of all 24 here. The rule never saw the data that confirmed it — which is
+the whole reason the criterion was fixed in `rfenv/selection.py` in advance (D39's discipline
+applied to checkpoints rather than gate thresholds).
+
+**Read the seed spread before quoting any single row.** The 24 checkpoints span 36 percentage
+points on the joint column. The control/treatment reward gap argued in D65 and D68 is a few points
+inside that spread, so **no single-checkpoint comparison between the two rewards is trustworthy at
+this sample size** (D71).
+
+Full account: **D71**. Artefacts: `runs/final_2026-09-11/`.
 
 ### Comparison figures
 

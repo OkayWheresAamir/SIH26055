@@ -102,6 +102,7 @@ from rfenv.scenario import (
     EmitterContribution,
     Scenario,
     list_configs,
+    load_contributions,
     recording_path,
 )
 from rfenv.truth import TruthGrid
@@ -910,6 +911,160 @@ def gate4(out_dir: Path, seed: int) -> GateResult:
             "not follow from the design and would be a threshold read off the answer.",
         ],
     )
+
+
+# --------------------------------------------------------------------------- #
+# Average intercept-time error -- EVALUATION.md §2, the seventh figure of merit
+# --------------------------------------------------------------------------- #
+#
+# The only one of the PS's seven that had a definition (`EVALUATION.md` §2) and no
+# implementation. Model-level, like gate 1: it asks whether the stare-built
+# environment reproduces Turing's own sweep's per-emitter timing, not whether any
+# scheduler is fast. Policy-independent by construction, and that is the correct
+# outcome (D21, §3), to be stated rather than debugged.
+#
+# Specified in `docs/project/FIGURES_OF_MERIT.md` §7. Two rules from there are the
+# whole reason this function is longer than a one-liner, and both were measured:
+#
+#   1. **Both sides use the same detection rule.** `predicted` is D28-conditioned
+#      (tuned to the band, own level >= gamma, and Y = 1). `measured` must be too,
+#      or it fires on the first sub-threshold pulse while `predicted` waits for a
+#      real detection -- a systematic bias on every emitter with a weak leading
+#      edge.
+#   2. **Misses are never censored into the mean.** Setting `predicted = 30 s` for
+#      an emitter the sweep never caught mixes "predicted the wrong time" with
+#      "predicted the wrong outcome", and the two cannot be separated afterwards.
+#      Measured over the 47 train pairs: censoring reads 8.42 s against 6.58 s of
+#      real timing error plus 87.0% outcome agreement -- 1.84 s of the 8.42 is
+#      missed detections, not mistimed ones.
+
+INTERCEPT_TIME_ERROR_POPULATION = "detectable_in_stare_and_scan"
+
+
+def intercept_time_error(configs: list[str], seed: int,
+                         gamma_dbm: float = GAMMA_DBM) -> dict:
+    """`EVALUATION.md` §2's average intercept-time error, as three numbers.
+
+    **The two sides, matched by transmitter label.**
+
+    * *Predicted* -- truth from **stare only** (data the scan recording never
+      touched, D17), Turing's own `dwell_schedule()` replayed through `ScanEnv`,
+      each emitter's `first_intercept_slot` from the emitter table (D28).
+    * *Measured* -- the first slot at which that emitter's own recorded level
+      clears `gamma` in the **actual scan recording**. A scan recording holds only
+      what Turing's sweep was tuned to (D36), so that is the sweep's real first
+      detection of it.
+
+    Returns `mean_abs_error_s` over emitters detected on *both* sides,
+    `agreement_rate` over the whole matched population, and `signed_mean_error_s`
+    (positive = the environment predicts late). Reporting only the first of those
+    is what makes the number un-interpretable.
+
+    **Two limitations, stated rather than patched** -- the same two gate 1 carries:
+
+    * scan and stare are independent simulation runs (D24), so the same emitter has
+      disjoint activity in each. Part of this error is that realisation divergence
+      rather than a modelling defect -- but an out-of-sample prediction is exposed
+      to exactly it, so it belongs in the number. The diagnostic that separates the
+      two is whether the *distributions* agree while individual emitters do not;
+      measured, they do (predicted mean 8.49 s against recorded 8.63 s, matching at
+      every percentile, per-emitter r = 0.07).
+    * band 0 (250 MHz) is invisible to stare (D10), so its emitters are predicted as
+      never-intercepted wherever scan caught them.
+    """
+    policy = _g3_sweep_policy()
+    per_config: list[dict] = []
+    errors: list[float] = []
+    signed: list[float] = []
+    n_matched = n_agree = n_pred_only = n_meas_only = 0
+    n_both = n_pred_not_meas = n_meas_not_pred = n_neither = 0
+
+    for config_id in configs:
+        env = run_episode(
+            ScanEnv(scenario=Scenario.replay(config_id, "stare")), policy, seed=seed
+        )
+        # label -> (first-intercept time in s, was it intercepted at all)
+        predicted: dict[int, tuple[float, bool]] = {}
+        for row in env.emitter_table():
+            label = int(row["uid"].rsplit("/", 1)[1])
+            slot = row["first_intercept_slot"]
+            predicted[label] = ((slot or 0) * SLOT_S, slot is not None)
+
+        # label -> first slot its OWN level clears gamma in the scan recording.
+        # Gated to match D28's own-level rule on the predicted side (rule 1 above).
+        measured: dict[int, float] = {}
+        for c in load_contributions(config_id, "scan"):
+            above = c.peak_dbm >= gamma_dbm
+            if above.any():
+                measured[int(c.label)] = float(c.slots[above].min()) * SLOT_S
+
+        labels = set(predicted) & set(load_contributions_labels(config_id))
+        n_matched += len(labels)
+        n_pred_only += len(set(predicted) - set(measured))
+        n_meas_only += len(set(measured) - set(predicted))
+
+        cfg_errors = []
+        for label in labels:
+            p_time, p_found = predicted[label]
+            m_found = label in measured
+            n_agree += int(p_found == m_found)
+            if p_found and m_found:
+                n_both += 1
+                delta = p_time - measured[label]
+                errors.append(abs(delta))
+                signed.append(delta)
+                cfg_errors.append(abs(delta))
+            elif p_found:
+                n_pred_not_meas += 1
+            elif m_found:
+                n_meas_not_pred += 1
+            else:
+                n_neither += 1
+
+        per_config.append({
+            "config": config_id,
+            "n_both_detected": len(cfg_errors),
+            "mean_abs_error_s": float(np.mean(cfg_errors)) if cfg_errors else float("nan"),
+        })
+
+    errs = np.array(errors, dtype=np.float64)
+    have = errs.size > 0
+    return {
+        "metric": "average intercept-time error (EVALUATION.md §2)",
+        "population": INTERCEPT_TIME_ERROR_POPULATION,
+        # (a) timing error, over emitters detected on BOTH sides only
+        "mean_abs_error_s": float(errs.mean()) if have else float("nan"),
+        "median_abs_error_s": float(np.median(errs)) if have else float("nan"),
+        "p25_abs_error_s": float(np.percentile(errs, 25)) if have else float("nan"),
+        "p75_abs_error_s": float(np.percentile(errs, 75)) if have else float("nan"),
+        # (b) outcome agreement, over the whole matched population
+        "agreement_rate": (n_agree / n_matched) if n_matched else float("nan"),
+        # (c) direction: positive means the environment predicts late
+        "signed_mean_error_s": float(np.mean(signed)) if signed else float("nan"),
+        "n_emitters_matched": n_matched,
+        "n_both_detected": n_both,
+        "n_predicted_only": n_pred_not_meas,
+        "n_measured_only": n_meas_not_pred,
+        "n_neither": n_neither,
+        "n_predicted_not_in_scan": n_pred_only,
+        "n_scan_not_predicted": n_meas_only,
+        "n_configs": len(configs),
+        "seed": seed,
+        "gamma_dbm": float(gamma_dbm),
+        "policy_independent": True,
+        "per_config": per_config,
+    }
+
+
+def load_contributions_labels(config_id: str) -> set[int]:
+    """Every emitter label present in a scan recording, detected or not.
+
+    The matched population is "detectable in stare AND present in scan": presence
+    is what makes an emitter *scoreable* on both sides, and whether each side then
+    detected it is the thing `agreement_rate` measures. Gating the population
+    itself on detection would delete the disagreements the metric exists to count.
+    """
+    return {int(c.label) for c in load_contributions(config_id, "scan")}
 
 
 # --------------------------------------------------------------------------- #

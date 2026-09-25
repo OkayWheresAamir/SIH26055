@@ -23,16 +23,16 @@ Every time the observation changed, every existing checkpoint died.
 | 147 | — (pre-D55 layout) | D49 era | 1 | **no** |
 | 146 | D55 rescaled `visit_density`/`staleness`, removed `camp_time` | D55 | 25 | **no** |
 | **183** | D67 appended `hit_streak` (36) + `current_hit_streak` (1) | **D67** | **30** | **yes** |
-| 326 | D71 (2026-09-14) added PulseWidth (36), per-band amplitude (36, replacing a 1-wide global scalar), AoA sin/cos (72) | **D71** | 3 (`lstm_balance_v2_control_seed2_s1/s2/s3`, 385,024/400,000 steps, unfinished) | **no** — superseded by D72 the same day |
-| **362** | D72 (2026-09-14) appended `pulse_count` (36), gated `C` | **D72** | 2, both finished (`lstm_balance_v2_d72_seed2`, `reward_balance`, 401,408 steps; `lstm_balance_improved_v2_d72_seed2`, `reward_balance_improved_v2`, 404,800 steps, resumed twice after crashes — D73) | **yes** |
+| 326 | D75 (2026-09-14) added PulseWidth (36), per-band amplitude (36, replacing a 1-wide global scalar), AoA sin/cos (72) | **D75** | 3 (`lstm_balance_v2_control_seed2_s1/s2/s3`, 385,024/400,000 steps, unfinished) | **no** — superseded by D76 the same day |
+| **362** | D76 (2026-09-14) appended `pulse_count` (36), gated `C` | **D76** | 2, both finished (`lstm_balance_v2_d72_seed2`, `reward_balance`, 401,408 steps; `lstm_balance_improved_v2_d72_seed2`, `reward_balance_improved_v2`, 404,800 steps, resumed twice after crashes — D77) | **yes** |
 
-**Updated 2026-09-14 (D71, then D72 the same day): this is no longer one number.** Every row above
+**Updated 2026-09-14 (D75, then D76 the same day): this is no longer one number.** Every row above
 183 in this table *replaced* the one before it — every old checkpoint died the moment the width
 changed (D49, D55, D67). "v2" is different: it is a second, opt-in layout
 (`ScanEnv(obs_version="v2")`) sitting alongside "v1", and every 183-wide checkpoint stays exactly as
 loadable as it was (`obs_version` defaults to `"v1"`, unchanged). But "v2" itself is not immune to
-widening in place — D72 moved it from 326 to 362 the same session D71 introduced it, and the three
-snapshots D71's own retrain had already produced (`observation_width: 326` in their manifests, not
+widening in place — D76 moved it from 326 to 362 the same session D75 introduced it, and the three
+snapshots D75's own retrain had already produced (`observation_width: 326` in their manifests, not
 yet finished per `train.log`) are now permanently unloadable, the same cost every past observation
 change has carried, paid again here.
 `rfenv.rl.common.current_observation_width()` (the function this section used to cite) still only
@@ -43,11 +43,11 @@ ever answers for "v1" — the function that now matters for "is this checkpoint 
 **Consequence, stated plainly: 26 of the 56 trained checkpoints (all below 183) can never be run
 again.** Their measured numbers remain valid as history — the episodes really happened — but no new
 comparison can include them, and nothing can be re-measured about them. This is the fourth time
-that specific cost has been paid (D49, D55, D67); D71 added a layout instead of replacing one, so it
-paid nothing on "v1"'s 30 checkpoints — but **D72, the same day, widened "v2" itself in place** and
-did pay a cost, on the three snapshots D71's own retrain had produced by then (not counted in the
+that specific cost has been paid (D49, D55, D67); D75 added a layout instead of replacing one, so it
+paid nothing on "v1"'s 30 checkpoints — but **D76, the same day, widened "v2" itself in place** and
+did pay a cost, on the three snapshots D75's own retrain had produced by then (not counted in the
 56-manifest total above, compiled 2026-09-11, three days before either existed). "v1" remains
-untouched by both D71 and D72; "v2" has now paid the same cost "v1" paid three times, once, this
+untouched by both D75 and D76; "v2" has now paid the same cost "v1" paid three times, once, this
 early in its life.
 
 ---
@@ -80,7 +80,7 @@ Control and treatment are identical in every respect except the reward — same 
 (`ent_coef=0.01`, `gamma=0.997`, `n_steps=8192`), same D60 training split, same observation, same
 seed per matched pair. That is what makes the comparison attributable to the reward.
 
-### Width 362 — "v2" widened, D72 (2)
+### Width 362 — "v2" widened, D76 (2)
 
 | checkpoint | reward | steps | seed | rung | trained |
 |---|---|---|---|---|---|
@@ -88,17 +88,17 @@ seed per matched pair. That is what makes the comparison attributable to the rew
 | `lstm_balance_improved_v2_d72_seed2` | `reward_balance_improved_v2` | 404,800 | 2 | 21a | 2026-09-14 to 2026-09-18 |
 
 Same pairing discipline as the 183-wide control/treatment rows above (same split, hyperparameters,
-seed — only the reward differs), but on `ScanEnv(obs_version="v2")`, D72's 362-wide layout.
+seed — only the reward differs), but on `ScanEnv(obs_version="v2")`, D76's 362-wide layout.
 `lstm_balance_improved_v2_d72_seed2` was interrupted by two laptop crashes and resumed both times
 via `RecurrentPPO.load()` + `learn(reset_num_timesteps=False)` from its own last `--checkpoint-freq`
 snapshot — recorded in its own manifest description, not silently absorbed into the step count. Full
-comparison: D73, `EVALUATION.md` §5.
+comparison: D77, `EVALUATION.md` §5.
 
 The three 326-wide `lstm_balance_v2_control_seed2_s1/s2/s3` snapshots (rungs 20a–20c) predate this
-pair, trained on D71's original "v2" before D72 widened it, never finished (385,024/400,000 steps),
+pair, trained on D75's original "v2" before D76 widened it, never finished (385,024/400,000 steps),
 and are now permanently unloadable — `326` is no longer in `known_observation_widths()` at all.
 
-### Width 398 — "v2p", band-priority reward, measured null (D74) (2, complete)
+### Width 398 — "v2p", band-priority reward, measured null (D78) (2, complete)
 
 | checkpoint | reward | steps | seed | rung | trained | notes |
 |---|---|---|---|---|---|---|
@@ -154,10 +154,10 @@ show. Three follow-up checks, all direct measurements rather than assumptions:
    signal is real or garbage (real beats shuffled in 13/30 episodes — a coin flip), and performance
    does not degrade when the signal is corrupted.
 
-**Conclusion (D74, `MEASURED`): the band-priority reward, at this scale, was never learned.**
+**Conclusion (D78, `MEASURED`): the band-priority reward, at this scale, was never learned.**
 Treatment's underperformance is a training-difficulty story (2, above), not a misused-signal story
 — ruled out directly by (1) and (3). Single seed, one comparison run — not read as settled beyond
-this configuration, same caveat D65/D73 give and do not resolve. **Not adopted, not promoted, code
+this configuration, same caveat D65/D77 give and do not resolve. **Not adopted, not promoted, code
 not removed**: nothing defaults to `band_priority=True`, so the mechanism stays registered and
 available; a larger coefficient, elevation multiplier, more training, or more LSTM capacity are
 named, untried, unscoped next steps if this is picked up again, not a revision of these numbers.
@@ -166,7 +166,7 @@ Mechanism: `OBSERVATION_SPACE.md` §2.4. Full artefacts: `runs/d74_treatment_com
 the control never elevates a band, so there is nothing to mark), a `compare.py --figures` output
 that highlights the episode's elevated band(s) directly on the animated schedule, generated
 automatically whenever a compared rung is tagged as priority-trained (`Rung.band_priority`,
-`ladder.py`). Full account: `DECISIONS.md` D74; narrative: `scratch/TRAINING_JOURNEY.md` §18.
+`ladder.py`). Full account: `DECISIONS.md` D78; narrative: `scratch/TRAINING_JOURNEY.md` §18.
 
 **Follow-up, same day (2026-09-19): the named next steps were tried, together, at a substantial
 multiple of the original scale.**
@@ -210,7 +210,7 @@ with real vs. uniform values.
 **Verdict unchanged: not adopted, not promoted, code not removed.** The specific paths this entry's
 original verdict left untried (bigger coefficient, more capacity, more training) have now been tried
 together, at a substantial multiple of scale, and the result is the same. Full account: `DECISIONS.md`
-D74 (same entry, extended); narrative: `scratch/TRAINING_JOURNEY.md` §18. Artefacts:
+D78 (same entry, extended); narrative: `scratch/TRAINING_JOURNEY.md` §18. Artefacts:
 `runs/d74_followup_treatment_comparison/`, `runs/d74_followup_control_comparison/`.
 
 ### Width 146 — dead, but this is where several headline numbers came from (25)

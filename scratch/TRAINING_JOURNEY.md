@@ -1118,7 +1118,7 @@ checkpoints and the same `compare.py` run §15.5 already produced, no new run ne
 `reward_balance` 65.5%, `reward_balance_improved` 64.3%. **1.2 points apart. No candidate
 selected**, exactly as D47's own text says should happen at this margin. Full accounting in D68.
 
-## 16. PulseWidth, AoA and a second observation layout (D71, 2026-09-14)
+## 16. PulseWidth, AoA and a second observation layout (D75, 2026-09-14)
 
 D30 had sat open since 2026-09-04 -- the case for AoA (96.7%/86.1% attribution accuracy, the
 only observable separating a new find from a re-find) and PulseWidth was made and measured, but
@@ -1162,9 +1162,9 @@ the normal path the moment anyone tried. Fixed: `known_observation_widths()` ret
 `lstm_balance_d67_control_seed2` (rung 17c's own training run) except `obs_version=v2`, so the
 comparison once it lands is like-for-like. Expected wall clock ~40 minutes, based on that same
 config's own recorded 2398.8 s on this machine. `runs/checkpoints/v2/lstm_balance_v2_control_seed2/`.
-Full accounting in D71.
+Full accounting in D75.
 
-## 17. `pulse_count` widens "v2" to 362, and its first result (D72, D73, 2026-09-14 to 2026-09-18)
+## 17. `pulse_count` widens "v2" to 362, and its first result (D76, D77, 2026-09-14 to 2026-09-18)
 
 **The widening.** Same session as §16, a second direct request: literal `C` in the observation was
 asked for first, and had already been measured and declined the same session
@@ -1176,7 +1176,7 @@ block, `pulse_count`, appended after `aoa_cos`, `log1p`-normalised against the s
 side. "v2" moved from 326 to 362. Cost: the three 326-wide snapshots §16's own retrain had already
 produced (`lstm_balance_v2_control_seed2_s1/s2/s3`, 385,024/400,000 steps, never finished) are now
 permanently unloadable -- the same tax D49/D55/D67 already charged, paid again on purpose. Full
-account: D72.
+account: D76.
 
 **Two fresh 362-wide runs, from scratch** (the dead 326-wide run could not be resumed into a wider
 vector): `lstm_balance_v2_d72_seed2` (`reward_balance`, rung 20d, 401,408 steps, one uninterrupted
@@ -1185,7 +1185,7 @@ survived two laptop crashes via `RecurrentPPO.load()` + `learn(reset_num_timeste
 last `--checkpoint-freq` snapshot each time -- the crash-resume pattern §15 established, reused
 without incident).
 
-**The result (D73, `MEASURED`, single seed).** `python -m rfenv.compare
+**The result (D77, `MEASURED`, single seed).** `python -m rfenv.compare
 --rungs round_robin,recency,lstm_balance_v2_d72_seed2_400k,lstm_balance_improved_v2_d72_seed2_400k
 --seeds 3 --sampled 10 --figures --obs-version v2 --out runs/d72_paired_comparison` -- 684 episodes.
 `reward_balance` (20d): 0.111 ratio / 3.30 s cTTI / 36.3% paired-both-vs-recency.
@@ -1195,7 +1195,7 @@ arm, same caveat D65 gave and never resolved, and not directly comparable to the
 (width, reward formula and the sampled-scenario draw all differ at once). Neither row promoted over
 the other.
 
-## 18. A band-priority reward, "v2p", 398 wide -- built, measured null, tried stronger, same answer (D74, 2026-09-18/19)
+## 18. A band-priority reward, "v2p", 398 wide -- built, measured null, tried stronger, same answer (D78, 2026-09-18/19)
 
 **Not a continuation of D70.** D70 ("the scheduler takes a threat priority from outside; it does not
 compute one") sourced its priority vector from an external threat-classification library and had its
@@ -1224,7 +1224,7 @@ before/after comparison that would confound "the agent used the signal" with "th
 bigger." `ScanEnv.__init__` refuses `band_priority=True` against any layout that doesn't carry the
 block (i.e., anything but "v2p").
 
-**Two RecurrentPPO checkpoints, matched pair, same split/hyperparameters/seed as the D72 pair
+**Two RecurrentPPO checkpoints, matched pair, same split/hyperparameters/seed as the D76 pair
 (§17):** `lstm_balance_v2p_priority_seed2` (treatment, `priority_uniform=False`, rung 22a) --
 401,408 steps. `lstm_balance_v2p_uniform_seed2` (control, `priority_uniform=True`, rung 22b) --
 400,000 steps, launched automatically after the treatment run finished. Both restarted from scratch
@@ -1270,7 +1270,7 @@ anyway. Read together with the pre-training magnitude estimate (the priority ter
 total episode reward, worked out before this pair was trained, in response to the same "will this
 even move the needle" question), the likelier explanation is a signal too small and inconsistent to
 learn from reliably -- added training noise, not a harmful bias. Single seed, single comparison run,
-not read as settled (same caveat D65/D73 give and do not resolve).
+not read as settled (same caveat D65/D77 give and do not resolve).
 
 **Per-rung priority resolution, same day, prompted by wanting the priority animation (below) to
 "just work" without remembering CLI flags.** `Rung` (`ladder.py`) gained its own
@@ -1335,7 +1335,7 @@ Treatment's underperformance against control is therefore a training-difficulty 
 paragraph), not a misused-signal story -- both possibilities were live going in, and this is what
 separates them.
 
-**`DECISIONS.md` D74 written up 2026-09-19, `MEASURED`.** Unlike D71/D72 (§16/§17), written up as
+**`DECISIONS.md` D78 written up 2026-09-19, `MEASURED`.** Unlike D75/D76 (§16/§17), written up as
 `SETTLED` the day they were built, ahead of any trained result, this write-up was deliberately held
 until both the control-arm comparison and the permutation ablation existed, on direct instruction.
 **Not adopted, not promoted, code not removed** -- nothing defaults to `band_priority=True`
@@ -1345,7 +1345,7 @@ this is a null result at one configuration (`priority_coef=0.5`, 3-6/36 bands, s
 default LSTM capacity, 400k steps, one seed) with named, untried paths -- a larger coefficient or
 elevation multiplier, more training steps, more network capacity -- not scoped or recommended here,
 a genuinely new experiment if picked up again, not a revision of these numbers. Full account:
-`DECISIONS.md` D74; mechanism: `OBSERVATION_SPACE.md` §2.4; numbers: `MODEL_COMPARISON.md`
+`DECISIONS.md` D78; mechanism: `OBSERVATION_SPACE.md` §2.4; numbers: `MODEL_COMPARISON.md`
 Width 398. The camping, spread and permutation-ablation diagnostics above were scratch scripts, not
 committed to the repository -- reported here in full, with method and numbers, per this
 repository's own provenance rules on what counts as a measurement.
@@ -1370,9 +1370,9 @@ almost as fast as literal camping would, and faster than it would for a policy s
 across many bands instead.
 
 **A new function, not a change to any existing reward.** `priority_reward_bonus` (`env.py`) --
-`discovery` unchanged from D74's original formula; `occupancy` new, both terms scaled by
+`discovery` unchanged from D78's original formula; `occupancy` new, both terms scaled by
 `band_priority`'s own *value*, not a binary "is this elevated" gate. That last detail matters for the
-same reason D74's original discovery term used the same convention: the control arm's constant `1.0`
+same reason D78's original discovery term used the same convention: the control arm's constant `1.0`
 still has to fire both terms at the same uniform scale, or the comparison stops isolating what it's
 meant to isolate. `priority_high` (the elevated value, was the hardcoded module constant
 `_PRIORITY_HIGH`) is now a `ScanEnv` kwarg too, needed to raise it past 3.0 for this run.
@@ -1403,7 +1403,7 @@ earlier this session, applied consistently this time).
 **The comparison, same 513-episode design as before:** 23a **0.154 / 2.43s / 0.907 / 73.1%**
 beats-recency-both -- the best figure measured anywhere in this project, ahead of D68's own settled
 best (17c, 54.4%). 23b (control) **0.121 / 2.74s / 0.911 / 45.6%**. Treatment beat control by a wide
-margin -- the *opposite* direction from the original D74 pair.
+margin -- the *opposite* direction from the original D78 pair.
 
 **Taken alone, that result would read as the mechanism finally working. It doesn't survive a second
 ablation.** Same method as the first (30 episodes, identical scenario/seed/receiver-noise draw per
@@ -1431,9 +1431,9 @@ with real vs. uniform values. Not scoped here.
 
 **Verdict unchanged: not adopted, not promoted, code not removed.** The named untried paths from the
 first write-up -- bigger coefficient, more capacity, more training -- have now been tried together, at
-several times the original scale, and the answer didn't move. `DECISIONS.md` D74 was extended the
+several times the original scale, and the answer didn't move. `DECISIONS.md` D78 was extended the
 same day with this follow-up, not given a new decision number -- it is the same question, answered
-again, more carefully. Full account: `DECISIONS.md` D74; numbers: `MODEL_COMPARISON.md` Width 398.
+again, more carefully. Full account: `DECISIONS.md` D78; numbers: `MODEL_COMPARISON.md` Width 398.
 `tests/test_band_priority.py` grew to 26 tests (the occupancy formula in isolation, the D53 ping-pong
 check, the `observation_space` ceiling regression); full suite re-run clean (470 passed, 1
 pre-existing unrelated failure, 27/27 RL, 26/26 band-priority) before any of this was trusted.
