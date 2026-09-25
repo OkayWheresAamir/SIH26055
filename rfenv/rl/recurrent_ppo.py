@@ -90,6 +90,7 @@ def train(
     occupancy_decay_cap: float = 2.0,
     device: str = "auto",
     pool=None,
+    from_checkpoint: str | Path | None = None,
 ) -> RecurrentPPO:
     """Build sb3-contrib's RecurrentPPO with library defaults and train it.
 
@@ -126,6 +127,24 @@ def train(
     checkpoint trained this way is otherwise ordinary -- same manifest, same
     `load_checkpoint()`, same deployable contract -- only the distribution of
     scenarios it ever saw during training differs from every other rung's.
+
+    `from_checkpoint`, when set, loads that checkpoint instead of building a
+    fresh model, and keeps training it (`reset_num_timesteps=False`) rather
+    than starting a new one from scratch -- offline training's own resume
+    path, deliberately built to mirror `online.py`'s (same `custom_objects`
+    load, same reasoning: `n_steps` is baked into the rollout buffer at
+    `_setup_model()`, so a hyperparameter override has to go through
+    `custom_objects`, not an attribute set after loading). The difference
+    from `online.fine_tune()` is what it does *not* change: this still runs
+    ordinary fixed-length episodes drawn fresh from `pool` each reset, and
+    the gradient still sees `step()`'s own (truth-reading) reward -- no
+    `ObservableRewardWrapper`, no continuous grid, none of D77's online-mode
+    machinery. This is what lets "does further *offline* training on a new
+    distribution adapt a checkpoint the same way online fine-tuning did"
+    become a real, answerable comparison, changing only the one variable
+    (online mechanism vs. plain continued offline training) rather than
+    also changing the reward the gradient sees and the episode length at
+    the same time.
     """
     started_at = time.time()
     hyperparameters = dict(hyperparameters or {})
@@ -134,8 +153,17 @@ def train(
                           priority_n_bands=priority_n_bands, priority_uniform=priority_uniform,
                           priority_high=priority_high, occupancy_coef=occupancy_coef,
                           occupancy_decay_cap=occupancy_decay_cap)
-    model = RecurrentPPO(_resolve_policy(policy), env, seed=seed, verbose=verbose,
-                          device=device, **hyperparameters)
+    if from_checkpoint is not None:
+        require_loadable(from_checkpoint)
+        # custom_objects, not model.n_steps = ... after loading -- n_steps is
+        # baked into the rollout buffer at _setup_model()/load time, same
+        # reasoning online.py's own resume path follows.
+        model = RecurrentPPO.load(from_checkpoint, env=env, device=device,
+                                  custom_objects=hyperparameters)
+        model.verbose = verbose
+    else:
+        model = RecurrentPPO(_resolve_policy(policy), env, seed=seed, verbose=verbose,
+                              device=device, **hyperparameters)
     manifest_kwargs = {"reward": reward, "hyperparameters": hyperparameters,
                        "started_at": started_at, "description": description}
     callbacks = training_callbacks(
@@ -145,7 +173,10 @@ def train(
         run=run or Path(checkpoint).stem,
         manifest_kwargs=manifest_kwargs,
     )
-    model.learn(total_timesteps=total_timesteps, callback=callbacks)
+    # Continuing a checkpoint's own step count is the whole point of resuming
+    # it, the same as online.py's fine_tune().
+    model.learn(total_timesteps=total_timesteps, callback=callbacks,
+                reset_num_timesteps=from_checkpoint is None)
 
     finish_training(model, checkpoint=checkpoint, run=run, **manifest_kwargs)
     return model
