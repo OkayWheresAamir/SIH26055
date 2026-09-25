@@ -705,7 +705,7 @@ LADDER: tuple[Rung, ...] = (
          obs_version="v3"),
 
     Rung("lstm_v2p_noprior_online_scratch_seed2", "27", "Recurrent PPO (reward_balance, v2p, no priority, trained FROM SCRATCH online, seed 2, 800k)",
-         "Ours. The first policy in this repository trained entirely through D77's "
+         "Ours. The first policy in this repository trained entirely through D81's "
          "online regime rather than offline `train()`: continuous-grid missions "
          "(120 x 600 slots) instead of 30 s episodes, and the gradient fed "
          "`reward_balance_obs` (Y-derived, what a real receiver could compute) "
