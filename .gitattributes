@@ -1,0 +1,9 @@
+# Binary formats: never apply line-ending conversion. ReportLab PDFs contain no
+# NUL bytes, so git's autodetection classifies them as text, and with
+# core.autocrlf=true a Windows checkout would rewrite LF to CRLF and break
+# every byte offset in the PDF's cross-reference table.
+*.pdf  binary
+*.zip  binary
+*.gif  binary
+*.png  binary
+*.h5   binary
