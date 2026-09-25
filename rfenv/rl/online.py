@@ -386,7 +386,7 @@ def fine_tune(
         # episode is a continuous grid (an hour by default), so on a normal
         # fine-tune this prints once per mission and not per 30 s segment.
         # The per-segment series is `SegmentMetricsCallback`'s `segments.jsonl`
-        # (above), which is what D77 names as this capability's actual result.
+        # (above), which is what D81 names as this capability's actual result.
         from rfenv.rl.common import EpisodeMetricsCallback
 
         callbacks.append(EpisodeMetricsCallback())

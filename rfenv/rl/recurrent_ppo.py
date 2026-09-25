@@ -138,7 +138,7 @@ def train(
     from `online.fine_tune()` is what it does *not* change: this still runs
     ordinary fixed-length episodes drawn fresh from `pool` each reset, and
     the gradient still sees `step()`'s own (truth-reading) reward -- no
-    `ObservableRewardWrapper`, no continuous grid, none of D77's online-mode
+    `ObservableRewardWrapper`, no continuous grid, none of D81's online-mode
     machinery. This is what lets "does further *offline* training on a new
     distribution adapt a checkpoint the same way online fine-tuning did"
     become a real, answerable comparison, changing only the one variable
