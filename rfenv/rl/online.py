@@ -308,6 +308,7 @@ def fine_tune(
     checkpoint_freq: int | None = 8192,
     animate_checkpoints: bool = True,
     animate_slots: int = 3 * N_SLOTS,
+    print_episode_metrics: bool = False,
 ):
     """Load a checkpoint, keep training it on a continuous grid, save the result.
 
@@ -378,6 +379,17 @@ def fine_tune(
 
     live = make_live_view(view)
     callbacks = _callbacks(live, Path(out) / "segments.jsonl" if out else None)
+    if print_episode_metrics:
+        # The same toggle every offline `train()` exposes, wired to the same
+        # shared callback. Worth saying what it does and does not show here:
+        # `episode_metrics()` fires when an *episode* ends, and an online
+        # episode is a continuous grid (an hour by default), so on a normal
+        # fine-tune this prints once per mission and not per 30 s segment.
+        # The per-segment series is `SegmentMetricsCallback`'s `segments.jsonl`
+        # (above), which is what D81 names as this capability's actual result.
+        from rfenv.rl.common import EpisodeMetricsCallback
+
+        callbacks.append(EpisodeMetricsCallback())
     if out:
         Path(out).mkdir(parents=True, exist_ok=True)
 

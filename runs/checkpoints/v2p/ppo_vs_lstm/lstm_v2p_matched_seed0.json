@@ -1,0 +1,59 @@
+{
+  "run": "lstm_v2p_matched_seed0",
+  "description": "Recurrent arm. sb3-contrib RecurrentPPO (MlpLstmPolicy), identical to ppo_v2p_matched_seed0 in every respect but the policy class.",
+  "checkpoint": "lstm_v2p_matched_seed0.zip",
+  "sha256": "1ec3bcb70906227e073bca899e4f8e941e8f924a3a96bfb24d04120ea5504fd6",
+  "algorithm": "RecurrentPPO",
+  "policy": "RecurrentActorCriticPolicy",
+  "reward": "reward_balance",
+  "observation_width": 398,
+  "action_space": "Discrete(36)",
+  "seed": 0,
+  "total_timesteps": 204800,
+  "hyperparameters": {
+    "n_steps": 8192,
+    "batch_size": 128,
+    "n_epochs": 10,
+    "gamma": 0.997,
+    "ent_coef": 0.01,
+    "learning_rate": 0.0003,
+    "clip_range": 0.2
+  },
+  "resolved": {
+    "learning_rate": 0.0003,
+    "gamma": 0.997,
+    "n_steps": 8192,
+    "batch_size": 128,
+    "n_epochs": 10,
+    "ent_coef": 0.01,
+    "gae_lambda": 0.95,
+    "vf_coef": 0.5,
+    "max_grad_norm": 0.5,
+    "device": "device(type='cuda')"
+  },
+  "argv": [
+    "C:/Users/DELL/AppData/Local/Temp/claude/c--Code-sih-SIH26055/b75bb6c5-6ea8-4ec8-88ad-c36d6a6e7a97/scratchpad/ppo_vs_lstm.py"
+  ],
+  "command": "C:\\Code\\sih\\SIH26055\\venv\\Scripts\\python.exe C:/Users/DELL/AppData/Local/Temp/claude/c--Code-sih-SIH26055/b75bb6c5-6ea8-4ec8-88ad-c36d6a6e7a97/scratchpad/ppo_vs_lstm.py",
+  "git": {
+    "commit": "bcc23468b54afac2bb6c79e16194655ecaf23439",
+    "dirty": true
+  },
+  "started_at": "2026-09-24T17:37:45Z",
+  "wall_clock_s": 2156.0,
+  "versions": {
+    "python": "3.12.10",
+    "stable_baselines3": "2.9.0",
+    "torch": "2.14.0+cu126",
+    "gymnasium": "1.3.0",
+    "numpy": "2.5.3",
+    "sb3_contrib": "2.9.0"
+  },
+  "hardware": {
+    "os": "Windows-11-10.0.26200-SP0",
+    "machine": "AMD64",
+    "processor": "Intel64 Family 6 Model 165 Stepping 2, GenuineIntel",
+    "cpu_count": 12,
+    "cuda": "NVIDIA GeForce GTX 1650"
+  }
+}
